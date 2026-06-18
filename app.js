@@ -3,8 +3,11 @@ const frontendConfig = window.PRINTING_KIOSK_CONFIG || {};
 const currentPage = window.location.pathname.split("/").pop() || "index.html";
 const currentPath = window.location.pathname.replace(/\/+$/, "");
 const isAdminEntry = currentPage === "admin.html" || currentPath.endsWith("/admin") || runtimeConfig.get("panel") === "admin";
-const PAGES_BACKEND_URL = window.location.hostname === "printingkiosk.pages.dev" ? "https://printingkiosk-backend.onrender.com" : "";
-const DEFAULT_BACKEND_URL = PAGES_BACKEND_URL || (/^https?:$/.test(window.location.protocol) ? window.location.origin : "http://localhost:5080");
+const HOST_BACKEND_URL = {
+  "printingkiosk.pages.dev": "https://printingkiosk-backend.onrender.com",
+  "printingkiosk.throbbing-lab-1e3e.workers.dev": "https://api.theaaryatechnologies.com"
+}[window.location.hostname] || "";
+const DEFAULT_BACKEND_URL = HOST_BACKEND_URL || (/^https?:$/.test(window.location.protocol) ? window.location.origin : "http://localhost:5080");
 const LOCAL_AGENT_URL = runtimeConfig.get("localAgentUrl") || frontendConfig.localAgentUrl || "http://localhost:5077";
 const BACKEND_URL = (runtimeConfig.get("backendUrl") || frontendConfig.backendUrl || DEFAULT_BACKEND_URL).replace(/\/+$/, "");
 const RAZORPAY_CHECKOUT_URL = "https://checkout.razorpay.com/v1/checkout.js";
