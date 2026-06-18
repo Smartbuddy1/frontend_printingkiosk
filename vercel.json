@@ -1,0 +1,26 @@
+{
+  "cleanUrls": true,
+  "trailingSlash": false,
+  "rewrites": [
+    {
+      "source": "/admin",
+      "destination": "/admin.html"
+    },
+    {
+      "source": "/super-admin",
+      "destination": "/super-admin.html"
+    },
+    {
+      "source": "/api/:path*",
+      "destination": "https://api.theaaryatechnologies.com/api/:path*"
+    },
+    {
+      "source": "/mobile-upload/:path*",
+      "destination": "https://api.theaaryatechnologies.com/mobile-upload/:path*"
+    },
+    {
+      "source": "/uploads/:path*",
+      "destination": "https://api.theaaryatechnologies.com/uploads/:path*"
+    }
+  ]
+}
