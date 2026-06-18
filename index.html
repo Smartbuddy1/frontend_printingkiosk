@@ -1,0 +1,24 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Printing Kiosk</title>
+    <link rel="stylesheet" href="./styles.css" />
+  </head>
+  <body>
+    <div id="app"></div>
+    <script>
+      (() => {
+        const params = new URLSearchParams(window.location.search);
+        const isMiniPc = params.has("localAgentUrl") || params.has("kioskId") || params.get("device") === "mini-pc";
+
+        if (!isMiniPc) {
+          window.location.replace(`./admin.html${window.location.search || ""}`);
+        }
+      })();
+    </script>
+    <script src="./config.js"></script>
+    <script src="./app.js"></script>
+  </body>
+</html>
