@@ -226,6 +226,7 @@ const state = {
   mode: isAdminEntry ? "admin" : "customer",
   adminAuthed: false,
   adminToken: "",
+  adminAccount: null,
   adminPage: runtimeConfig.get("adminPage") || "dashboard",
   adminLoginError: "",
   adminLoginDraft: {
@@ -1850,13 +1851,14 @@ function renderCustomerTopbar() {
 }
 
 function renderAdminTopbar() {
+  const adminLabel = state.adminAccount?.name || state.adminAccount?.email || "Kiosk Admin";
   return `
     <header class="topbar admin-topbar">
       <div class="brand">
         <div class="brand-mark">AD</div>
         <div>
           <div class="brand-title">Kiosk Admin Console</div>
-          <div class="brand-subtitle">Revenue, jobs, services, refunds, system status</div>
+          <div class="brand-subtitle">${escapeHtml(adminLabel)} | assigned kiosk data only</div>
         </div>
       </div>
       <div class="topbar-actions">
@@ -3227,7 +3229,7 @@ function renderServiceEditorPage() {
           <input value="${escapeHtml(service.description || "")}" data-service-draft-field="description" />
         </label>
         <label class="setting-field">Kiosk IDs
-          <input value="${escapeHtml((service.kioskIds || []).join(", "))}" placeholder="${KIOSK_ID}, KIOSK-2" data-service-draft-field="kioskIds" />
+          <input value="${escapeHtml((service.kioskIds || []).join(", "))}" placeholder="KIOSK-1, KIOSK-2 (blank = all)" data-service-draft-field="kioskIds" />
         </label>
         <label class="setting-field">B/W Rate
           <input type="number" min="0" value="${rates.bw || 0}" data-service-draft-field="bw" />
@@ -3281,15 +3283,21 @@ function renderPricing() {
 }
 
 async function loadPricingSettings() {
-  try {
-    const configResponse = await fetch(`${BACKEND_URL}/api/kiosk/config?kioskId=${encodeURIComponent(KIOSK_ID)}`, { cache: "no-store" });
+  if (state.mode === "customer") {
+    try {
+      const configResponse = await fetch(`${BACKEND_URL}/api/kiosk/config?kioskId=${encodeURIComponent(KIOSK_ID)}`, { cache: "no-store" });
 
-    if (configResponse.ok) {
-      applyServiceConfig(await configResponse.json(), { rerender: true, source: "manual" });
-      return;
+      if (configResponse.ok) {
+        applyServiceConfig(await configResponse.json(), { rerender: true, source: "manual" });
+      }
+    } catch {
+      // The kiosk can still use locally stored pricing if the backend is offline.
     }
-  } catch {
-    // Fall back to the older admin pricing endpoint below.
+    return;
+  }
+
+  if (!state.adminAuthed) {
+    return;
   }
 
   try {
@@ -4006,6 +4014,7 @@ async function adminLogin() {
 
     state.adminAuthed = true;
     state.adminToken = payload.token || "";
+    state.adminAccount = payload.admin || null;
     state.adminLoginError = "";
     state.adminLoginDraft.password = "";
     render();
@@ -4014,6 +4023,7 @@ async function adminLogin() {
   } catch (error) {
     state.adminAuthed = false;
     state.adminToken = "";
+    state.adminAccount = null;
     state.adminLoginError = error.message || "Admin login failed.";
     render();
   }
@@ -4148,6 +4158,7 @@ async function handleClick(event) {
     case "admin-logout":
       state.adminAuthed = false;
       state.adminToken = "";
+      state.adminAccount = null;
       stopAdminPolling();
       openAdmin();
       break;

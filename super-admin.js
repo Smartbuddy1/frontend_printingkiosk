@@ -34,6 +34,7 @@ const pageGroups = [
   {
     label: "Control",
     pages: [
+      { id: "kioskAdmins", label: "Kiosk Admins" },
       { id: "kiosks", label: "Kiosks" },
       { id: "services", label: "Services" },
       { id: "payments", label: "Payments" },
@@ -43,15 +44,38 @@ const pageGroups = [
 ];
 
 const collections = {
+  kioskAdmins: {
+    title: "Kiosk Admin CRUD",
+    subtitle: "Create kiosk admin logins and assign kiosk IDs they can manage.",
+    key: "adminId",
+    columns: ["adminId", "name", "email", "status", "kioskIds", "lastLoginAt"],
+    fields: [
+      { key: "adminId", label: "Admin ID", required: true },
+      { key: "name", label: "Name", required: true },
+      { key: "email", label: "Email", required: true },
+      { key: "password", label: "Password" },
+      { key: "status", label: "Status", type: "select", options: ["active", "disabled"] },
+      { key: "kioskIds", label: "Extra Kiosk IDs" }
+    ],
+    defaults: () => ({
+      adminId: `admin-${Date.now().toString().slice(-5)}`,
+      name: "New Kiosk Admin",
+      email: "",
+      password: "",
+      status: "active",
+      kioskIds: []
+    })
+  },
   kiosks: {
     title: "Kiosk CRUD",
     subtitle: "Kiosk identity, branch, devices, app version, and operational status.",
     key: "kioskId",
-    columns: ["kioskId", "name", "branch", "status", "printer", "scanner", "appVersion", "lastOnline"],
+    columns: ["kioskId", "name", "branch", "adminId", "status", "printer", "scanner", "appVersion", "lastOnline"],
     fields: [
       { key: "kioskId", label: "Kiosk ID", required: true },
       { key: "name", label: "Name", required: true },
       { key: "branch", label: "Branch", required: true },
+      { key: "adminId", label: "Kiosk Admin ID", required: true },
       { key: "status", label: "Status", type: "select", options: ["online", "offline", "maintenance"] },
       { key: "printer", label: "Printer" },
       { key: "scanner", label: "Scanner" },
@@ -62,6 +86,7 @@ const collections = {
       kioskId: `KIOSK-${Date.now().toString().slice(-5)}`,
       name: "New Kiosk",
       branch: "Unassigned Branch",
+      adminId: state.snapshot?.data?.kioskAdmins?.[0]?.adminId || "default-admin",
       status: "offline",
       printer: "unknown",
       scanner: "unknown",
@@ -825,7 +850,7 @@ function renderField(field, draft, disabled = false) {
 
   return `
     <label class="setting-field">${escapeHtml(field.label)}
-      <input type="${field.type === "number" ? "number" : "text"}" value="${escapeHtml(value)}" data-editor-field="${escapeHtml(field.key)}" ${disabled ? "disabled" : ""} />
+      <input type="${field.type === "number" ? "number" : field.key === "password" ? "password" : "text"}" value="${escapeHtml(Array.isArray(value) ? value.join(", ") : value)}" data-editor-field="${escapeHtml(field.key)}" ${disabled ? "disabled" : ""} />
     </label>
   `;
 }
@@ -1242,7 +1267,11 @@ function updateDraftField(field, value) {
 
   const meta = collections[state.editor.collection];
   const fieldConfig = meta.fields.find((item) => item.key === field) || {};
-  draft[field] = fieldConfig.type === "number" ? numeric(value, 0) : value;
+  if (field === "kioskIds") {
+    draft[field] = String(value || "").split(",").map((item) => item.trim().toUpperCase()).filter(Boolean);
+  } else {
+    draft[field] = fieldConfig.type === "number" ? numeric(value, 0) : value;
+  }
 }
 
 function updateDraftTemplate(index, field, value) {
@@ -1303,6 +1332,15 @@ function editorPayload() {
       fields: Array.isArray(template.fields) ? template.fields : String(template.fields || "").split(",").map((item) => item.trim()).filter(Boolean),
       imageUrl: String(template.imageUrl || "").trim()
     })).filter((template) => template.title);
+  }
+
+  if (state.editor.collection === "kioskAdmins") {
+    draft.adminId = slug(draft.adminId || draft.email || draft.name, "kiosk-admin");
+    draft.email = String(draft.email || "").trim().toLowerCase();
+    draft.status = draft.status === "disabled" ? "disabled" : "active";
+    draft.kioskIds = Array.isArray(draft.kioskIds)
+      ? draft.kioskIds.map((item) => String(item || "").trim().toUpperCase()).filter(Boolean)
+      : String(draft.kioskIds || "").split(",").map((item) => item.trim().toUpperCase()).filter(Boolean);
   }
 
   return draft;
