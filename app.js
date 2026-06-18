@@ -1353,9 +1353,16 @@ function startAdminPolling() {
   stopAdminPolling();
   state.adminPoller = setInterval(() => {
     if (state.mode === "admin" && state.adminAuthed) {
-      loadAdminData({ rerender: true });
+      loadAdminData({ rerender: !isEditingFormField() });
     }
   }, 5000);
+}
+
+function isEditingFormField() {
+  const element = document.activeElement;
+  if (!element) return false;
+  const tagName = element.tagName?.toLowerCase();
+  return tagName === "input" || tagName === "textarea" || tagName === "select" || element.isContentEditable;
 }
 
 async function loadAdminData({ rerender = true } = {}) {
@@ -3326,6 +3333,7 @@ async function loadPricingSettings() {
 }
 
 async function savePricingSettings() {
+  syncPricingDraftFromDom();
   state.pricing = normalizePricing(state.pricing);
   storePricing();
   state.pricingSaveStatus = "Saving pricing...";
@@ -3352,6 +3360,17 @@ async function savePricingSettings() {
   }
 
   render();
+}
+
+function syncPricingDraftFromDom() {
+  document.querySelectorAll("[data-service-price][data-price-key]").forEach((input) => {
+    const serviceId = input.dataset.servicePrice;
+    const priceKey = input.dataset.priceKey;
+    state.pricing = normalizePricing(state.pricing);
+    if (state.pricing[serviceId]) {
+      state.pricing[serviceId][priceKey] = numericPrice(input.value, 0);
+    }
+  });
 }
 
 function updateServiceField(serviceId, field, value) {
@@ -3542,6 +3561,7 @@ async function saveServiceEditor() {
   const editor = state.serviceEditor;
   if (!editor) return;
 
+  syncServiceEditorDraftFromDom();
   const normalized = normalizeServicesConfig([editor.draft])[0];
 
   if (!normalized.title) {
@@ -3777,6 +3797,7 @@ function removeService(serviceId) {
 }
 
 async function saveServicesSettings() {
+  syncInlineServicesDraftFromDom();
   services = normalizeServicesConfig(services);
   state.pricing = normalizePricing(state.pricing);
   storeServices();
@@ -3808,6 +3829,24 @@ async function saveServicesSettings() {
   }
 
   render();
+}
+
+function syncInlineServicesDraftFromDom() {
+  document.querySelectorAll("[data-service-field][data-field]").forEach((input) => {
+    updateServiceField(input.dataset.serviceField, input.dataset.field, input.value);
+  });
+  document.querySelectorAll("[data-template-field][data-template-index][data-field]").forEach((input) => {
+    updateServiceTemplateField(input.dataset.templateField, Number(input.dataset.templateIndex || 0), input.dataset.field, input.value);
+  });
+}
+
+function syncServiceEditorDraftFromDom() {
+  document.querySelectorAll("[data-service-draft-field]").forEach((input) => {
+    updateServiceDraftField(input.dataset.serviceDraftField, input.value);
+  });
+  document.querySelectorAll("[data-template-draft-field][data-template-draft-index]").forEach((input) => {
+    updateServiceDraftTemplateField(Number(input.dataset.templateDraftIndex || 0), input.dataset.templateDraftField, input.value);
+  });
 }
 
 function pricingLabel(key) {
@@ -4437,6 +4476,7 @@ function handleInput(event) {
 }
 
 async function createAdminKiosk() {
+  syncKioskCreateDraftFromDom();
   const kiosk = {
     ...state.kioskCreate,
     kioskId: normalizeKioskId(state.kioskCreate.kioskId),
@@ -4467,6 +4507,15 @@ async function createAdminKiosk() {
   }
 
   render();
+}
+
+function syncKioskCreateDraftFromDom() {
+  document.querySelectorAll("[data-kiosk-create-field]").forEach((input) => {
+    const field = input.dataset.kioskCreateField;
+    state.kioskCreate[field] = field === "setupCode" || field === "kioskId"
+      ? normalizeKioskId(input.value)
+      : input.value;
+  });
 }
 
 function advancePrint() {

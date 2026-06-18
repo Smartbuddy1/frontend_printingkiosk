@@ -1314,6 +1314,7 @@ function deleteDraftTemplate(index) {
 }
 
 function editorPayload() {
+  syncEditorDraftFromDom();
   const draft = clone(state.editor.draft);
 
   if (state.editor.collection === "services") {
@@ -1344,6 +1345,17 @@ function editorPayload() {
   }
 
   return draft;
+}
+
+function syncEditorDraftFromDom() {
+  if (!state.editor) return;
+
+  document.querySelectorAll("[data-editor-field]").forEach((input) => {
+    updateDraftField(input.dataset.editorField, input.value);
+  });
+  document.querySelectorAll("[data-template-field][data-template-index]").forEach((input) => {
+    updateDraftTemplate(Number(input.dataset.templateIndex || 0), input.dataset.templateField, input.value);
+  });
 }
 
 async function saveEditor() {
