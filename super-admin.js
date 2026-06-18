@@ -1,7 +1,7 @@
 const runtimeConfig = new URLSearchParams(window.location.search);
 const frontendConfig = window.PRINTING_KIOSK_CONFIG || {};
 const HOST_BACKEND_URL = {
-  "printingkiosk.throbbing-lab-1e3e.workers.dev": "https://api.theaaryatechnologies.com"
+  "printingkiosk.vercel.app": "https://api.theaaryatechnologies.com"
 }[window.location.hostname] || "";
 const DEFAULT_BACKEND_URL = HOST_BACKEND_URL || (/^https?:$/.test(window.location.protocol) ? window.location.origin : "http://localhost:5080");
 const BACKEND_URL = (runtimeConfig.get("backendUrl") || frontendConfig.backendUrl || DEFAULT_BACKEND_URL).replace(/\/+$/, "");

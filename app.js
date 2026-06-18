@@ -4,8 +4,7 @@ const currentPage = window.location.pathname.split("/").pop() || "index.html";
 const currentPath = window.location.pathname.replace(/\/+$/, "");
 const isAdminEntry = currentPage === "admin.html" || currentPath.endsWith("/admin") || runtimeConfig.get("panel") === "admin";
 const HOST_BACKEND_URL = {
-  "printingkiosk.pages.dev": "https://printingkiosk-backend.onrender.com",
-  "printingkiosk.throbbing-lab-1e3e.workers.dev": "https://api.theaaryatechnologies.com"
+  "printingkiosk.vercel.app": "https://api.theaaryatechnologies.com"
 }[window.location.hostname] || "";
 const DEFAULT_BACKEND_URL = HOST_BACKEND_URL || (/^https?:$/.test(window.location.protocol) ? window.location.origin : "http://localhost:5080");
 const LOCAL_AGENT_URL = runtimeConfig.get("localAgentUrl") || frontendConfig.localAgentUrl || "http://localhost:5077";
