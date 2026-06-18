@@ -5,6 +5,7 @@ const HOST_BACKEND_URL = {
 }[window.location.hostname] || "";
 const DEFAULT_BACKEND_URL = HOST_BACKEND_URL || (/^https?:$/.test(window.location.protocol) ? window.location.origin : "http://localhost:5080");
 const BACKEND_URL = (runtimeConfig.get("backendUrl") || frontendConfig.backendUrl || DEFAULT_BACKEND_URL).replace(/\/+$/, "");
+const ADMIN_SESSION_KEY = "printingKioskAdminSession";
 
 const state = {
   authed: false,
@@ -226,6 +227,50 @@ function clone(value) {
   return JSON.parse(JSON.stringify(value ?? null));
 }
 
+function readStoredAdminSession() {
+  try {
+    const raw = window.sessionStorage.getItem(ADMIN_SESSION_KEY);
+    return raw ? JSON.parse(raw) : null;
+  } catch {
+    return null;
+  }
+}
+
+function storeAdminSession(payload = {}) {
+  try {
+    window.sessionStorage.setItem(ADMIN_SESSION_KEY, JSON.stringify({
+      role: payload.role || "",
+      token: payload.token || "",
+      admin: payload.admin || null
+    }));
+  } catch {}
+}
+
+function clearAdminSession() {
+  try {
+    window.sessionStorage.removeItem(ADMIN_SESSION_KEY);
+  } catch {}
+}
+
+function redirectToKioskAdmin() {
+  window.location.href = `./admin.html${window.location.search || ""}`;
+}
+
+function hydrateAdminSession() {
+  const stored = readStoredAdminSession();
+  if (!stored?.token || !stored.role) return;
+
+  if (stored.role === "kiosk-admin") {
+    redirectToKioskAdmin();
+    return;
+  }
+
+  if (stored.role === "super-admin") {
+    state.authed = true;
+    state.authToken = stored.token;
+  }
+}
+
 function money(value) {
   return `Rs. ${Number(value || 0).toLocaleString("en-IN")}`;
 }
@@ -282,6 +327,54 @@ async function fetchJson(path, options = {}) {
   return payload;
 }
 
+function isMissingAuthEndpoint(error) {
+  const message = String(error?.message || "").toLowerCase();
+  return message.includes("route not found") || message.includes("request failed: 404");
+}
+
+function postAdminLogin(path, email, password) {
+  return fetchJson(path, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ email, password })
+  });
+}
+
+async function loginWithLegacyAdminEndpoints(email, password) {
+  const attempts = await Promise.allSettled([
+    postAdminLogin("/api/admin/login", email, password).then((payload) => ({
+      ...payload,
+      role: "kiosk-admin"
+    })),
+    postAdminLogin("/api/super-admin/login", email, password).then((payload) => ({
+      ...payload,
+      role: "super-admin"
+    }))
+  ]);
+  const matches = attempts
+    .filter((attempt) => attempt.status === "fulfilled")
+    .map((attempt) => attempt.value);
+
+  if (matches.length > 1) {
+    throw new Error("These credentials match both admin roles. Use different super admin and kiosk admin credentials.");
+  }
+
+  if (matches.length === 1) {
+    return matches[0];
+  }
+
+  throw new Error("Invalid admin credentials.");
+}
+
+async function loginWithAdminCredentials(email, password) {
+  try {
+    return await postAdminLogin("/api/auth/login", email, password);
+  } catch (error) {
+    if (!isMissingAuthEndpoint(error)) throw error;
+    return loginWithLegacyAdminEndpoints(email, password);
+  }
+}
+
 async function loadSnapshot({ quiet = false } = {}) {
   if (!quiet) {
     state.loading = true;
@@ -321,20 +414,18 @@ function renderLogin() {
     <div class="app-shell admin-shell">
       <header class="topbar admin-topbar">
         <div class="brand">
-          <div class="brand-mark">SA</div>
+          <div class="brand-mark">AD</div>
           <div>
-            <div class="brand-title">Super Admin Console</div>
-            <div class="brand-subtitle">Platform hierarchy and master data control</div>
+            <div class="brand-title">Admin Login</div>
+            <div class="brand-subtitle">One sign-in for kiosk admin and super admin</div>
           </div>
-        </div>
-        <div class="topbar-actions">
-          <button class="ghost-button" data-action="open-kiosk-admin">Kiosk Admin</button>
         </div>
       </header>
       <main class="main admin-screen">
         <div class="login-view">
           <div class="login-panel">
-            <h1>Super Admin Login</h1>
+            <h1>Admin Login</h1>
+            <p class="helper-text">Use your admin credentials. The system opens the right dashboard automatically.</p>
             ${state.loginError ? `<div class="empty-note">${escapeHtml(state.loginError)}</div>` : ""}
             <label>Email or mobile
               <input value="${escapeHtml(state.loginDraft.email)}" autocomplete="username" data-login-field="email" />
@@ -342,7 +433,7 @@ function renderLogin() {
             <label>Password
               <input type="password" value="${escapeHtml(state.loginDraft.password)}" autocomplete="current-password" data-login-field="password" />
             </label>
-            <button class="primary-button" data-action="login">Open Super Admin</button>
+            <button class="primary-button" data-action="login">Sign in</button>
           </div>
         </div>
       </main>
@@ -377,7 +468,6 @@ function renderTopbar() {
         </div>
       </div>
       <div class="topbar-actions">
-        <button class="ghost-button" data-action="open-kiosk-admin">Kiosk Admin</button>
         <button class="ghost-button" data-action="refresh">Refresh</button>
         <button class="secondary-button" data-action="export-json">Export JSON</button>
         <button class="danger-button" data-action="logout">Logout</button>
@@ -976,27 +1066,30 @@ async function superAdminLogin() {
   const password = state.loginDraft.password;
 
   if (!email || !password) {
-    state.loginError = "Enter super admin email and password.";
+    state.loginError = "Enter admin email and password.";
     render();
     return;
   }
 
   try {
-    const payload = await fetchJson("/api/super-admin/login", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ email, password })
-    });
+    const payload = await loginWithAdminCredentials(email, password);
+
+    storeAdminSession(payload);
+    state.loginDraft.password = "";
+
+    if (payload.role === "kiosk-admin") {
+      redirectToKioskAdmin();
+      return;
+    }
 
     state.authed = true;
     state.authToken = payload.token || "";
     state.loginError = "";
-    state.loginDraft.password = "";
     await loadSnapshot();
   } catch (error) {
     state.authed = false;
     state.authToken = "";
-    state.loginError = error.message || "Super admin login failed.";
+    state.loginError = error.message || "Admin login failed.";
     render();
   }
 }
@@ -1015,12 +1108,8 @@ async function handleClick(event) {
     state.authToken = "";
     state.editor = null;
     state.notice = "";
+    clearAdminSession();
     render();
-    return;
-  }
-
-  if (button.dataset.action === "open-kiosk-admin") {
-    window.location.href = `./admin.html${window.location.search || ""}`;
     return;
   }
 
@@ -1456,4 +1545,8 @@ function exportSnapshot() {
   URL.revokeObjectURL(link.href);
 }
 
+hydrateAdminSession();
 render();
+if (state.authed) {
+  loadSnapshot();
+}

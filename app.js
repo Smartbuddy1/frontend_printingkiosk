@@ -12,6 +12,7 @@ const BACKEND_URL = (runtimeConfig.get("backendUrl") || frontendConfig.backendUr
 const RAZORPAY_CHECKOUT_URL = "https://checkout.razorpay.com/v1/checkout.js";
 const PRINTER_STATUS_TIMEOUT_MS = 15000;
 const UNASSIGNED_KIOSK_ID = "UNASSIGNED-KIOSK";
+const ADMIN_SESSION_KEY = "printingKioskAdminSession";
 const KIOSK_ID = readConfiguredKioskId();
 const HAS_EXPLICIT_LOCAL_AGENT = Boolean(runtimeConfig.get("localAgentUrl") || frontendConfig.localAgentUrl);
 
@@ -345,6 +346,52 @@ function normalizeKioskId(value) {
 
 function readConfiguredKioskId() {
   return normalizeKioskId(runtimeConfig.get("kioskId")) || normalizeKioskId(frontendConfig.kioskId) || UNASSIGNED_KIOSK_ID;
+}
+
+function readStoredAdminSession() {
+  try {
+    const raw = window.sessionStorage.getItem(ADMIN_SESSION_KEY);
+    return raw ? JSON.parse(raw) : null;
+  } catch {
+    return null;
+  }
+}
+
+function storeAdminSession(payload = {}) {
+  try {
+    window.sessionStorage.setItem(ADMIN_SESSION_KEY, JSON.stringify({
+      role: payload.role || "",
+      token: payload.token || "",
+      admin: payload.admin || null
+    }));
+  } catch {}
+}
+
+function clearAdminSession() {
+  try {
+    window.sessionStorage.removeItem(ADMIN_SESSION_KEY);
+  } catch {}
+}
+
+function redirectToSuperAdmin() {
+  window.location.href = `./super-admin.html${window.location.search || ""}`;
+}
+
+function hydrateAdminSession() {
+  if (!isAdminEntry) return;
+  const stored = readStoredAdminSession();
+  if (!stored?.token || !stored.role) return;
+
+  if (stored.role === "super-admin") {
+    redirectToSuperAdmin();
+    return;
+  }
+
+  if (stored.role === "kiosk-admin") {
+    state.adminAuthed = true;
+    state.adminToken = stored.token;
+    state.adminAccount = stored.admin || null;
+  }
 }
 
 function markServicesDirty(message = "") {
@@ -1254,6 +1301,54 @@ function fetchAdminJson(path, options = {}) {
   });
 }
 
+function isMissingAuthEndpoint(error) {
+  const message = String(error?.message || "").toLowerCase();
+  return message.includes("route not found") || message.includes("request failed: 404");
+}
+
+function postAdminLogin(url, email, password) {
+  return fetchJson(url, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ email, password })
+  });
+}
+
+async function loginWithLegacyAdminEndpoints(email, password) {
+  const attempts = await Promise.allSettled([
+    postAdminLogin(`${BACKEND_URL}/api/admin/login`, email, password).then((payload) => ({
+      ...payload,
+      role: "kiosk-admin"
+    })),
+    postAdminLogin(`${BACKEND_URL}/api/super-admin/login`, email, password).then((payload) => ({
+      ...payload,
+      role: "super-admin"
+    }))
+  ]);
+  const matches = attempts
+    .filter((attempt) => attempt.status === "fulfilled")
+    .map((attempt) => attempt.value);
+
+  if (matches.length > 1) {
+    throw new Error("These credentials match both admin roles. Use different super admin and kiosk admin credentials.");
+  }
+
+  if (matches.length === 1) {
+    return matches[0];
+  }
+
+  throw new Error("Invalid admin credentials.");
+}
+
+async function loginWithAdminCredentials(email, password) {
+  try {
+    return await postAdminLogin(`${BACKEND_URL}/api/auth/login`, email, password);
+  } catch (error) {
+    if (!isMissingAuthEndpoint(error)) throw error;
+    return loginWithLegacyAdminEndpoints(email, password);
+  }
+}
+
 function serviceConfigSignature(nextServices, nextPricing) {
   return JSON.stringify({
     services: normalizeServicesConfig(nextServices).map((service) => ({
@@ -1886,7 +1981,6 @@ function renderAdminTopbar() {
         </div>
       </div>
       <div class="topbar-actions">
-        <button class="ghost-button" data-action="open-super-admin">Super Admin</button>
         ${state.adminAuthed ? `<button class="danger-button" data-action="admin-logout">Logout</button>` : ""}
       </div>
     </header>
@@ -2578,8 +2672,8 @@ function renderLogin() {
   return `
     <div class="login-view">
       <div class="login-panel">
-        <h1>Kiosk Admin Login</h1>
-        <p class="helper-text">Open the admin website directly. Customer kiosk screens do not expose admin access.</p>
+        <h1>Admin Login</h1>
+        <p class="helper-text">Use your admin credentials. The system opens the right dashboard automatically.</p>
         ${state.adminLoginError ? `<div class="empty-note">${escapeHtml(state.adminLoginError)}</div>` : ""}
         <label>Email or mobile
           <input name="username" value="${escapeHtml(state.adminLoginDraft.email)}" autocomplete="username" data-admin-login-field="email" />
@@ -2587,7 +2681,7 @@ function renderLogin() {
         <label>Password
           <input type="password" name="password" value="${escapeHtml(state.adminLoginDraft.password)}" autocomplete="current-password" data-admin-login-field="password" />
         </label>
-        <button class="primary-button" data-action="admin-login">Open Kiosk Admin</button>
+        <button class="primary-button" data-action="admin-login">Sign in</button>
       </div>
     </div>
   `;
@@ -4062,17 +4156,20 @@ async function adminLogin() {
   }
 
   try {
-    const payload = await fetchJson(`${BACKEND_URL}/api/admin/login`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ email, password })
-    });
+    const payload = await loginWithAdminCredentials(email, password);
+
+    storeAdminSession(payload);
+    state.adminLoginDraft.password = "";
+
+    if (payload.role === "super-admin") {
+      redirectToSuperAdmin();
+      return;
+    }
 
     state.adminAuthed = true;
     state.adminToken = payload.token || "";
     state.adminAccount = payload.admin || null;
     state.adminLoginError = "";
-    state.adminLoginDraft.password = "";
     render();
     loadAdminData();
     startAdminPolling();
@@ -4205,9 +4302,6 @@ async function handleClick(event) {
     case "open-customer":
       window.location.href = `./index.html${window.location.search || ""}`;
       break;
-    case "open-super-admin":
-      window.location.href = `./super-admin.html${window.location.search || ""}`;
-      break;
     case "create-kiosk":
       await createAdminKiosk();
       break;
@@ -4215,6 +4309,7 @@ async function handleClick(event) {
       state.adminAuthed = false;
       state.adminToken = "";
       state.adminAccount = null;
+      clearAdminSession();
       stopAdminPolling();
       openAdmin();
       break;
@@ -4682,6 +4777,11 @@ window.kioskTestSetPrinterReady = function kioskTestSetPrinterReady() {
   return state.printer;
 };
 
+hydrateAdminSession();
 render();
 loadPricingSettings();
 startConfigPolling();
+if (state.adminAuthed) {
+  loadAdminData();
+  startAdminPolling();
+}
