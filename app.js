@@ -14,6 +14,7 @@ const RAZORPAY_CHECKOUT_URL = "https://checkout.razorpay.com/v1/checkout.js";
 const PRINTER_STATUS_TIMEOUT_MS = 15000;
 const UNASSIGNED_KIOSK_ID = "UNASSIGNED-KIOSK";
 const KIOSK_ID = readConfiguredKioskId();
+const HAS_EXPLICIT_LOCAL_AGENT = Boolean(runtimeConfig.get("localAgentUrl") || frontendConfig.localAgentUrl);
 
 let services = [
   {
@@ -1151,6 +1152,22 @@ async function checkMobileUpload() {
 }
 
 async function refreshPrinterStatus({ rerender = true } = {}) {
+  if (state.mode === "admin" && !HAS_EXPLICIT_LOCAL_AGENT) {
+    state.printer = {
+      ...state.printer,
+      online: false,
+      name: "Mini-PC local agent",
+      paper: "N/A",
+      toner: "N/A",
+      queue: 0,
+      supportsColor: null,
+      agent: "Not required",
+      statusText: "Local printer agent runs only on the kiosk mini-PC."
+    };
+    if (rerender) render();
+    return;
+  }
+
   if (state.printer.testOverride) {
     if (rerender) render();
     return;
@@ -1369,8 +1386,6 @@ function isEditingFormField() {
 }
 
 async function loadAdminData({ rerender = true } = {}) {
-  await refreshPrinterStatus({ rerender: false });
-
   try {
     const [
       dashboard,
