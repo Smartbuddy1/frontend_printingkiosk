@@ -3,7 +3,8 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Printing Kiosk</title>
+    <title>PrintHub Kiosk</title>
+    <link rel="icon" type="image/png" href="./assets/printhub-mark.png" />
     <link rel="stylesheet" href="./styles.css" />
   </head>
   <body>
@@ -11,14 +12,31 @@
     <script>
       (() => {
         const params = new URLSearchParams(window.location.search);
-        const isMiniPc = params.has("localAgentUrl") || params.has("kioskId") || params.get("device") === "mini-pc";
+        const isElectronKiosk = ["electron", "mini-pc"].includes(params.get("device"));
 
-        if (!isMiniPc) {
-          window.location.replace(`./admin.html${window.location.search || ""}`);
+        window.PRINTING_KIOSK_ELECTRON = isElectronKiosk;
+        document.addEventListener("contextmenu", (event) => event.preventDefault());
+        document.addEventListener("dragstart", (event) => event.preventDefault());
+
+        if (!isElectronKiosk) {
+          document.getElementById("app").innerHTML = `
+            <main class="electron-required">
+              <section>
+                <h1>Open the installed kiosk app</h1>
+                <p>This customer screen runs only inside SmartPrintingKiosk Electron. Use the desktop kiosk shortcut.</p>
+              </section>
+            </main>
+          `;
         }
       })();
     </script>
     <script src="./config.js"></script>
-    <script src="./app.js"></script>
+    <script>
+      if (window.PRINTING_KIOSK_ELECTRON) {
+        const appScript = document.createElement("script");
+        appScript.src = "./app.js";
+        document.body.appendChild(appScript);
+      }
+    </script>
   </body>
 </html>

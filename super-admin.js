@@ -1,11 +1,9 @@
 const runtimeConfig = new URLSearchParams(window.location.search);
 const frontendConfig = window.PRINTING_KIOSK_CONFIG || {};
-const HOST_BACKEND_URL = {
-  "printingkiosk.vercel.app": "https://api.theaaryatechnologies.com"
-}[window.location.hostname] || "";
-const DEFAULT_BACKEND_URL = HOST_BACKEND_URL || (/^https?:$/.test(window.location.protocol) ? window.location.origin : "http://localhost:5080");
+const DEFAULT_BACKEND_URL = /^https?:$/.test(window.location.protocol) ? window.location.origin : "http://localhost:5080";
 const BACKEND_URL = (runtimeConfig.get("backendUrl") || frontendConfig.backendUrl || DEFAULT_BACKEND_URL).replace(/\/+$/, "");
 const ADMIN_SESSION_KEY = "printingKioskAdminSession";
+const UNASSIGNED_KIOSK_ID = "UNASSIGNED-KIOSK";
 
 const state = {
   authed: false,
@@ -303,7 +301,7 @@ function numeric(value, fallback = 0) {
 }
 
 function firstKioskId() {
-  return state.snapshot?.data?.kiosks?.[0]?.kioskId || "KIOSK-BANK-01";
+  return state.snapshot?.data?.kiosks?.[0]?.kioskId || UNASSIGNED_KIOSK_ID;
 }
 
 function firstServiceId() {
@@ -414,9 +412,9 @@ function renderLogin() {
     <div class="app-shell admin-shell">
       <header class="topbar admin-topbar">
         <div class="brand">
-          <div class="brand-mark">AD</div>
+          <div class="brand-mark"><img src="./assets/printhub-mark.png" alt="PrintHub" /></div>
           <div>
-            <div class="brand-title">Admin Login</div>
+            <div class="brand-title">PrintHub Admin Login</div>
             <div class="brand-subtitle">One sign-in for kiosk admin and super admin</div>
           </div>
         </div>
@@ -424,7 +422,7 @@ function renderLogin() {
       <main class="main admin-screen">
         <div class="login-view">
           <div class="login-panel">
-            <h1>Admin Login</h1>
+            <h1>PrintHub Admin Login</h1>
             <p class="helper-text">Use your admin credentials. The system opens the right dashboard automatically.</p>
             ${state.loginError ? `<div class="empty-note">${escapeHtml(state.loginError)}</div>` : ""}
             <label>Email or mobile
@@ -461,9 +459,9 @@ function renderTopbar() {
   return `
     <header class="topbar admin-topbar">
       <div class="brand">
-        <div class="brand-mark">SA</div>
+        <div class="brand-mark"><img src="./assets/printhub-mark.png" alt="PrintHub" /></div>
         <div>
-          <div class="brand-title">Super Admin Console</div>
+          <div class="brand-title">PrintHub Super Admin</div>
           <div class="brand-subtitle">Hierarchy, kiosks, services, jobs, payments, refunds</div>
         </div>
       </div>

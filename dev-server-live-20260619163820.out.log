@@ -1,0 +1,10 @@
+
+> frontend-printingkiosk@1.0.0 dev
+> node dev-server.js
+
+Smart Printing Kiosk frontend dev server
+Local:     http://localhost:5173
+Admin:     http://localhost:5173/admin.html
+Super:     http://localhost:5173/super-admin.html
+Kiosk:     http://localhost:5173/index.html?device=mini-pc&kioskId=LOCAL-KIOSK&localAgentUrl=http://localhost:5077
+Backend:   https://api.theaaryatechnologies.com

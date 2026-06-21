@@ -7,7 +7,8 @@ const buildVersion = process.env.FRONTEND_BUILD_VERSION || String(Date.now());
 const config = {
   backendUrl: process.env.FRONTEND_BACKEND_URL || process.env.BACKEND_URL || "",
   localAgentUrl: process.env.FRONTEND_LOCAL_AGENT_URL || "",
-  kioskId: process.env.FRONTEND_KIOSK_ID || ""
+  kioskId: process.env.FRONTEND_KIOSK_ID || "",
+  testHooks: process.env.FRONTEND_TEST_HOOKS === "true"
 };
 
 const skip = new Set([

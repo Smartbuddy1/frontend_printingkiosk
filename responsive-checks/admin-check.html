@@ -1,0 +1,98 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Admin Responsive Check</title>
+    <link rel="stylesheet" href="../styles.css" />
+  </head>
+  <body>
+    <div class="app-shell admin-shell">
+      <header class="topbar admin-topbar">
+        <div class="brand">
+          <div class="brand-mark"><img src="../assets/printhub-mark.png" alt="PrintHub" /></div>
+          <div>
+            <div class="brand-title">PrintHub Admin Console</div>
+            <div class="brand-subtitle">Kiosk Admin | assigned kiosk data only</div>
+          </div>
+        </div>
+        <div class="topbar-actions"><button class="danger-button">Logout</button></div>
+      </header>
+      <main class="main admin-screen">
+        <div class="admin-layout">
+          <nav class="admin-nav">
+            <div class="admin-nav-group">
+              <div class="admin-nav-label">Operate</div>
+              <button class="active">Dashboard</button>
+              <button>Services</button>
+              <button>Pricing</button>
+              <button>Print History</button>
+              <button>Transactions</button>
+            </div>
+            <div class="admin-nav-group">
+              <div class="admin-nav-label">Support</div>
+              <button>System Status</button>
+              <button>Revenue</button>
+              <button>Kiosks</button>
+              <button>Refunds</button>
+            </div>
+          </nav>
+          <section class="admin-main">
+            <div class="admin-header">
+              <div>
+                <h1>Dashboard</h1>
+                <p>Revenue, jobs, failures, kiosk health, and alerts in one operational view.</p>
+              </div>
+              <div class="flow-actions"><button class="secondary-button">Export Summary</button></div>
+            </div>
+            <div class="metrics-grid">
+              <div class="metric-card"><span>Today Revenue</span><strong>Rs. 6</strong><small>Live backend total</small></div>
+              <div class="metric-card"><span>Today Jobs</span><strong>2</strong><small>3 kiosk record(s)</small></div>
+              <div class="metric-card"><span>Failed Jobs</span><strong>1</strong><small>Needs support action</small></div>
+              <div class="metric-card"><span>Active Kiosks</span><strong>3</strong><small>Backend kiosk records</small></div>
+            </div>
+            <div class="module-grid">
+              <div class="module-card"><h2>Failure Safe Queue</h2><div class="health-list"><div class="health-row"><span>Payment success print failed</span><strong>1 job(s)</strong></div></div></div>
+              <div class="module-card"><h2>Latest Alerts</h2><div class="health-list"><div class="health-row"><span>Printer has not been checked yet</span><strong>Open</strong></div></div></div>
+            </div>
+          </section>
+        </div>
+      </main>
+    </div>
+    <script>
+      window.addEventListener("load", () => {
+        setTimeout(() => {
+          const pick = (selector) => {
+            const node = document.querySelector(selector);
+            if (!node) return null;
+            const rect = node.getBoundingClientRect();
+            return {
+              selector,
+              clientWidth: Math.round(node.clientWidth),
+              scrollWidth: Math.round(node.scrollWidth),
+              rectWidth: Math.round(rect.width),
+              gridTemplateColumns: getComputedStyle(node).gridTemplateColumns || undefined
+            };
+          };
+          const details = {
+            viewport: {
+              clientWidth: document.documentElement.clientWidth,
+              scrollWidth: document.documentElement.scrollWidth,
+              bodyScrollWidth: document.body.scrollWidth
+            },
+            layout: pick(".admin-layout"),
+            nav: pick(".admin-nav"),
+            main: pick(".admin-main"),
+            header: pick(".admin-header"),
+            headerText: pick(".admin-header p"),
+            metrics: pick(".metrics-grid")
+          };
+          const pre = document.createElement("pre");
+          pre.id = "responsive-measure";
+          pre.textContent = JSON.stringify(details, null, 2);
+          document.body.appendChild(pre);
+        }, 100);
+      });
+    </script>
+  </body>
+</html>

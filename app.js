@@ -3,18 +3,18 @@ const frontendConfig = window.PRINTING_KIOSK_CONFIG || {};
 const currentPage = window.location.pathname.split("/").pop() || "index.html";
 const currentPath = window.location.pathname.replace(/\/+$/, "");
 const isAdminEntry = currentPage === "admin.html" || currentPath.endsWith("/admin") || runtimeConfig.get("panel") === "admin";
-const HOST_BACKEND_URL = {
-  "printingkiosk.vercel.app": "https://api.theaaryatechnologies.com"
-}[window.location.hostname] || "";
-const DEFAULT_BACKEND_URL = HOST_BACKEND_URL || (/^https?:$/.test(window.location.protocol) ? window.location.origin : "http://localhost:5080");
+const DEFAULT_BACKEND_URL = /^https?:$/.test(window.location.protocol) ? window.location.origin : "http://localhost:5080";
 const LOCAL_AGENT_URL = runtimeConfig.get("localAgentUrl") || frontendConfig.localAgentUrl || "http://localhost:5077";
 const BACKEND_URL = (runtimeConfig.get("backendUrl") || frontendConfig.backendUrl || DEFAULT_BACKEND_URL).replace(/\/+$/, "");
 const RAZORPAY_CHECKOUT_URL = "https://checkout.razorpay.com/v1/checkout.js";
 const PRINTER_STATUS_TIMEOUT_MS = 15000;
 const UNASSIGNED_KIOSK_ID = "UNASSIGNED-KIOSK";
 const ADMIN_SESSION_KEY = "printingKioskAdminSession";
+const TEST_HOOKS_ENABLED = frontendConfig.testHooks === true ||
+  runtimeConfig.get("testHooks") === "true";
 const KIOSK_ID = readConfiguredKioskId();
 const HAS_EXPLICIT_LOCAL_AGENT = Boolean(runtimeConfig.get("localAgentUrl") || frontendConfig.localAgentUrl);
+let localJobSequence = 0;
 
 let services = [
   {
@@ -115,7 +115,7 @@ let formTemplates = {
       description: "Blank Form No. 5 birth certificate template.",
       pages: 1,
       fields: ["Name", "Sex", "Date of birth", "Place of birth", "Mother name", "Father name"],
-      imageUrl: "https://www.pdffiller.com/preview/29/559/29559281/large.png"
+      imageUrl: ""
     },
     {
       id: "voter-form-6",
@@ -181,50 +181,7 @@ let formTemplates = {
   ]
 };
 
-const initialJobs = [
-  {
-    id: "JOB-1048",
-    kiosk: "KIOSK-BANK-01",
-    branch: "Main Bank Branch",
-    file: "loan-form.pdf",
-    service: "Govt Form Print",
-    pages: 4,
-    copies: 2,
-    color: "B/W",
-    amount: 24,
-    payment: "Success",
-    print: "Completed",
-    date: "2026-06-07 10:15"
-  },
-  {
-    id: "JOB-1049",
-    kiosk: "KIOSK-EDU-02",
-    branch: "City College",
-    file: "exam-hall-ticket.pdf",
-    service: "Print Document",
-    pages: 2,
-    copies: 1,
-    color: "B/W",
-    amount: 4,
-    payment: "Success",
-    print: "Payment Success Print Failed",
-    date: "2026-06-07 10:48"
-  },
-  {
-    id: "JOB-1050",
-    kiosk: "KIOSK-BANK-01",
-    branch: "Main Bank Branch",
-    file: "kyc-copy.jpg",
-    service: "Copy Document",
-    pages: 1,
-    copies: 3,
-    color: "Color",
-    amount: 30,
-    payment: "Success",
-    print: "Completed",
-    date: "2026-06-07 11:12"
-  }
-];
+const initialJobs = [];
 
 const state = {
   mode: isAdminEntry ? "admin" : "customer",
@@ -255,6 +212,7 @@ const state = {
   },
   printer: {
     online: false,
+    checking: true,
     name: "No printer selected",
     paper: "Unknown",
     toner: "Unknown",
@@ -262,8 +220,8 @@ const state = {
     supportsColor: null,
     scanner: "Connected",
     internet: "Online",
-    agent: "Not checked",
-    statusText: "Printer has not been checked yet"
+    agent: "Checking",
+    statusText: "Checking printer status..."
   },
   paymentStatus: "Pending",
   paymentStatusMessage: "",
@@ -312,11 +270,7 @@ const state = {
     setupCode: ""
   },
   kioskCreateStatus: "",
-  alerts: [
-    "KIOSK-EDU-02 has one paid job waiting for retry.",
-    "Paper level check due at Main Bank Branch.",
-    "Daily revenue summary will be ready at 10 PM."
-  ],
+  alerts: [],
   filters: {
     table: "",
     status: "all"
@@ -451,6 +405,10 @@ function decodePowerShellError(value) {
 
 function friendlyPrintError(value) {
   const message = decodePowerShellError(value) || "Payment succeeded, but the printer did not complete the job.";
+
+  if (/connect\s+EACCES|ECONNREFUSED|ETIMEDOUT|ENETUNREACH|EHOSTUNREACH/i.test(message)) {
+    return "Payment succeeded, but the print agent could not download the uploaded file from the backend. Check internet/network access for the kiosk PC, then retry print from admin history.";
+  }
 
   if (/No application is associated with the specified file/i.test(message)) {
     return "Windows cannot print this file type because no default app with a Print command is associated with it. For PDF, install SumatraPDF or set a PDF reader as the default print app, then retry.";
@@ -712,7 +670,7 @@ function serviceRates(serviceId = state.selectedService) {
 
 function imagePreviewMarkup(imageUrl, fallbackText, className) {
   if (imageUrl) {
-    return `<span class="${className} service-image"><img alt="" src="${escapeHtml(imageUrl)}" /></span>`;
+    return `<span class="${className} service-image"><img alt="" src="${escapeHtml(imageUrl)}" draggable="false" data-no-visual-search /></span>`;
   }
 
   return `<span class="${className}">${escapeHtml(fallbackText || "SV")}</span>`;
@@ -743,6 +701,10 @@ function colorSelectionSupported() {
 
 function paymentReady() {
   return state.printer.online && colorSelectionSupported();
+}
+
+function printerReadyForCustomerFlow() {
+  return state.printer.online && !state.printer.checking;
 }
 
 function paymentBlockMessage() {
@@ -783,7 +745,8 @@ async function requirePrinterBeforeUpload() {
 }
 
 function nextJobId() {
-  return `JOB-${1100 + state.jobs.length + 1}`;
+  localJobSequence += 1;
+  return `JOB-${Date.now()}-${String(localJobSequence).padStart(2, "0")}`;
 }
 
 function ensureActiveJobId() {
@@ -795,7 +758,7 @@ function ensureActiveJobId() {
 }
 
 function currentJobId() {
-  return state.activeJobId || nextJobId();
+  return ensureActiveJobId();
 }
 
 function normalizedFileExtension(name) {
@@ -887,6 +850,93 @@ function templatePrintableText(template, serviceTitle) {
   ];
 
   return lines.join("\r\n");
+}
+
+function genericTemplateMarkup(template, serviceTitle) {
+  const fields = Array.isArray(template.fields) && template.fields.length
+    ? template.fields
+    : ["Applicant", "Address", "Mobile", "Purpose", "Signature"];
+  const pages = Math.max(1, Number(template.pages) || 1);
+
+  return `
+    <div class="form-preview-pages">
+      ${Array.from({ length: pages }, (_, pageIndex) => `
+        <article class="form-preview-page printable-form-template">
+          <div class="form-preview-page-header">
+            <strong>${escapeHtml(template.title || "Blank Form")}</strong>
+            <span>Page ${pageIndex + 1} of ${pages}</span>
+          </div>
+          <div class="document-preview-lines">
+            <h3>${escapeHtml(template.title || "Blank Form")}</h3>
+            <p>${escapeHtml(template.description || serviceTitle || "Blank printable template.")}</p>
+            ${fields.map((field) => `
+              <div class="printable-field-row">
+                <span>${escapeHtml(field)}</span>
+                <i></i>
+              </div>
+            `).join("")}
+            <div class="printable-field-row wide">
+              <span>Remarks</span>
+              <i></i>
+            </div>
+            <div class="printable-sign-row">
+              <span>Date</span>
+              <i></i>
+              <span>Signature</span>
+              <i></i>
+            </div>
+          </div>
+        </article>
+      `).join("")}
+    </div>
+  `;
+}
+
+function genericTemplateHtml(template, serviceTitle) {
+  const fields = Array.isArray(template.fields) && template.fields.length
+    ? template.fields
+    : ["Applicant", "Address", "Mobile", "Purpose", "Signature"];
+  const pages = Math.max(1, Number(template.pages) || 1);
+
+  return `
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8" />
+  <title>${escapeHtml(template.title || "Blank Form")}</title>
+  <style>
+    @page { size: A4 portrait; margin: 14mm; }
+    * { box-sizing: border-box; }
+    body { margin: 0; color: #111827; font-family: Cambria, "Nirmala UI", "Mangal", Georgia, "Times New Roman", serif; background: #fff; }
+    article { page-break-after: always; min-height: 260mm; border: 1.5pt solid #111827; padding: 14mm; position: relative; }
+    article:last-child { page-break-after: auto; }
+    header { border-bottom: 1pt solid #111827; margin-bottom: 10mm; padding-bottom: 5mm; }
+    h1 { font-size: 20pt; margin: 0 0 3mm; text-align: center; }
+    p { font-size: 10.5pt; margin: 0; text-align: center; }
+    .field { display: grid; gap: 3mm; grid-template-columns: 42mm 1fr; margin: 7mm 0; }
+    .field span, .sign span { font-size: 11pt; font-weight: 700; }
+    .line { border-bottom: 1pt dotted #111827; min-height: 7mm; }
+    .remarks { grid-template-columns: 42mm 1fr; margin-top: 10mm; }
+    .sign { display: grid; gap: 5mm; grid-template-columns: 18mm 1fr 28mm 1fr; margin-top: 18mm; }
+    footer { bottom: 14mm; color: #4b5563; font-size: 8.5pt; left: 14mm; position: absolute; right: 14mm; text-align: center; }
+  </style>
+</head>
+<body>
+  ${Array.from({ length: pages }, (_, pageIndex) => `
+    <article>
+      <header>
+        <h1>${escapeHtml(template.title || "Blank Form")}</h1>
+        <p>${escapeHtml(template.description || serviceTitle || "Blank printable template.")}</p>
+      </header>
+      ${fields.map((field) => `<div class="field"><span>${escapeHtml(field)}</span><div class="line"></div></div>`).join("")}
+      <div class="field remarks"><span>Remarks</span><div class="line"></div></div>
+      <div class="sign"><span>Date</span><div class="line"></div><span>Signature</span><div class="line"></div></div>
+      <footer>Page ${pageIndex + 1}</footer>
+    </article>
+  `).join("")}
+</body>
+</html>
+  `.trim();
 }
 
 function birthCertificateTemplatePlainText() {
@@ -1070,17 +1120,22 @@ function createTemplateFile(template) {
     };
   }
 
-  const printableText = templatePrintableText(template, service.title);
+  const printableHtml = genericTemplateHtml(template, service.title);
 
   return {
-    name: `${template.id}.txt`,
-    type: "TXT",
+    name: `${template.id}.html`,
+    type: "HTML",
     pages: Math.max(1, Number(template.pages) || 1),
-    previewKind: "placeholder",
+    previewKind: "html-template",
     previewUrl: "",
     source: template.title,
     templateId: template.id,
-    printContentBase64: btoa(unescape(encodeURIComponent(printableText))),
+    templateKind: "generic-form",
+    templateTitle: template.title,
+    templateDescription: template.description || service.title,
+    templateFields: Array.isArray(template.fields) ? template.fields : [],
+    htmlContent: genericTemplateMarkup(template, service.title),
+    printContentBase64: btoa(unescape(encodeURIComponent(printableHtml))),
     validatedAt: new Date().toISOString()
   };
 }
@@ -1202,6 +1257,7 @@ async function refreshPrinterStatus({ rerender = true } = {}) {
     state.printer = {
       ...state.printer,
       online: false,
+      checking: false,
       name: "Mini-PC local agent",
       paper: "N/A",
       toner: "N/A",
@@ -1214,15 +1270,20 @@ async function refreshPrinterStatus({ rerender = true } = {}) {
     return;
   }
 
-  if (state.printer.testOverride) {
+  if (state.printer.manualReadyOverride) {
+    state.printer.checking = false;
     if (rerender) render();
     return;
   }
 
-  if (rerender) {
-    state.printer.agent = "Checking";
-    render();
-  }
+  state.printer = {
+    ...state.printer,
+    online: false,
+    checking: true,
+    agent: "Checking",
+    statusText: "Checking printer status..."
+  };
+  if (rerender) render();
 
   const controller = new AbortController();
   const timeoutId = window.setTimeout(() => controller.abort(), PRINTER_STATUS_TIMEOUT_MS);
@@ -1243,6 +1304,7 @@ async function refreshPrinterStatus({ rerender = true } = {}) {
     state.printer = {
       ...state.printer,
       online: printer.status === "online",
+      checking: false,
       name: printer.name || "No printer selected",
       paper: printer.paperStatus || "Unknown",
       toner: printer.tonerStatus || "Unknown",
@@ -1255,6 +1317,7 @@ async function refreshPrinterStatus({ rerender = true } = {}) {
     state.printer = {
       ...state.printer,
       online: false,
+      checking: false,
       name: "No printer selected",
       paper: "Unknown",
       toner: "Unknown",
@@ -1689,7 +1752,7 @@ async function startRazorpayPayment() {
     }
 
     state.paymentStatus = "Creating";
-    state.paymentStatusMessage = "Creating Razorpay test order...";
+    state.paymentStatusMessage = "Creating Razorpay order...";
     render();
 
     await loadRazorpayCheckout();
@@ -1774,7 +1837,7 @@ async function startLocalPrintJob() {
 
   if (!localAgentCanReadFile(file)) {
     state.printStatusMessage =
-      "This demo file is not reachable by the local print agent. Use the manual progress button here, or upload through the QR flow for real printing.";
+      "This file is not reachable by the local print agent. Upload through the QR flow for real printing, then retry.";
     state.printJob = null;
     render();
     return;
@@ -1802,6 +1865,7 @@ async function startLocalPrintJob() {
     const printBody = {
       jobId: currentJobId(),
       fileName: file.name,
+      pageCount: pageCount(),
       copies: state.settings.copies,
       colorMode: state.settings.colorMode,
       paperSize: state.settings.paperSize,
@@ -1809,7 +1873,10 @@ async function startLocalPrintJob() {
       orientation: state.settings.orientation,
       pageRange: state.settings.range,
       templateId: file.templateId || "",
-      templateKind: file.templateKind || ""
+      templateKind: file.templateKind || "",
+      templateTitle: file.templateTitle || file.source || "",
+      templateDescription: file.templateDescription || "",
+      templateFields: Array.isArray(file.templateFields) ? file.templateFields : []
     };
 
     if (file.printContentBase64) {
@@ -1866,7 +1933,7 @@ function goToNextStep() {
   const previousStep = state.step;
   state.step = Math.min(customerSteps.length - 1, state.step + 1);
 
-  if (state.step === 5 && previousStep !== 5 && !state.printer.testOverride) {
+  if (state.step === 5 && previousStep !== 5 && !state.printer.manualReadyOverride) {
     state.printer = {
       ...state.printer,
       online: false,
@@ -1946,8 +2013,10 @@ function renderAdminShell() {
 }
 
 function renderCustomerTopbar() {
-  const printerClass = state.printer.online ? "" : "warning";
-  const printerText = state.printer.online ? "Printer ready" : "Printer offline";
+  const printerClass = state.printer.online && !state.printer.checking ? "" : "warning";
+  const printerText = state.printer.checking
+    ? "Checking printer"
+    : state.printer.online ? "Printer ready" : "Printer offline";
   const kioskLabel = [state.kiosk.kioskId || KIOSK_ID, state.kiosk.name, state.kiosk.branch]
     .filter(Boolean)
     .join(" | ");
@@ -1955,9 +2024,9 @@ function renderCustomerTopbar() {
   return `
     <header class="topbar">
       <div class="brand">
-        <div class="brand-mark">PK</div>
+        <div class="brand-mark"><img src="./assets/printhub-mark.png" alt="PrintHub" draggable="false" data-no-visual-search /></div>
         <div>
-          <div class="brand-title">Smart Printing Kiosk</div>
+          <div class="brand-title">PrintHub Kiosk</div>
           <div class="brand-subtitle">${escapeHtml(kioskLabel || KIOSK_ID)} | Government and education ready</div>
         </div>
       </div>
@@ -1974,9 +2043,9 @@ function renderAdminTopbar() {
   return `
     <header class="topbar admin-topbar">
       <div class="brand">
-        <div class="brand-mark">AD</div>
+        <div class="brand-mark"><img src="./assets/printhub-mark.png" alt="PrintHub" draggable="false" data-no-visual-search /></div>
         <div>
-          <div class="brand-title">Kiosk Admin Console</div>
+          <div class="brand-title">PrintHub Admin Console</div>
           <div class="brand-subtitle">${escapeHtml(adminLabel)} | assigned kiosk data only</div>
         </div>
       </div>
@@ -2046,6 +2115,8 @@ function renderServicesStep() {
   }
 
   const availableServices = customerServices();
+  const printerReady = printerReadyForCustomerFlow();
+  const printerChecking = state.printer.checking;
   let serviceCountClass = "is-catalog";
 
   if (availableServices.length === 0) serviceCountClass = "is-empty";
@@ -2056,7 +2127,18 @@ function renderServicesStep() {
     <div class="stage service-stage ${serviceCountClass}">
       <div class="stage-header">
         <h1>Choose service</h1>
-        <p class="stage-intro">Select a service first. Form services include ready templates; other services use QR upload.</p>
+        <p class="stage-intro">The printer must be online before a printing session can start.</p>
+      </div>
+      <div class="printer-start-gate ${printerReady ? "ready" : printerChecking ? "checking" : "offline"}" role="status" aria-live="polite">
+        <div>
+          <strong>${printerReady ? "Printer ready" : printerChecking ? "Checking printer..." : "Printer unavailable"}</strong>
+          <span>${escapeHtml(printerReady
+            ? `${state.printer.name || "Printer"} is online. Choose a service to continue.`
+            : printerChecking
+              ? "Please wait while the kiosk checks the printer connection."
+              : state.printer.statusText || "Connect or turn on the printer, then check again.")}</span>
+        </div>
+        ${printerReady ? "" : `<button class="secondary-button" data-action="refresh-printer" ${printerChecking ? "disabled" : ""}>${printerChecking ? "Checking..." : "Check again"}</button>`}
       </div>
       ${state.configStatus ? `<div class="save-note">${escapeHtml(state.configStatus)}</div>` : ""}
       <div class="service-grid">
@@ -2064,7 +2146,7 @@ function renderServicesStep() {
           const rates = serviceRates(service.id);
 
           return `
-            <button class="service-card ${state.selectedService === service.id ? "selected" : ""}" data-service="${service.id}">
+            <button class="service-card ${state.selectedService === service.id ? "selected" : ""}" data-service="${service.id}" ${printerReady ? "" : "disabled"}>
               ${serviceMediaMarkup(service)}
               <div>
                 <h2>${escapeHtml(service.title)}</h2>
@@ -2090,13 +2172,13 @@ function renderFormTemplateStep() {
     <div class="stage">
       <div class="stage-header">
         <h1>Choose form template</h1>
-        <p class="stage-intro">${escapeHtml(service.title)} selected. Pick a demo template to preview and print.</p>
+        <p class="stage-intro">${escapeHtml(service.title)} selected. Pick a form template to preview and print.</p>
       </div>
       <div class="template-grid">
         ${templates.map((template) => `
           <button class="template-card" data-template="${escapeHtml(template.id)}">
             ${template.imageUrl
-              ? `<span class="template-badge template-image"><img alt="" src="${escapeHtml(template.imageUrl)}" /></span>`
+              ? `<span class="template-badge template-image"><img alt="" src="${escapeHtml(template.imageUrl)}" draggable="false" data-no-visual-search /></span>`
               : `<span class="template-badge">${escapeHtml(service.icon)}</span>`}
             <div>
               <h2>${escapeHtml(template.title)}</h2>
@@ -2172,7 +2254,7 @@ function renderQrUploadBox(session) {
 
   return `
     <div class="qr-code-box">
-      ${session.qrSvg || `<img alt="Upload QR code" src="https://api.qrserver.com/v1/create-qr-code/?size=230x230&data=${encodeURIComponent(session.uploadUrl)}" />`}
+      ${session.qrSvg || `<img alt="Upload QR code" src="https://api.qrserver.com/v1/create-qr-code/?size=230x230&data=${encodeURIComponent(session.uploadUrl)}" draggable="false" data-no-visual-search />`}
     </div>
     <h2>Scan with mobile</h2>
     <p class="helper-text">After upload completes on phone, this kiosk will automatically move to preview.</p>
@@ -2197,7 +2279,7 @@ function renderPreviewStep() {
         <div class="module-card">
           <h2>File Details</h2>
           <div class="info-list">
-            <div class="info-row"><span>Name</span><strong>${escapeHtml(state.file?.name || "sample.pdf")}</strong></div>
+            <div class="info-row"><span>Name</span><strong>${escapeHtml(state.file?.name || "document.pdf")}</strong></div>
             <div class="info-row"><span>Type</span><strong>${escapeHtml(state.file?.type || "PDF")}</strong></div>
             <div class="info-row"><span>Pages</span><strong>${pages}</strong></div>
             <div class="info-row"><span>Validation</span><strong>Passed</strong></div>
@@ -2235,7 +2317,7 @@ function renderPreviewContent() {
   }
 
   if (file.previewKind === "image" && file.previewUrl) {
-    return `<img class="preview-media" src="${escapeHtml(file.previewUrl)}" alt="${escapeHtml(file.name)} preview" />`;
+    return `<img class="preview-media" src="${escapeHtml(file.previewUrl)}" alt="${escapeHtml(file.name)} preview" draggable="false" data-no-visual-search />`;
   }
 
   if (file.previewKind === "html-template" && file.htmlContent) {
@@ -2252,7 +2334,7 @@ function renderPreviewContent() {
 
   return `
     ${renderPreviewFallback(
-      file.source ? `${escapeHtml(file.source)} demo upload` : "Preview placeholder",
+      file.source ? `${escapeHtml(file.source)} upload` : "Preview placeholder",
       "A real uploaded PDF or image will render here."
     )}
     <div class="thumbnail-grid">
@@ -2469,7 +2551,7 @@ function renderPaymentStep() {
         <div class="module-card">
           <h2>Payment Status</h2>
           <div class="info-list" style="margin-bottom: 16px;">
-            <div class="info-row"><span>Gateway</span><strong>Razorpay Test Mode</strong></div>
+            <div class="info-row"><span>Gateway</span><strong>Razorpay</strong></div>
             <div class="info-row"><span>Order</span><strong>${escapeHtml(orderId)}</strong></div>
             <div class="info-row"><span>Amount</span><strong>${money(details.total)}</strong></div>
           </div>
@@ -2672,7 +2754,7 @@ function renderLogin() {
   return `
     <div class="login-view">
       <div class="login-panel">
-        <h1>Admin Login</h1>
+        <h1>PrintHub Admin Login</h1>
         <p class="helper-text">Use your admin credentials. The system opens the right dashboard automatically.</p>
         ${state.adminLoginError ? `<div class="empty-note">${escapeHtml(state.adminLoginError)}</div>` : ""}
         <label>Email or mobile
@@ -2785,7 +2867,7 @@ function jobRow(job) {
   return {
     id: job.jobId || job.id || "",
     date: formatDateTime(job.completedAt || job.createdAt || job.date),
-    kiosk: job.kioskId || job.kiosk || "KIOSK-BANK-01",
+    kiosk: job.kioskId || job.kiosk || UNASSIGNED_KIOSK_ID,
     branch: job.branch || "Local Branch",
     file: job.fileName || job.file || "Document",
     service: serviceTitle(job.service),
@@ -3133,7 +3215,7 @@ function renderServiceHierarchyRow(service) {
 function renderTemplateEditor(service) {
   const templates = service.templates?.length
     ? service.templates
-    : [{ id: "sample-form", title: "Sample Form", description: "Blank printable template.", pages: 1, fields: ["Applicant", "Address", "Mobile", "Purpose", "Signature"], imageUrl: "" }];
+    : [{ id: "blank-form", title: "Blank Form", description: "Blank printable template.", pages: 1, fields: ["Applicant", "Address", "Mobile", "Purpose", "Signature"], imageUrl: "" }];
 
   return `
     <div class="template-editor-section">
@@ -3495,7 +3577,7 @@ function updateServiceField(serviceId, field, value) {
     } else if (field === "mode") {
       next.mode = value === "template" ? "template" : "upload";
       next.templates = next.mode === "template" && !next.templates.length
-        ? [{ id: "sample-form", title: "Sample Form", description: "Blank printable template.", pages: 1, fields: ["Applicant", "Address", "Mobile", "Purpose", "Signature"] }]
+        ? [{ id: "blank-form", title: "Blank Form", description: "Blank printable template.", pages: 1, fields: ["Applicant", "Address", "Mobile", "Purpose", "Signature"] }]
         : next.templates;
     } else if (field === "kioskIds") {
       next.kioskIds = String(value || "").split(",").map((item) => item.trim()).filter(Boolean);
@@ -3595,7 +3677,7 @@ function updateServiceDraftField(field, value) {
     draft.mode = value === "template" ? "template" : "upload";
     if (draft.mode === "template" && !draft.templates.length) {
       draft.templates = [{
-        id: "sample-form",
+        id: "blank-form",
         title: "Sample Form",
         description: "Blank printable template.",
         pages: 1,
@@ -4004,7 +4086,7 @@ function renderKioskCreatePanel() {
       ${state.kioskCreateStatus ? `<div class="save-note">${escapeHtml(state.kioskCreateStatus)}</div>` : ""}
       <div class="settings-grid">
         <label class="setting-field">Kiosk ID
-          <input value="${escapeHtml(state.kioskCreate.kioskId)}" placeholder="KIOSK-BANK-01" data-kiosk-create-field="kioskId" />
+          <input value="${escapeHtml(state.kioskCreate.kioskId)}" placeholder="KIOSK-00001" data-kiosk-create-field="kioskId" />
         </label>
         <label class="setting-field">Name
           <input value="${escapeHtml(state.kioskCreate.name)}" placeholder="Bank lobby kiosk" data-kiosk-create-field="name" />
@@ -4193,6 +4275,12 @@ async function handleClick(event) {
   }
 
   if (target.dataset.service) {
+    if (!printerReadyForCustomerFlow()) {
+      alertPrinterUnavailable();
+      render();
+      return;
+    }
+
     state.selectedService = target.dataset.service;
     state.step = 1;
     stopUploadPolling();
@@ -4293,15 +4381,6 @@ async function handleClick(event) {
   }
 
   switch (target.dataset.action) {
-    case "open-admin":
-      window.location.href = `./admin.html${window.location.search || ""}`;
-      break;
-    case "open-admin-history":
-      window.location.href = "./admin.html?adminPage=history";
-      break;
-    case "open-customer":
-      window.location.href = `./index.html${window.location.search || ""}`;
-      break;
     case "create-kiosk":
       await createAdminKiosk();
       break;
@@ -4317,6 +4396,7 @@ async function handleClick(event) {
     case "finish-session":
       resetCustomer();
       render();
+      refreshPrinterStatus();
       break;
     case "prev-step":
       if (state.step <= 1) {
@@ -4691,14 +4771,15 @@ function resetCustomer() {
   state.printer = {
     ...state.printer,
     online: false,
+    checking: true,
     name: "No printer selected",
     paper: "Unknown",
     toner: "Unknown",
     queue: 0,
     supportsColor: null,
-    agent: "Not checked",
-    statusText: "Printer has not been checked yet",
-    testOverride: false
+    agent: "Checking",
+    statusText: "Checking printer status...",
+    manualReadyOverride: false
   };
   state.settings = {
     colorMode: "bw",
@@ -4711,76 +4792,82 @@ function resetCustomer() {
   };
 }
 
-window.kioskTestReceiveUpload = function kioskTestReceiveUpload({ name, size = 1024, mimeType = "application/pdf" }) {
-  if (!state.selectedService) {
-    state.selectedService = "print";
-  }
-  state.step = Math.max(state.step, 1);
+if (TEST_HOOKS_ENABLED) {
+  window.kioskTestReceiveUpload = function kioskTestReceiveUpload({ name, size = 1024, mimeType = "application/pdf" }) {
+    if (!state.selectedService) {
+      state.selectedService = "print";
+    }
+    state.step = Math.max(state.step, 1);
 
-  const result = createReceivedFileRecord({
-    name,
-    size,
-    mimeType,
-    pages: mimeType.startsWith("image/") ? 1 : undefined
-  });
+    const result = createReceivedFileRecord({
+      name,
+      size,
+      mimeType,
+      pages: mimeType.startsWith("image/") ? 1 : undefined
+    });
 
-  if (result.error) {
-    clearCurrentFile();
-    state.uploadError = result.error;
+    if (result.error) {
+      clearCurrentFile();
+      state.uploadError = result.error;
+      render();
+      return result;
+    }
+
+    revokePreviewUrl();
+
+    if (["pdf", "image"].includes(result.file.previewKind)) {
+      const blob = new Blob([new Uint8Array(size)], { type: mimeType });
+      result.file.previewUrl = URL.createObjectURL(blob);
+    }
+
+    stopUploadPolling();
+    state.file = result.file;
+    state.uploadError = "";
+    state.step = 2;
     render();
-    return result;
-  }
-
-  revokePreviewUrl();
-
-  if (["pdf", "image"].includes(result.file.previewKind)) {
-    const blob = new Blob([new Uint8Array(size)], { type: mimeType });
-    result.file.previewUrl = URL.createObjectURL(blob);
-  }
-
-  stopUploadPolling();
-  state.file = result.file;
-  state.uploadError = "";
-  state.step = 2;
-  render();
-  return { file: result.file };
-};
-
-window.kioskTestMarkPaymentSuccess = function kioskTestMarkPaymentSuccess() {
-  ensureActiveJobId();
-  state.paymentStatus = "Success";
-  state.paymentStatusMessage = "Test payment marked successful.";
-  state.paymentError = "";
-  state.paymentBusy = false;
-  state.step = 6;
-  state.printProgress = 0;
-  state.printError = "";
-  state.printStatusMessage = "";
-  state.printJob = null;
-  render();
-  startLocalPrintJob();
-};
-
-window.kioskTestSetPrinterReady = function kioskTestSetPrinterReady() {
-  state.printer = {
-    ...state.printer,
-    online: true,
-    name: "Test printer",
-    paper: "Ready",
-    toner: "Ready",
-    queue: 0,
-    agent: "Running",
-    statusText: "Ready",
-    testOverride: true
+    return { file: result.file };
   };
-  render();
-  return state.printer;
-};
+
+  window.kioskTestMarkPaymentSuccess = function kioskTestMarkPaymentSuccess() {
+    ensureActiveJobId();
+    state.paymentStatus = "Success";
+    state.paymentStatusMessage = "Payment marked successful.";
+    state.paymentError = "";
+    state.paymentBusy = false;
+    state.step = 6;
+    state.printProgress = 0;
+    state.printError = "";
+    state.printStatusMessage = "";
+    state.printJob = null;
+    render();
+    startLocalPrintJob();
+  };
+
+  window.kioskTestSetPrinterReady = function kioskTestSetPrinterReady() {
+    state.printer = {
+      ...state.printer,
+      online: true,
+      checking: false,
+      name: "Manual ready printer",
+      paper: "Ready",
+      toner: "Ready",
+      queue: 0,
+      agent: "Running",
+      statusText: "Ready",
+      manualReadyOverride: true
+    };
+    render();
+    return state.printer;
+  };
+}
 
 hydrateAdminSession();
 render();
 loadPricingSettings();
 startConfigPolling();
+if (state.mode === "customer") {
+  refreshPrinterStatus();
+}
 if (state.adminAuthed) {
   loadAdminData();
   startAdminPolling();
