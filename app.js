@@ -8,6 +8,8 @@ const LOCAL_AGENT_URL = runtimeConfig.get("localAgentUrl") || frontendConfig.loc
 const BACKEND_URL = (runtimeConfig.get("backendUrl") || frontendConfig.backendUrl || DEFAULT_BACKEND_URL).replace(/\/+$/, "");
 const RAZORPAY_CHECKOUT_URL = "https://checkout.razorpay.com/v1/checkout.js";
 const PRINTER_STATUS_TIMEOUT_MS = 15000;
+const MAX_FILES_PER_JOB = 10;
+const RECEIPT_REDIRECT_SECONDS = 15;
 const UNASSIGNED_KIOSK_ID = "UNASSIGNED-KIOSK";
 const ADMIN_SESSION_KEY = "printingKioskAdminSession";
 const TEST_HOOKS_ENABLED = frontendConfig.testHooks === true ||
@@ -96,16 +98,14 @@ const defaultServicePricing = {
 
 const customerSteps = [
   "Services",
-  "File",
+  "Upload",
   "Preview",
-  "Settings",
-  "Price",
   "Payment",
-  "Printing",
-  "Done"
+  "Receipt"
 ];
 
 const allowedUploadExtensions = ["PDF", "DOC", "DOCX", "JPG", "JPEG", "PNG"];
+const customerUploadExtensions = ["PDF", "JPG", "JPEG", "PNG"];
 
 let formTemplates = {
   "govt-form": [
@@ -197,10 +197,12 @@ const state = {
   step: 0,
   selectedService: null,
   file: null,
+  files: [],
   uploadError: "",
   uploadSession: null,
   uploadPoller: null,
   previewZoom: 1,
+  previewFileIndex: 0,
   settings: {
     colorMode: "bw",
     copies: 1,
@@ -234,12 +236,13 @@ const state = {
   printJob: null,
   activeJobId: null,
   lastCompletedJob: null,
+  receiptRedirectTimer: null,
+  receiptSecondsLeft: RECEIPT_REDIRECT_SECONDS,
   jobs: [...initialJobs],
   adminData: {
     dashboard: null,
-    revenue: null,
     jobs: [],
-    payments: [],
+    projects: [],
     kiosks: [],
     refunds: [],
     reports: [],
@@ -248,6 +251,7 @@ const state = {
     error: ""
   },
   adminPoller: null,
+  adminPagination: {},
   kiosk: {
     kioskId: KIOSK_ID,
     name: "",
@@ -263,13 +267,6 @@ const state = {
   configUpdatedAt: "",
   configPoller: null,
   configStatus: "",
-  kioskCreate: {
-    kioskId: "",
-    name: "",
-    branch: "",
-    setupCode: ""
-  },
-  kioskCreateStatus: "",
   alerts: [],
   filters: {
     table: "",
@@ -279,6 +276,10 @@ const state = {
 
 function qs(selector) {
   return document.querySelector(selector);
+}
+
+function uiIcon(name, size = 20) {
+  return window.PrintHubUI?.icon(name, size) || "";
 }
 
 function money(value) {
@@ -681,8 +682,24 @@ function serviceMediaMarkup(service, className = "service-icon") {
 }
 
 function pageCount() {
-  if (state.file) return state.file.pages;
-  return 0;
+  return jobFiles().reduce((total, file) => total + Math.max(1, Number(file.pages) || 1), 0);
+}
+
+function jobFiles() {
+  if (Array.isArray(state.files) && state.files.length) return state.files;
+  return state.file ? [state.file] : [];
+}
+
+function activePreviewFile() {
+  const files = jobFiles();
+  return files[Math.min(state.previewFileIndex, Math.max(files.length - 1, 0))] || null;
+}
+
+function setJobFiles(files) {
+  const nextFiles = files.slice(0, MAX_FILES_PER_JOB);
+  state.files = nextFiles;
+  state.file = nextFiles[0] || null;
+  state.previewFileIndex = 0;
 }
 
 function priceDetails() {
@@ -719,31 +736,6 @@ function paymentBlockMessage() {
   return "";
 }
 
-function printerOfflineAlertMessage() {
-  const status = state.printer.statusText || "Printer is offline.";
-
-  if (state.printer.agent === "Offline") {
-    return `Printer service is offline. Start the local print agent, then try again.\n\n${status}`;
-  }
-
-  return `Printer is offline. Please connect or turn on the printer, then try again.\n\n${status}`;
-}
-
-function alertPrinterUnavailable() {
-  window.alert(printerOfflineAlertMessage());
-}
-
-async function requirePrinterBeforeUpload() {
-  await refreshPrinterStatus({ rerender: false });
-
-  if (state.printer.online) {
-    return true;
-  }
-
-  alertPrinterUnavailable();
-  return false;
-}
-
 function nextJobId() {
   localJobSequence += 1;
   return `JOB-${Date.now()}-${String(localJobSequence).padStart(2, "0")}`;
@@ -778,7 +770,7 @@ function createFileRecord(name, size, fallbackPages, mimeType = "") {
   const extension = normalizedFileExtension(name);
   const previewKind = previewKindForExtension(extension, mimeType);
 
-  if (!allowedUploadExtensions.includes(extension) && previewKind === "placeholder") {
+  if (!allowedUploadExtensions.includes(extension)) {
     return {
       error: "Unsupported file type. Please upload PDF, DOC, DOCX, JPG, or PNG."
     };
@@ -798,6 +790,15 @@ function createFileRecord(name, size, fallbackPages, mimeType = "") {
       validatedAt: new Date().toISOString()
     }
   };
+}
+
+function readFileAsBase64(file) {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(String(reader.result || "").split(",")[1] || "");
+    reader.onerror = () => reject(new Error(`Could not read ${file.name}.`));
+    reader.readAsDataURL(file);
+  });
 }
 
 function createReceivedFileRecord({ name, size, mimeType, previewUrl, pages }) {
@@ -1140,15 +1141,15 @@ function createTemplateFile(template) {
   };
 }
 
-function revokePreviewUrl(file = state.file) {
+function revokePreviewUrl(file) {
   if (file?.previewUrl && file.previewUrl.startsWith("blob:")) {
     URL.revokeObjectURL(file.previewUrl);
   }
 }
 
 function clearCurrentFile() {
-  revokePreviewUrl();
-  state.file = null;
+  jobFiles().forEach(revokePreviewUrl);
+  setJobFiles([]);
   state.previewZoom = 1;
   state.uploadError = "";
 }
@@ -1223,18 +1224,21 @@ async function checkMobileUpload() {
       ...session
     };
 
-    if (session.status === "uploaded" && session.file) {
-      const result = createReceivedFileRecord(session.file);
+    if (session.status === "uploaded" && (session.files?.length || session.file)) {
+      const receivedFiles = (session.files?.length ? session.files : [session.file])
+        .slice(0, MAX_FILES_PER_JOB)
+        .map(createReceivedFileRecord);
+      const invalidFile = receivedFiles.find((result) => result.error);
 
-      if (result.error) {
-        state.uploadError = result.error;
+      if (invalidFile) {
+        state.uploadError = invalidFile.error;
         render();
         return;
       }
 
       stopUploadPolling();
-      revokePreviewUrl();
-      state.file = result.file;
+      clearCurrentFile();
+      setJobFiles(receivedFiles.map((result) => result.file));
       state.uploadError = "";
       state.step = 2;
       render();
@@ -1546,20 +1550,18 @@ async function loadAdminData({ rerender = true } = {}) {
   try {
     const [
       dashboard,
-      revenue,
       history,
-      transactions,
       kiosks,
+      projects,
       system,
       refunds,
       serviceConfig,
       reports
     ] = await Promise.all([
       fetchAdminJson("/api/admin/dashboard"),
-      fetchAdminJson("/api/admin/revenue"),
       fetchAdminJson("/api/admin/print-history"),
-      fetchAdminJson("/api/admin/transactions"),
       fetchAdminJson("/api/admin/kiosks"),
+      fetchAdminJson("/api/admin/projects"),
       fetchAdminJson("/api/admin/system-status"),
       fetchAdminJson("/api/admin/refunds"),
       fetchAdminJson("/api/admin/services"),
@@ -1569,9 +1571,8 @@ async function loadAdminData({ rerender = true } = {}) {
     state.adminData = {
       ...state.adminData,
       dashboard,
-      revenue,
       jobs: Array.isArray(history.jobs) ? history.jobs : [],
-      payments: Array.isArray(transactions.payments) ? transactions.payments : [],
+      projects: Array.isArray(projects.projects) ? projects.projects : [],
       kiosks: Array.isArray(kiosks.kiosks) ? kiosks.kiosks : [],
       refunds: Array.isArray(refunds.refunds) ? refunds.refunds : [],
       reports: Array.isArray(reports.reports) ? reports.reports : [],
@@ -1581,16 +1582,16 @@ async function loadAdminData({ rerender = true } = {}) {
       error: ""
     };
 
-    if (revenue.pricing && !state.servicesDirty) {
-      state.pricing = normalizePricing(revenue.pricing);
+    if (serviceConfig.pricing && !state.servicesDirty) {
+      state.pricing = normalizePricing(serviceConfig.pricing);
       storePricing();
     }
 
     if (Array.isArray(serviceConfig.services) && !state.servicesDirty) {
       applyServiceConfig({
         services: serviceConfig.services,
-        pricing: serviceConfig.pricing || revenue.pricing || state.pricing,
-        config: serviceConfig.config || revenue.config
+        pricing: serviceConfig.pricing || state.pricing,
+        config: serviceConfig.config
       }, { rerender: false, source: "admin" });
     }
   } catch (error) {
@@ -1644,13 +1645,14 @@ function localAgentFileUrl(file) {
 function paymentRequestBody() {
   const service = selectedService();
   const details = priceDetails();
+  const files = jobFiles();
 
   return {
     jobId: ensureActiveJobId(),
     kioskId: KIOSK_ID,
     service: service?.id || "print",
-    fileName: state.file?.name || "kiosk-document.pdf",
-    fileType: state.file?.type || "PDF",
+    fileName: files.length === 1 ? files[0].name : `${files.length} documents`,
+    fileType: files.length === 1 ? files[0].type : "MULTIPLE",
     pageCount: details.pages,
     copies: details.copies,
     colorMode: state.settings.colorMode,
@@ -1721,7 +1723,7 @@ async function verifyRazorpayPayment(response) {
     paymentId: response.razorpay_payment_id,
     orderId: response.razorpay_order_id
   };
-  state.step = 6;
+  state.step = 3;
   state.printProgress = 0;
   state.printError = "";
   state.printStatusMessage = "";
@@ -1783,7 +1785,7 @@ async function startRazorpayPayment() {
       prefill: checkout.prefill || {},
       notes: {
         jobId: currentJobId(),
-        fileName: state.file?.name || "kiosk-document.pdf"
+        fileName: jobFiles().length === 1 ? state.file?.name : `${jobFiles().length} documents`
       },
       theme: {
         color: "#1f5fbf"
@@ -1833,12 +1835,13 @@ async function startRazorpayPayment() {
 }
 
 async function startLocalPrintJob() {
-  const file = state.file;
+  const files = jobFiles();
 
-  if (!localAgentCanReadFile(file)) {
+  if (!files.length || files.some((file) => !localAgentCanReadFile(file))) {
     state.printStatusMessage =
-      "This file is not reachable by the local print agent. Upload through the QR flow for real printing, then retry.";
+      "One or more documents could not be prepared for printing. Please retry the upload.";
     state.printJob = null;
+    state.printError = state.printStatusMessage;
     render();
     return;
   }
@@ -1856,53 +1859,61 @@ async function startLocalPrintJob() {
     }
 
     state.printProgress = 2;
-    state.printStatusMessage = file.printContentBase64
-      ? "Sending blank form template to the local print agent..."
-      : "Sending uploaded file to the local print agent...";
+    state.printStatusMessage = `Printing ${files.length} document${files.length === 1 ? "" : "s"}...`;
     syncBackendPrintStatus("Printing");
     render();
 
-    const printBody = {
-      jobId: currentJobId(),
-      fileName: file.name,
-      pageCount: pageCount(),
-      copies: state.settings.copies,
-      colorMode: state.settings.colorMode,
-      paperSize: state.settings.paperSize,
-      sides: state.settings.sides,
-      orientation: state.settings.orientation,
-      pageRange: state.settings.range,
-      templateId: file.templateId || "",
-      templateKind: file.templateKind || "",
-      templateTitle: file.templateTitle || file.source || "",
-      templateDescription: file.templateDescription || "",
-      templateFields: Array.isArray(file.templateFields) ? file.templateFields : []
-    };
+    let lastPrinterName = state.printer.name;
 
-    if (file.printContentBase64) {
-      printBody.fileContentBase64 = file.printContentBase64;
-    } else {
-      printBody.fileUrl = localAgentFileUrl(file);
-    }
+    for (let index = 0; index < files.length; index += 1) {
+      const file = files[index];
+      state.printStatusMessage = `Printing document ${index + 1} of ${files.length}...`;
+      render();
 
-    const response = await fetch(`${LOCAL_AGENT_URL}/local/print`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(printBody)
-    });
+      const printBody = {
+        jobId: files.length === 1 ? currentJobId() : `${currentJobId()}-${index + 1}`,
+        fileName: file.name,
+        pageCount: Math.max(1, Number(file.pages) || 1),
+        copies: state.settings.copies,
+        colorMode: state.settings.colorMode,
+        paperSize: state.settings.paperSize,
+        sides: state.settings.sides,
+        orientation: state.settings.orientation,
+        pageRange: state.settings.range,
+        templateId: file.templateId || "",
+        templateKind: file.templateKind || "",
+        templateTitle: file.templateTitle || file.source || "",
+        templateDescription: file.templateDescription || "",
+        templateFields: Array.isArray(file.templateFields) ? file.templateFields : []
+      };
 
-    const payload = await response.json().catch(() => ({}));
-    state.printJob = payload.job || state.printJob;
+      if (file.printContentBase64) {
+        printBody.fileContentBase64 = file.printContentBase64;
+      } else {
+        printBody.fileUrl = localAgentFileUrl(file);
+      }
 
-    if (!response.ok) {
-      throw new Error(payload.error || payload.job?.errorMessage || "Local print agent could not print the file.");
+      const response = await fetch(`${LOCAL_AGENT_URL}/local/print`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(printBody)
+      });
+      const payload = await response.json().catch(() => ({}));
+      state.printJob = payload.job || state.printJob;
+
+      if (!response.ok) {
+        throw new Error(payload.error || payload.job?.errorMessage || "Local print agent could not print the document.");
+      }
+
+      lastPrinterName = payload.printer?.name || lastPrinterName;
     }
 
     state.printProgress = 5;
-    state.printStatusMessage = `Sent to ${payload.printer?.name || state.printer.name || "printer"}.`;
+    state.printStatusMessage = `Sent to ${lastPrinterName || "printer"}.`;
     addJob("Completed");
-    state.step = 7;
+    state.step = 4;
     render();
+    startReceiptRedirect();
   } catch (error) {
     addJob("Payment Success Print Failed");
     state.printError = friendlyPrintError(error.message);
@@ -1926,14 +1937,14 @@ function goToNextStep() {
     return;
   }
 
-  if (state.step === 4) {
+  if (state.step === 2) {
     ensureActiveJobId();
   }
 
   const previousStep = state.step;
   state.step = Math.min(customerSteps.length - 1, state.step + 1);
 
-  if (state.step === 5 && previousStep !== 5 && !state.printer.manualReadyOverride) {
+  if (state.step === 3 && previousStep !== 3 && !state.printer.manualReadyOverride) {
     state.printer = {
       ...state.printer,
       online: false,
@@ -1949,12 +1960,13 @@ function goToNextStep() {
 
   render();
 
-  if (state.step === 5 && previousStep !== 5) {
+  if (state.step === 3 && previousStep !== 3) {
     refreshPrinterStatus();
   }
 }
 
 function openAdmin(page = "dashboard") {
+  stopReceiptRedirect();
   state.mode = "admin";
   state.adminPage = page;
   render();
@@ -2014,9 +2026,7 @@ function renderAdminShell() {
 
 function renderCustomerTopbar() {
   const printerClass = state.printer.online && !state.printer.checking ? "" : "warning";
-  const printerText = state.printer.checking
-    ? "Checking printer"
-    : state.printer.online ? "Printer ready" : "Printer offline";
+  const printerText = state.printer.online && !state.printer.checking ? "Online" : "Offline";
   const kioskLabel = [state.kiosk.kioskId || KIOSK_ID, state.kiosk.name, state.kiosk.branch]
     .filter(Boolean)
     .join(" | ");
@@ -2031,7 +2041,7 @@ function renderCustomerTopbar() {
         </div>
       </div>
       <div class="topbar-actions">
-        <span class="status-pill ${printerClass}"><span class="dot"></span>${printerText}</span>
+        <span class="status-pill ${printerClass}" role="status" aria-label="Printer ${printerText}"><span class="dot"></span>${printerText}</span>
         <button class="ghost-button" data-action="reset-session">New Session</button>
       </div>
     </header>
@@ -2040,17 +2050,27 @@ function renderCustomerTopbar() {
 
 function renderAdminTopbar() {
   const adminLabel = state.adminAccount?.name || state.adminAccount?.email || "Kiosk Admin";
+  const alertCount = liveJobs().filter((job) => /failed/i.test(job.printStatus || job.print || "")).length
+    + state.adminData.refunds.filter((refund) => /pending/i.test(refund.status || "")).length
+    + (state.printer.online ? 0 : 1);
+
   return `
     <header class="topbar admin-topbar">
       <div class="brand">
         <div class="brand-mark"><img src="./assets/printhub-mark.png" alt="PrintHub" draggable="false" data-no-visual-search /></div>
         <div>
           <div class="brand-title">PrintHub Admin Console</div>
-          <div class="brand-subtitle">${escapeHtml(adminLabel)} | assigned kiosk data only</div>
+          <div class="brand-subtitle">${escapeHtml(adminLabel)} | read-only assigned project data</div>
         </div>
       </div>
       <div class="topbar-actions">
-        ${state.adminAuthed ? `<button class="danger-button" data-action="admin-logout">Logout</button>` : ""}
+        ${state.adminAuthed ? `
+          <button class="notification-button" data-admin-page="alerts" aria-label="Open alerts">
+            ${uiIcon("bell", 22)}
+            ${alertCount ? `<span>${Math.min(alertCount, 99)}</span>` : ""}
+          </button>
+          <button class="topbar-logout" data-action="admin-logout">${uiIcon("logout", 19)}<span>Logout</span></button>
+        ` : ""}
       </div>
     </header>
   `;
@@ -2071,11 +2091,6 @@ function renderCustomer() {
       <section class="content">
         ${renderCustomerStep()}
       </section>
-      ${showPanels ? `
-        <aside class="right-panel">
-          ${renderSessionPanel()}
-        </aside>
-      ` : ""}
     </div>
   `;
 }
@@ -2095,10 +2110,7 @@ function renderCustomerStep() {
   if (state.step > 1 && !state.file) return isFormTemplateService() ? renderFormTemplateStep() : renderUploadStep();
   if (state.step === 1) return isFormTemplateService() ? renderFormTemplateStep() : renderUploadStep();
   if (state.step === 2) return renderPreviewStep();
-  if (state.step === 3) return renderSettingsStep();
-  if (state.step === 4) return renderPriceStep();
-  if (state.step === 5) return renderPaymentStep();
-  if (state.step === 6) return renderPrintingStep();
+  if (state.step === 3) return state.printError ? renderPrintFailureStep() : renderPaymentStep();
   return renderThankYouStep();
 }
 
@@ -2127,18 +2139,7 @@ function renderServicesStep() {
     <div class="stage service-stage ${serviceCountClass}">
       <div class="stage-header">
         <h1>Choose service</h1>
-        <p class="stage-intro">The printer must be online before a printing session can start.</p>
-      </div>
-      <div class="printer-start-gate ${printerReady ? "ready" : printerChecking ? "checking" : "offline"}" role="status" aria-live="polite">
-        <div>
-          <strong>${printerReady ? "Printer ready" : printerChecking ? "Checking printer..." : "Printer unavailable"}</strong>
-          <span>${escapeHtml(printerReady
-            ? `${state.printer.name || "Printer"} is online. Choose a service to continue.`
-            : printerChecking
-              ? "Please wait while the kiosk checks the printer connection."
-              : state.printer.statusText || "Connect or turn on the printer, then check again.")}</span>
-        </div>
-        ${printerReady ? "" : `<button class="secondary-button" data-action="refresh-printer" ${printerChecking ? "disabled" : ""}>${printerChecking ? "Checking..." : "Check again"}</button>`}
+        <p class="stage-intro">Select what you need to print.</p>
       </div>
       ${state.configStatus ? `<div class="save-note">${escapeHtml(state.configStatus)}</div>` : ""}
       <div class="service-grid">
@@ -2204,29 +2205,26 @@ function renderUploadStep() {
   return `
     <div class="stage">
       <div class="stage-header">
-        <h1>Scan QR to upload</h1>
-        <p class="stage-intro">${escapeHtml(service.title)} selected. Scan this QR code on your mobile, choose the document, and send it to the kiosk.</p>
+        <h1>Upload documents</h1>
+        <p class="stage-intro">Choose up to ${MAX_FILES_PER_JOB} PDF, JPG, or PNG files here, or send them from your phone.</p>
       </div>
-      <div class="qr-upload-layout qr-only">
+      <div class="upload-sources">
+        <label class="upload-area" for="file-input">
+          <input id="file-input" type="file" accept=".pdf,.jpg,.jpeg,.png,application/pdf,image/jpeg,image/png" multiple />
+          <span class="preview-file-icon">+</span>
+          <strong>Choose files on this kiosk</strong>
+          <span>PDF, JPG, or PNG · Maximum ${MAX_FILES_PER_JOB} files</span>
+        </label>
         <div class="qr-upload-card">
+          <h2>Upload from phone</h2>
           ${renderQrUploadBox(session)}
           ${state.uploadError ? `<div class="empty-note" style="margin-top: 14px;">${escapeHtml(state.uploadError)}</div>` : ""}
           ${session?.error ? `<div class="empty-note" style="margin-top: 14px;">${escapeHtml(session.error)}</div>` : ""}
-          <div class="flow-actions" style="margin-top: 16px;">
-            <button class="secondary-button" data-action="refresh-upload">Check Upload</button>
-            <button class="ghost-button" data-action="new-upload-qr">New QR</button>
-          </div>
         </div>
       </div>
-      ${state.file ? `
-        <div class="flow-actions">
-          <button class="primary-button" data-action="next-step">Preview File</button>
-        </div>
-      ` : `
-        <div class="flow-actions">
-          <button class="ghost-button" data-action="prev-step">Back to Services</button>
-        </div>
-      `}
+      <div class="flow-actions">
+        <button class="ghost-button" data-action="prev-step">Back to Services</button>
+      </div>
     </div>
   `;
 }
@@ -2256,53 +2254,72 @@ function renderQrUploadBox(session) {
     <div class="qr-code-box">
       ${session.qrSvg || `<img alt="Upload QR code" src="https://api.qrserver.com/v1/create-qr-code/?size=230x230&data=${encodeURIComponent(session.uploadUrl)}" draggable="false" data-no-visual-search />`}
     </div>
-    <h2>Scan with mobile</h2>
-    <p class="helper-text">After upload completes on phone, this kiosk will automatically move to preview.</p>
+    <p class="helper-text">Scan the code, select up to ${MAX_FILES_PER_JOB} files, and send them to this kiosk.</p>
   `;
 }
 
 function renderPreviewStep() {
-  const pages = pageCount();
-  const previewClass = state.file?.previewUrl && ["pdf", "image"].includes(state.file.previewKind)
+  const files = jobFiles();
+  const file = activePreviewFile();
+  const details = priceDetails();
+  const previewClass = file?.previewUrl && ["pdf", "image"].includes(file.previewKind)
     ? "preview-live"
     : "preview-document-mode";
   return `
     <div class="stage">
       <div class="stage-header">
-        <h1>Preview file</h1>
-        <p class="stage-intro">Customer can confirm the uploaded file before settings and payment.</p>
+        <h1>Preview and confirm</h1>
+        <p class="stage-intro">Check your documents, choose print options, and confirm the total before payment.</p>
       </div>
       <div class="preview-grid">
-        <div class="document-preview ${previewClass}" style="transform: scale(${state.previewZoom}); transform-origin: top left;">
-          ${renderPreviewContent()}
-        </div>
-        <div class="module-card">
-          <h2>File Details</h2>
-          <div class="info-list">
-            <div class="info-row"><span>Name</span><strong>${escapeHtml(state.file?.name || "document.pdf")}</strong></div>
-            <div class="info-row"><span>Type</span><strong>${escapeHtml(state.file?.type || "PDF")}</strong></div>
-            <div class="info-row"><span>Pages</span><strong>${pages}</strong></div>
-            <div class="info-row"><span>Validation</span><strong>Passed</strong></div>
-            <div class="info-row"><span>Password</span><strong>Not detected</strong></div>
+        <div class="preview-workspace">
+          ${files.length > 1 ? `
+            <div class="document-tabs" aria-label="Uploaded documents">
+              ${files.map((item, index) => `
+                <button class="document-tab ${index === state.previewFileIndex ? "active" : ""}" data-preview-file-index="${index}">
+                  <strong>Document ${index + 1}</strong>
+                  <span>${escapeHtml(item.type)} · ${Math.max(1, Number(item.pages) || 1)} page${Number(item.pages) === 1 ? "" : "s"}</span>
+                </button>
+              `).join("")}
+            </div>
+          ` : ""}
+          <div class="document-preview ${previewClass}" style="transform: scale(${state.previewZoom}); transform-origin: top left;">
+            ${renderPreviewContent()}
           </div>
-          <div class="flow-actions" style="margin-top: 16px;">
+        </div>
+        <div class="module-card preview-summary-card">
+          <h2>Print summary</h2>
+          <div class="info-list">
+            <div class="info-row"><span>Documents</span><strong>${files.length}</strong></div>
+            <div class="info-row"><span>Total pages</span><strong>${details.pages}</strong></div>
+            <div class="info-row"><span>Copies</span><strong>${details.copies}</strong></div>
+          </div>
+          <div class="preview-tools">
             <button class="secondary-button" data-action="zoom-in">Zoom</button>
             <button class="secondary-button" data-action="zoom-out">Fit</button>
-            <button class="danger-button" data-action="delete-file">Delete</button>
+            <button class="ghost-button" data-action="delete-file">Replace files</button>
           </div>
+          <div class="preview-total"><span>Total</span><strong>${money(details.total)}</strong></div>
         </div>
       </div>
+      <section class="preview-settings-section">
+        <div class="section-heading">
+          <h2>Print options</h2>
+          <p>These options apply to every uploaded document.</p>
+        </div>
+        ${renderPrintSettingsFields()}
+      </section>
       <div class="flow-actions">
         <button class="ghost-button" data-action="prev-step">Back</button>
-        <button class="primary-button" data-action="next-step">Print Settings</button>
+        <button class="primary-button" data-action="next-step">Continue to Payment · ${money(details.total)}</button>
       </div>
     </div>
   `;
 }
 
 function renderPreviewContent() {
-  const file = state.file;
-  const pages = pageCount();
+  const file = activePreviewFile();
+  const pages = Math.max(1, Number(file?.pages) || 1);
 
   if (!file) {
     return renderPreviewFallback("No file selected", "Upload a file to see the preview.");
@@ -2317,7 +2334,7 @@ function renderPreviewContent() {
   }
 
   if (file.previewKind === "image" && file.previewUrl) {
-    return `<img class="preview-media" src="${escapeHtml(file.previewUrl)}" alt="${escapeHtml(file.name)} preview" draggable="false" data-no-visual-search />`;
+    return `<img class="preview-media" src="${escapeHtml(file.previewUrl)}" alt="Uploaded document preview" draggable="false" data-no-visual-search />`;
   }
 
   if (file.previewKind === "html-template" && file.htmlContent) {
@@ -2371,7 +2388,7 @@ function chunkLines(lines, size) {
 function renderTextDocumentPreview(file) {
   const text = decodeBase64Utf8(file.printContentBase64);
   const lines = text.split(/\r?\n/);
-  const pages = Math.max(pageCount(), 1);
+  const pages = Math.max(Number(file.pages) || 1, 1);
   const chunks = chunkLines(lines, 22);
 
   while (chunks.length < pages) {
@@ -2394,17 +2411,17 @@ function renderTextDocumentPreview(file) {
 }
 
 function renderUploadedDocumentPreview(file) {
-  const pages = Math.max(pageCount(), 1);
+  const pages = Math.max(Number(file.pages) || 1, 1);
   return `
     <div class="form-preview-pages">
       ${Array.from({ length: Math.min(pages, 6) }, (_, index) => `
         <article class="form-preview-page">
           <div class="form-preview-page-header">
-            <strong>${escapeHtml(file.name)}</strong>
+            <strong>Document preview</strong>
             <span>Page ${index + 1} of ${pages}</span>
           </div>
           <div class="document-preview-lines">
-            <h3>${escapeHtml(file.name.replace(/\.[^.]+$/, ""))}</h3>
+            <h3>Uploaded document</h3>
             <p>This uploaded document is ready for printing. A full DOC/DOCX visual preview needs server-side conversion to PDF.</p>
             ${Array.from({ length: 12 }, (_, lineIndex) => `
               <span style="width: ${lineIndex % 3 === 0 ? 92 : lineIndex % 3 === 1 ? 76 : 84}%;"></span>
@@ -2417,22 +2434,18 @@ function renderUploadedDocumentPreview(file) {
 }
 
 function renderPreviewFallback(title, message) {
+  const file = activePreviewFile();
   return `
     <div class="preview-fallback">
-      <div class="preview-file-icon">${escapeHtml(state.file?.type || "FILE")}</div>
+      <div class="preview-file-icon">${escapeHtml(file?.type || "FILE")}</div>
       <h2>${title}</h2>
       <p>${message}</p>
     </div>
   `;
 }
 
-function renderSettingsStep() {
+function renderPrintSettingsFields() {
   return `
-    <div class="stage">
-      <div class="stage-header">
-        <h1>Print settings</h1>
-        <p class="stage-intro">Set color, copies, paper, duplex, orientation, range, and finishing options before price calculation.</p>
-      </div>
       <div class="settings-grid">
         <div class="setting-field">
           <label>Color Mode</label>
@@ -2477,45 +2490,6 @@ function renderSettingsStep() {
           </select>
         </div>
       </div>
-      <div class="flow-actions">
-        <button class="ghost-button" data-action="prev-step">Back</button>
-        <button class="primary-button" data-action="next-step">Calculate Price</button>
-      </div>
-    </div>
-  `;
-}
-
-function renderPriceStep() {
-  const details = priceDetails();
-  const service = selectedService();
-  return `
-    <div class="stage">
-      <div class="stage-header">
-        <h1>Price</h1>
-        <p class="stage-intro">Review the job total before continuing to payment.</p>
-      </div>
-      <div class="price-layout">
-        <div class="module-card">
-          <h2>Price Breakdown</h2>
-          <div class="info-list">
-            <div class="info-row"><span>Service</span><strong>${escapeHtml(service.title)}</strong></div>
-            <div class="info-row"><span>Pages</span><strong>${details.pages}</strong></div>
-            <div class="info-row"><span>Copies</span><strong>${details.copies}</strong></div>
-            <div class="info-row"><span>B/W per page</span><strong>${money(details.rates.bw)}</strong></div>
-            <div class="info-row"><span>Color per page</span><strong>${money(details.rates.color)}</strong></div>
-            <div class="info-row"><span>Selected rate</span><strong>${money(details.rate)} / page</strong></div>
-          </div>
-        </div>
-        <div class="price-total">
-          <span>Total Payable</span>
-          <strong>${money(details.total)}</strong>
-          <button class="primary-button" data-action="next-step">Continue to Payment</button>
-        </div>
-      </div>
-      <div class="flow-actions">
-        <button class="ghost-button" data-action="prev-step">Back</button>
-      </div>
-    </div>
   `;
 }
 
@@ -2530,63 +2504,43 @@ function renderHealthRow(label, value, tone) {
 
 function renderPaymentStep() {
   const details = priceDetails();
-  const jobId = ensureActiveJobId();
-  const orderId = state.paymentOrder?.orderId || "Not created";
+  ensureActiveJobId();
   const busy = state.paymentBusy;
-  const canPay = paymentReady();
-  const colorSupported = colorSelectionSupported();
+  const paymentComplete = state.paymentStatus === "Success";
+  const canPay = paymentReady() && !paymentComplete;
   const blockMessage = paymentBlockMessage();
   return `
     <div class="stage">
       <div class="stage-header">
-        <h1>Printer setup and payment</h1>
-        <p class="stage-intro">Confirm the selected printer here, then start Razorpay payment.</p>
+        <h1>Payment</h1>
+        <p class="stage-intro">Pay the confirmed total securely to start printing.</p>
       </div>
       <div class="payment-layout">
-        <div class="qr-box">
-          <div class="qr-pattern" aria-label="Razorpay checkout pattern"></div>
-          <h2>${money(details.total)}</h2>
-          <p class="helper-text">Job ${jobId}</p>
+        <div class="payment-total-card">
+          <span>Total payable</span>
+          <strong>${money(details.total)}</strong>
+          <small>${details.pages} page${details.pages === 1 ? "" : "s"} · ${details.copies} cop${details.copies === 1 ? "y" : "ies"}</small>
         </div>
         <div class="module-card">
-          <h2>Payment Status</h2>
-          <div class="info-list" style="margin-bottom: 16px;">
-            <div class="info-row"><span>Gateway</span><strong>Razorpay</strong></div>
-            <div class="info-row"><span>Order</span><strong>${escapeHtml(orderId)}</strong></div>
-            <div class="info-row"><span>Amount</span><strong>${money(details.total)}</strong></div>
-          </div>
+          <h2>${paymentComplete ? "Payment received" : "Pay with Razorpay"}</h2>
           <div class="timeline">
             ${renderTimelineRow(1, "Order created", Boolean(state.paymentOrder), state.paymentStatus === "Creating")}
             ${renderTimelineRow(2, "Checkout opened", ["Waiting", "Verifying", "Success"].includes(state.paymentStatus), state.paymentStatus === "Waiting")}
             ${renderTimelineRow(3, "Signature verified", state.paymentStatus === "Success", state.paymentStatus === "Verifying")}
-            ${renderTimelineRow(4, "Job marked paid", state.paymentStatus === "Success")}
+            ${renderTimelineRow(4, "Printing documents", state.printProgress >= 5, paymentComplete && state.printProgress < 5)}
           </div>
           ${state.paymentStatusMessage ? `<p class="helper-text" style="margin-top: 14px;">${escapeHtml(state.paymentStatusMessage)}</p>` : ""}
-          ${blockMessage ? `<div class="empty-note" style="margin-top: 14px;">${escapeHtml(blockMessage)}</div>` : ""}
+          ${paymentComplete && state.printStatusMessage ? `<p class="helper-text" style="margin-top: 14px;">${escapeHtml(state.printStatusMessage)}</p>` : ""}
+          ${!paymentComplete && blockMessage ? `<div class="empty-note" style="margin-top: 14px;">Printer is offline. Payment will be available when it is online.</div>` : ""}
           ${state.paymentError ? `<div class="empty-note" style="margin-top: 14px;">${escapeHtml(state.paymentError)}</div>` : ""}
-          <div class="flow-actions" style="margin-top: 16px;">
-            <button class="primary-button" data-action="pay-razorpay" ${busy || !canPay ? "disabled" : ""}>${busy ? "Processing..." : "Pay with Razorpay"}</button>
-            <button class="danger-button" data-action="payment-failed">Payment Failed</button>
-          </div>
-        </div>
-        <div class="module-card printer-setup-card">
-          <h2>Printer Setup</h2>
-          <div class="health-list">
-            ${renderHealthRow("Selected printer", state.printer.name || "No printer selected", state.printer.online ? "good" : "warn")}
-            ${renderHealthRow("Printer", state.printer.online ? "Online" : "Offline", state.printer.online ? "good" : "bad")}
-            ${state.settings.colorMode === "color" ? renderHealthRow("Color support", colorSupported ? "Available" : "Not supported", colorSupported ? "good" : "bad") : ""}
-            ${renderHealthRow("Paper", state.printer.paper, state.printer.paper === "Ready" ? "good" : "warn")}
-            ${renderHealthRow("Toner", state.printer.toner, "good")}
-            ${renderHealthRow("Queue", `${state.printer.queue} waiting`, state.printer.queue < 5 ? "good" : "warn")}
-            ${renderHealthRow("Local Agent", state.printer.agent, state.printer.agent === "Running" ? "good" : "bad")}
-            ${renderHealthRow("Status", state.printer.statusText, state.printer.online ? "good" : "bad")}
-          </div>
-          <div class="flow-actions" style="margin-top: 16px;">
-            <button class="secondary-button" data-action="refresh-printer">Refresh Printer Status</button>
-          </div>
+          ${paymentComplete ? "" : `
+            <div class="flow-actions" style="margin-top: 20px;">
+              <button class="primary-button" data-action="pay-razorpay" ${busy || !canPay ? "disabled" : ""}>${busy ? "Processing..." : `Pay ${money(details.total)}`}</button>
+            </div>
+          `}
         </div>
       </div>
-      <div class="flow-actions">
+      <div class="flow-actions ${paymentComplete ? "is-hidden" : ""}">
         <button class="ghost-button" data-action="prev-step">Back</button>
       </div>
     </div>
@@ -2599,45 +2553,6 @@ function renderTimelineRow(index, text, done, active = false) {
       <span class="timeline-index">${index}</span>
       <strong>${text}</strong>
       <span class="badge ${done ? "good" : active ? "warn" : ""}">${done ? "Done" : active ? "Active" : "Pending"}</span>
-    </div>
-  `;
-}
-
-function renderPrintingStep() {
-  if (state.printError) {
-    return renderPrintFailureStep();
-  }
-
-  const manualMode = !localAgentCanReadFile(state.file);
-  const statuses = [
-    "Payment successful",
-    "Preparing document",
-    "Sending to printer",
-    `Printing page ${Math.max(1, Math.min(pageCount(), state.printProgress))} of ${pageCount()}`,
-    "Completed"
-  ];
-
-  return `
-    <div class="stage">
-      <div class="stage-header">
-        <h1>Printing status</h1>
-        <p class="stage-intro">The local print agent owns the printer queue, retry logic, and live status updates. Paid jobs are never lost if printing fails.</p>
-      </div>
-      <div class="module-card">
-        <h2>Live Job ${currentJobId()}</h2>
-        ${state.printStatusMessage ? `<p class="helper-text">${escapeHtml(state.printStatusMessage)}</p>` : ""}
-        <div class="health-list" style="margin-bottom: 16px;">
-          ${renderHealthRow("Printer", state.printer.name || "Default printer", state.printer.online ? "good" : "warn")}
-          ${renderHealthRow("Agent", state.printer.agent, state.printer.agent === "Running" ? "good" : "warn")}
-        </div>
-        <div class="timeline">
-          ${statuses.map((text, index) => renderTimelineRow(index + 1, text, state.printProgress > index, state.printProgress === index)).join("")}
-        </div>
-        <div class="flow-actions" style="margin-top: 16px;">
-          <button class="primary-button" data-action="advance-print" ${manualMode ? "" : "disabled"}>Advance Print Status</button>
-          <button class="danger-button" data-action="print-failed">Simulate Print Failed</button>
-        </div>
-      </div>
     </div>
   `;
 }
@@ -2681,19 +2596,19 @@ function renderThankYouStep() {
   return `
     <div class="stage">
       <div class="stage-header">
-        <h1>Thank you</h1>
-        <p class="stage-intro">Printing completed successfully. Customer files are removed from kiosk storage after the session, while transaction metadata remains for reports.</p>
+        <h1>Receipt</h1>
+        <p class="stage-intro">Printing completed successfully. Returning to the home page in ${state.receiptSecondsLeft} seconds.</p>
       </div>
       <div class="receipt-card">
-        <h2>Receipt</h2>
+        <h2>Payment receipt</h2>
         <div class="receipt-row"><span>Job ID</span><strong>${escapeHtml(receiptJob.id)}</strong></div>
+        <div class="receipt-row"><span>Documents</span><strong>${jobFiles().length}</strong></div>
         <div class="receipt-row"><span>Pages</span><strong>${receiptJob.pages}</strong></div>
         <div class="receipt-row"><span>Copies</span><strong>${receiptJob.copies}</strong></div>
         <div class="receipt-row"><span>Amount</span><strong>${money(receiptJob.amount)}</strong></div>
         <div class="receipt-row"><span>Status</span><strong>${escapeHtml(receiptJob.print)}</strong></div>
         <div class="flow-actions">
-          <button class="secondary-button">Print Receipt</button>
-          <button class="primary-button" data-action="finish-session">Start New Session</button>
+          <button class="primary-button" data-action="finish-session">Return Home</button>
         </div>
       </div>
     </div>
@@ -2738,10 +2653,18 @@ function renderAdmin() {
           <div class="admin-nav-group">
             <div class="admin-nav-label">${group.label}</div>
             ${group.pages.map((page) => `
-              <button class="${state.adminPage === page.id ? "active" : ""}" data-admin-page="${page.id}">${page.label}</button>
+              <button class="${state.adminPage === page.id ? "active" : ""}" data-admin-page="${page.id}">
+                <span class="admin-nav-icon">${uiIcon(page.icon, 20)}</span>
+                <span>${page.label}</span>
+              </button>
             `).join("")}
           </div>
         `).join("")}
+        <div class="admin-nav-help">
+          <span class="admin-nav-help-icon">${uiIcon("support", 22)}</span>
+          <div><strong>Need Help?</strong><p>Check kiosk devices and connection status.</p></div>
+          <button data-admin-page="system">Open System Status</button>
+        </div>
       </nav>
       <section class="admin-main">
         ${renderAdminPage()}
@@ -2774,20 +2697,19 @@ function adminNavGroups() {
     {
       label: "Operate",
       pages: [
-        { id: "dashboard", label: "Dashboard" },
-        { id: "services", label: "Services" },
-        { id: "pricing", label: "Pricing" },
-        { id: "history", label: "Print History" },
-        { id: "transactions", label: "Transactions" }
+        { id: "dashboard", label: "Dashboard", icon: "dashboard" },
+        { id: "services", label: "Services", icon: "services" },
+        { id: "pricing", label: "Pricing", icon: "pricing" },
+        { id: "history", label: "Print History", icon: "history" }
       ]
     },
     {
       label: "Support",
       pages: [
-        { id: "system", label: "System Status" },
-        { id: "revenue", label: "Revenue" },
-        { id: "kiosks", label: "Kiosks" },
-        { id: "refunds", label: "Refunds" }
+        { id: "system", label: "System Status", icon: "system" },
+        { id: "projects", label: "Projects", icon: "hierarchy" },
+        { id: "kiosks", label: "Kiosks", icon: "kiosks" },
+        { id: "refunds", label: "Refunds", icon: "refunds" }
       ]
     }
   ];
@@ -2812,14 +2734,12 @@ function renderAdminHeader(title, subtitle, action = "") {
 function renderAdminPage() {
   const page = state.adminPage;
   if (page === "dashboard") return renderDashboard();
-  if (page === "revenue") return renderRevenue();
   if (page === "history") return renderHistory();
-  if (page === "transactions") return renderTransactions();
   if (page === "system") return renderSystemStatus();
+  if (page === "projects") return renderProjects();
   if (page === "reports") return renderReports();
-  if (page === "services") return renderServicesAdmin();
-  if (page === "service-editor") return renderServiceEditorPage();
-  if (page === "pricing") return renderPricing();
+  if (page === "services") return renderServicesReadOnly();
+  if (page === "pricing") return renderPricingReadOnly();
   if (page === "kiosks") return renderKiosks();
   if (page === "refunds") return renderRefunds();
   if (page === "alerts") return renderAlerts();
@@ -2853,10 +2773,17 @@ function adminNotice() {
   }
 
   if (state.adminData.lastUpdated) {
-    return `<p class="helper-text" style="margin-top: -10px; margin-bottom: 16px;">Live backend data. Last updated ${escapeHtml(formatDateTime(state.adminData.lastUpdated))}.</p>`;
+    return `
+      <div class="admin-live-status">
+        <span class="live-indicator"></span>
+        <strong>Live backend data.</strong>
+        <span>Last updated: ${escapeHtml(formatDateTime(state.adminData.lastUpdated))}</span>
+        <button data-action="refresh-admin" aria-label="Refresh admin data">${uiIcon("refresh", 18)}</button>
+      </div>
+    `;
   }
 
-  return `<p class="helper-text" style="margin-top: -10px; margin-bottom: 16px;">Loading live backend data...</p>`;
+  return `<div class="admin-live-status loading"><span class="live-indicator"></span><strong>Loading live backend data...</strong></div>`;
 }
 
 function liveJobs() {
@@ -2879,22 +2806,33 @@ function jobRow(job) {
   };
 }
 
-function paymentRow(payment) {
-  const job = liveJobs().find((item) => item.jobId === payment.jobId) || {};
-
-  return {
-    time: formatDateTime(payment.paidAt || payment.createdAt),
-    jobId: payment.jobId || "",
-    gatewayId: payment.razorpayPaymentId || payment.razorpayOrderId || payment.paymentId || "",
-    upiRef: payment.upiReferenceId || "-",
-    amount: Number(payment.amount || job.amount || 0),
-    payment: payment.status || "Pending",
-    print: job.printStatus || "-"
-  };
-}
-
 function emptyRows(message, columns) {
   return [[message, ...Array(Math.max(0, columns - 1)).fill("")]];
+}
+
+function adminPaginated(items, key, pageSize = 10) {
+  const pageCount = Math.max(1, Math.ceil(items.length / pageSize));
+  const currentPage = Math.min(Math.max(1, Number(state.adminPagination[key] || 1)), pageCount);
+  state.adminPagination[key] = currentPage;
+  const start = (currentPage - 1) * pageSize;
+  return { items: items.slice(start, start + pageSize), currentPage, pageCount, total: items.length };
+}
+
+function renderAdminPagination(key, page) {
+  if (page.total <= 10) return "";
+  return `
+    <nav class="pagination" aria-label="Pagination">
+      <span>${page.total} records</span>
+      <button class="ghost-button small-button" data-admin-pagination-key="${escapeHtml(key)}" data-admin-pagination-page="${page.currentPage - 1}" ${page.currentPage === 1 ? "disabled" : ""}>Previous</button>
+      <strong>Page ${page.currentPage} of ${page.pageCount}</strong>
+      <button class="ghost-button small-button" data-admin-pagination-key="${escapeHtml(key)}" data-admin-pagination-page="${page.currentPage + 1}" ${page.currentPage === page.pageCount ? "disabled" : ""}>Next</button>
+    </nav>
+  `;
+}
+
+function renderPaginatedTable(key, headers, rows, emptyMessage) {
+  const page = adminPaginated(rows, key);
+  return `${renderTable(headers, page.items.length ? page.items : emptyRows(emptyMessage, headers.length))}${renderAdminPagination(key, page)}`;
 }
 
 function dashboardMetrics() {
@@ -2908,14 +2846,14 @@ function dashboardMetrics() {
   const printerReady = state.printer.online ? "Printer ready" : (state.printer.statusText || "Printer unchecked");
 
   return [
-    ["Today Revenue", money(revenue.gross ?? dashboard.revenueToday ?? 0), "Live backend total"],
-    ["Today Jobs", String(dashboard.jobsToday ?? jobs.length), `${state.adminData.kiosks.length || 1} kiosk record(s)`],
-    ["Failed Jobs", String(failed), "Needs support action"],
-    ["Active Kiosks", String(dashboard.activeKiosks ?? state.adminData.kiosks.filter((kiosk) => kiosk.status === "online").length), "Backend kiosk records"],
-    ["Pages Printed", String(pages), "Completed and queued jobs"],
-    ["Pending Refunds", String(pendingRefunds), "Approval required"],
-    ["Queue Length", String(queueLength), "Live job records"],
-    ["System Health", state.adminData.backendOnline ? "Online" : "Offline", printerReady]
+    ["Today Revenue", money(revenue.gross ?? dashboard.revenueToday ?? 0), "Live backend total", "pricing", "green"],
+    ["Today Jobs", String(dashboard.jobsToday ?? jobs.length), `${state.adminData.kiosks.length || 1} kiosk record(s)`, "services", "blue"],
+    ["Failed Jobs", String(failed), "Read-only visibility", "alert", failed ? "red" : "green"],
+    ["Active Kiosks", String(dashboard.activeKiosks ?? state.adminData.kiosks.filter((kiosk) => kiosk.status === "online").length), "Backend kiosk records", "kiosks", "purple"],
+    ["Pages Printed", String(pages), "Completed and queued jobs", "printer", "cyan"],
+    ["Pending Refunds", String(pendingRefunds), pendingRefunds ? "Pending super admin review" : "No pending records", "refunds", pendingRefunds ? "red" : "green"],
+    ["Queue Length", String(queueLength), "Live job records", "history", queueLength ? "amber" : "blue"],
+    ["System Health", state.adminData.backendOnline ? "Online" : "Offline", printerReady, "system", state.adminData.backendOnline ? "green" : "red"]
   ];
 }
 
@@ -2929,79 +2867,47 @@ function renderDashboard() {
   ];
 
   return `
-    ${renderAdminHeader("Dashboard", "Revenue, jobs, failures, kiosk health, and alerts in one operational view.", `<button class="secondary-button">Export Summary</button>`)}
+    ${renderAdminHeader("Dashboard", "Read-only operational view of your assigned projects and kiosks.")}
     ${adminNotice()}
-    <div class="metrics-grid">
-      ${dashboardMetrics().map(([label, value, detail]) => `
-        <div class="metric-card">
-          <span>${label}</span>
-          <strong>${value}</strong>
-          <small>${detail}</small>
+    <div class="metrics-grid dashboard-metrics">
+      ${dashboardMetrics().map(([label, value, detail, icon, tone]) => `
+        <div class="metric-card has-icon tone-${tone}">
+          <span class="metric-icon">${uiIcon(icon, 25)}</span>
+          <div class="metric-copy">
+            <span>${label}</span>
+            <strong>${value}</strong>
+            <small>${detail}</small>
+          </div>
         </div>
       `).join("")}
     </div>
-    <div class="module-grid">
-      <div class="module-card">
-        <h2>Failure Safe Queue</h2>
+    <div class="module-grid dashboard-modules">
+      <div class="module-card dashboard-panel">
+        <div class="module-card-title"><span>${uiIcon("system", 20)}</span><h2>Failure Safe Queue</h2></div>
         <div class="health-list">
           ${renderHealthRow("Payment success print failed", `${failedJobs.length} job(s)`, failedJobs.length ? "warn" : "good")}
           ${renderHealthRow("Active print queue", `${queuedJobs.length} job(s)`, queuedJobs.length ? "warn" : "good")}
           ${renderHealthRow("Backend", state.adminData.backendOnline ? "Online" : "Offline", state.adminData.backendOnline ? "good" : "bad")}
         </div>
+        <button class="panel-link" data-admin-page="history">View full queue details ${uiIcon("history", 17)}</button>
       </div>
-      <div class="module-card">
-        <h2>Latest Alerts</h2>
-        <div class="info-list">
-          ${(alerts.length ? alerts : ["No live alerts"]).map((alert) => `<div class="info-row"><span>${escapeHtml(alert)}</span><strong>${alerts.length ? "Open" : "OK"}</strong></div>`).join("")}
+      <div class="module-card dashboard-panel">
+        <div class="module-card-title"><span>${uiIcon("bell", 20)}</span><h2>Latest Alerts</h2><button data-admin-page="alerts">View all alerts</button></div>
+        <div class="info-list dashboard-alert-list">
+          ${(alerts.length ? alerts : ["No live alerts"]).map((alert, index) => `<div class="info-row ${alerts.length ? "is-alert" : "is-clear"}"><span class="alert-row-icon">${uiIcon(alerts.length ? (index ? "activity" : "alert") : "system", 19)}</span><span>${escapeHtml(alert)}</span><strong>${alerts.length ? "Open" : "OK"}</strong></div>`).join("")}
         </div>
       </div>
     </div>
   `;
 }
 
-function renderRevenue() {
-  const revenue = state.adminData.revenue || {};
-  const jobs = liveJobs().map(jobRow);
-  const serviceTotals = jobs.reduce((totals, job) => {
-    if (/success/i.test(job.payment)) {
-      const key = `${job.kiosk}|${job.branch}|${job.service}`;
-      totals[key] = totals[key] || {
-        kiosk: job.kiosk,
-        branch: job.branch,
-        service: job.service,
-        gross: 0,
-        refund: 0
-      };
-      totals[key].gross += job.amount;
-    }
-    return totals;
-  }, {});
-  const rows = Object.values(serviceTotals).map((row) => [
-    "Today",
-    row.kiosk,
-    row.branch,
-    row.service,
-    money(row.gross),
-    money(row.refund),
-    money(row.gross - row.refund)
-  ]);
-
-  return `
-    ${renderAdminHeader("Revenue", "Daily, monthly, kiosk-wise, branch-wise, service-wise, refund, gross, and net revenue.", `<button class="secondary-button">Download CSV</button><button class="secondary-button">Download PDF</button>`)}
-    ${adminNotice()}
-    ${renderFilters()}
-    <div class="metrics-grid">
-      <div class="metric-card"><span>Gross Revenue</span><strong>${money(revenue.gross || 0)}</strong><small>Backend payments</small></div>
-      <div class="metric-card"><span>Refunds</span><strong>${money(revenue.refunds || 0)}</strong><small>${state.adminData.refunds.length} refund record(s)</small></div>
-      <div class="metric-card"><span>Net Revenue</span><strong>${money(revenue.net || 0)}</strong><small>After refunds</small></div>
-      <div class="metric-card"><span>Transactions</span><strong>${state.adminData.payments.length}</strong><small>Razorpay records</small></div>
-    </div>
-    ${renderTable(["Range", "Kiosk", "Branch", "Service", "Gross", "Refund", "Net"], rows.length ? rows : emptyRows("No paid jobs have been recorded yet.", 7))}
-  `;
-}
-
 function renderHistory() {
-  const rows = liveJobs().map(jobRow).map((job) => [
+  const search = state.filters.table.trim().toLowerCase();
+  const status = state.filters.status;
+  const rows = liveJobs().map(jobRow)
+    .filter((job) => !search || JSON.stringify(job).toLowerCase().includes(search))
+    .filter((job) => status === "all" || (status === "success" && /success|completed/i.test(`${job.payment} ${job.print}`)) || (status === "failed" && /failed/i.test(job.print)) || (status === "refund" && /refund/i.test(`${job.payment} ${job.print}`)))
+    .map((job) => [
     job.id,
     job.date,
     job.kiosk,
@@ -3012,65 +2918,39 @@ function renderHistory() {
     money(job.amount),
     job.payment,
     job.print,
-    job.print.includes("Failed") ? "Retry / Refund" : "Receipt"
-  ]);
+    "View"
+    ]);
 
   return `
-    ${renderAdminHeader("Print History", "Every job has payment status, print status, retry, refund, and receipt actions.", `<button class="secondary-button">Export History</button>`)}
+    ${renderAdminHeader("Print History", "Read-only print history for your assigned projects and kiosks.")}
     ${adminNotice()}
     ${renderFilters()}
-    ${renderTable(["Job ID", "Date", "Kiosk", "Branch", "File", "Pages", "Copies", "Amount", "Payment", "Print", "Action"], rows.length ? rows : emptyRows("No backend print jobs yet. Complete a real payment/print flow to populate this table.", 11))}
-  `;
-}
-
-function renderTransactions() {
-  const rows = state.adminData.payments.map(paymentRow).map((payment) => [
-    payment.time,
-    payment.jobId,
-    payment.gatewayId,
-    payment.upiRef,
-    money(payment.amount),
-    payment.payment,
-    payment.print
-  ]);
-
-  return `
-    ${renderAdminHeader("Daily Transactions", "Payment reconciliation by gateway transaction, UPI reference, job, amount, and status.")}
-    ${adminNotice()}
-    ${renderTable(["Time", "Job ID", "Gateway ID", "UPI Ref", "Amount", "Payment", "Print"], rows.length ? rows : emptyRows("No Razorpay transaction records yet.", 7))}
+    ${renderPaginatedTable("history", ["Job ID", "Date", "Kiosk", "Branch", "File", "Pages", "Copies", "Amount", "Payment", "Print", "View"], rows, "No backend print jobs yet.")}
   `;
 }
 
 function renderSystemStatus() {
-  const kiosk = state.adminData.kiosks[0] || {};
+  const page = adminPaginated(state.adminData.kiosks, "system");
 
   return `
-    ${renderAdminHeader("System Status", "Live kiosk, printer, scanner, internet, UPS, local agent, and app health.")}
+    ${renderAdminHeader("System Status", "Read-only health data for kiosks in your assigned projects.")}
     ${adminNotice()}
     <div class="module-grid">
-      <div class="module-card">
-        <h2>${escapeHtml(kiosk.kioskId || "Local Kiosk")}</h2>
-        <div class="health-list">
-          ${renderHealthRow("Kiosk", kiosk.status || "Unknown", kiosk.status === "online" ? "good" : "warn")}
-          ${renderHealthRow("Backend", state.adminData.backendOnline ? "Online" : "Offline", state.adminData.backendOnline ? "good" : "bad")}
-          ${renderHealthRow("Printer", state.printer.online ? state.printer.name : "Offline", state.printer.online ? "good" : "bad")}
-          ${renderHealthRow("Scanner", state.printer.scanner, "good")}
-          ${renderHealthRow("Paper", state.printer.paper, state.printer.paper === "Ready" ? "good" : "warn")}
-          ${renderHealthRow("Toner", state.printer.toner, state.printer.toner === "Ready" ? "good" : "warn")}
-          ${renderHealthRow("Agent", state.printer.agent, state.printer.agent === "Running" ? "good" : "bad")}
+      ${page.items.length ? page.items.map((kiosk) => `
+        <div class="module-card">
+          <h2>${escapeHtml(kiosk.kioskId || "Kiosk")}</h2>
+          <div class="health-list">
+            ${renderHealthRow("Project", kiosk.projectId || "Unassigned", kiosk.projectId ? "good" : "warn")}
+            ${renderHealthRow("Kiosk", kiosk.status || "Unknown", kiosk.status === "online" ? "good" : "warn")}
+            ${renderHealthRow("Printer", kiosk.printer || "Unknown", kiosk.printer && kiosk.printer !== "unknown" ? "good" : "warn")}
+            ${renderHealthRow("Scanner", kiosk.scanner || "Unknown", kiosk.scanner && kiosk.scanner !== "unknown" ? "good" : "warn")}
+            ${renderHealthRow("App Version", kiosk.appVersion || "1.0.0", "good")}
+            ${renderHealthRow("Last Online", formatDateTime(kiosk.lastOnline), kiosk.lastOnline ? "good" : "warn")}
+          </div>
         </div>
-      </div>
-      <div class="module-card">
-        <h2>Device Detail</h2>
-        <div class="health-list">
-          ${renderHealthRow("Printer status", state.printer.statusText, state.printer.online ? "good" : "bad")}
-          ${renderHealthRow("Queue", `${state.printer.queue} waiting`, state.printer.queue < 5 ? "good" : "warn")}
-          ${renderHealthRow("Internet", state.printer.internet, "good")}
-          ${renderHealthRow("App Version", kiosk.appVersion || "1.0.0", "good")}
-          ${renderHealthRow("Expected Agent Port", String(state.adminData.localAgentExpectedPort || 5077), "good")}
-        </div>
-      </div>
+      `).join("") : `<div class="empty-note">No kiosk health records are assigned to this account.</div>`}
     </div>
+    ${renderAdminPagination("system", page)}
   `;
 }
 
@@ -3290,6 +3170,60 @@ function renderSimpleServiceForms(service) {
         </div>
       `).join("") : `<div class="simple-form-empty">No forms added yet. Edit this service to create forms.</div>`}
     </div>
+  `;
+}
+
+function renderServicesReadOnly() {
+  const page = adminPaginated(services, "services");
+
+  return `
+    ${renderAdminHeader("Services", "Read-only services available to your assigned projects and kiosks.")}
+    ${adminNotice()}
+    <div class="read-only-banner">Read-only access. Service changes are managed by the super admin.</div>
+    <div class="service-admin-grid">
+      ${page.items.length ? page.items.map((service) => {
+        const rates = serviceRates(service.id);
+        return `
+          <article class="module-card read-only-service-card">
+            <div class="service-admin-head">
+              ${serviceMediaMarkup(service, "admin-image-preview")}
+              <div><h2>${escapeHtml(service.title)}</h2><p>${escapeHtml(service.description || "")}</p></div>
+              <span class="badge ${service.enabled === false ? "bad" : "good"}">${service.enabled === false ? "Disabled" : "Enabled"}</span>
+            </div>
+            <div class="hierarchy-stats compact">
+              <div class="mini-stat"><span>Mode</span><strong>${escapeHtml(service.mode)}</strong></div>
+              <div class="mini-stat"><span>B/W</span><strong>${money(rates.bw)}</strong></div>
+              <div class="mini-stat"><span>Color</span><strong>${money(rates.color)}</strong></div>
+              <div class="mini-stat"><span>Forms</span><strong>${service.templates?.length || 0}</strong></div>
+            </div>
+          </article>
+        `;
+      }).join("") : `<div class="empty-note">No services are assigned to your kiosks.</div>`}
+    </div>
+    ${renderAdminPagination("services", page)}
+  `;
+}
+
+function renderPricingReadOnly() {
+  const page = adminPaginated(services, "pricing");
+
+  return `
+    ${renderAdminHeader("Pricing", "Read-only pricing for services available to your assigned kiosks.")}
+    ${adminNotice()}
+    <div class="read-only-banner">Read-only access. Pricing changes are managed by the super admin.</div>
+    <div class="settings-grid pricing-settings-grid">
+      ${page.items.length ? page.items.map((service) => {
+        const rates = serviceRates(service.id);
+        return `
+          <div class="setting-field service-pricing-card">
+            <h2>${escapeHtml(service.title)}</h2>
+            <div class="info-row"><span>B/W per page</span><strong>${money(rates.bw)}</strong></div>
+            <div class="info-row"><span>Color per page</span><strong>${money(rates.color)}</strong></div>
+          </div>
+        `;
+      }).join("") : `<div class="empty-note">No pricing records are assigned to your kiosks.</div>`}
+    </div>
+    ${renderAdminPagination("pricing", page)}
   `;
 }
 
@@ -4049,59 +3983,39 @@ function pricingLabel(key) {
   }[key] || key;
 }
 
-function renderKiosks() {
-  const jobs = liveJobs().map(jobRow);
-  const rows = state.adminData.kiosks.map((kiosk) => {
-    const kioskJobs = jobs.filter((job) => job.kiosk === kiosk.kioskId);
-    const revenue = kioskJobs.reduce((sum, job) => sum + (/success/i.test(job.payment) ? job.amount : 0), 0);
-    const errors = kioskJobs.filter((job) => /failed/i.test(job.print)).length;
-
-    return [
-      kiosk.kioskId || "",
-      kiosk.name || "",
-      kiosk.branch || "",
-      state.printer.name || kiosk.printer || "Unknown",
-      state.printer.scanner || kiosk.scanner || "Unknown",
-      kiosk.status || "Unknown",
-      money(revenue),
-      String(errors),
-      kiosk.setupCode || "",
-      kiosk.activatedAt ? "Activated" : "Not activated",
-      "Logs"
-    ];
-  });
+function renderProjects() {
+  const rows = state.adminData.projects.map((project) => [
+    project.projectId || "",
+    project.name || "",
+    project.status || "",
+    String(state.adminData.kiosks.filter((kiosk) => kiosk.projectId === project.projectId).length),
+    project.description || ""
+  ]);
 
   return `
-    ${renderAdminHeader("Kiosk Management", "Create kiosk IDs first, then give the setup code to the installer for that mini-PC.", `<button class="secondary-button">Push Update</button>`)}
+    ${renderAdminHeader("Assigned Projects", "Read-only projects allocated to your kiosk admin account.")}
     ${adminNotice()}
-    ${renderKioskCreatePanel()}
-    ${renderTable(["Kiosk ID", "Name", "Branch", "Printer", "Scanner", "Status", "Revenue", "Errors", "Setup Code", "Activation", "Actions"], rows.length ? rows : emptyRows("No kiosk records returned by backend.", 11))}
+    <div class="read-only-banner">Project allocation and kiosk creation are managed only by the super admin.</div>
+    ${renderPaginatedTable("projects", ["Project ID", "Project Name", "Status", "Kiosks", "Description"], rows, "No projects are assigned to this account.")}
   `;
 }
 
-function renderKioskCreatePanel() {
+function renderKiosks() {
+  const rows = state.adminData.kiosks.map((kiosk) => [
+    kiosk.kioskId || "",
+    kiosk.name || "",
+    kiosk.projectId || "",
+    kiosk.branch || "",
+    kiosk.status || "Unknown",
+    kiosk.activatedAt ? "Activated" : "Not activated",
+    kiosk.lastOnline ? formatDateTime(kiosk.lastOnline) : ""
+  ]);
+
   return `
-    <div class="module-card" style="margin-bottom: 16px;">
-      <h2>Create Kiosk</h2>
-      ${state.kioskCreateStatus ? `<div class="save-note">${escapeHtml(state.kioskCreateStatus)}</div>` : ""}
-      <div class="settings-grid">
-        <label class="setting-field">Kiosk ID
-          <input value="${escapeHtml(state.kioskCreate.kioskId)}" placeholder="KIOSK-00001" data-kiosk-create-field="kioskId" />
-        </label>
-        <label class="setting-field">Name
-          <input value="${escapeHtml(state.kioskCreate.name)}" placeholder="Bank lobby kiosk" data-kiosk-create-field="name" />
-        </label>
-        <label class="setting-field">Branch
-          <input value="${escapeHtml(state.kioskCreate.branch)}" placeholder="Main Branch" data-kiosk-create-field="branch" />
-        </label>
-        <label class="setting-field">Setup code
-          <input value="${escapeHtml(state.kioskCreate.setupCode)}" placeholder="Auto if blank" data-kiosk-create-field="setupCode" />
-        </label>
-      </div>
-      <div class="flow-actions">
-        <button class="primary-button" data-action="create-kiosk">Create Kiosk</button>
-      </div>
-    </div>
+    ${renderAdminHeader("Assigned Kiosks", "Read-only kiosks within your allocated projects.")}
+    ${adminNotice()}
+    <div class="read-only-banner">Kiosks can only be created, moved, or updated by the super admin.</div>
+    ${renderPaginatedTable("kiosks", ["Kiosk ID", "Name", "Project", "Branch", "Status", "Activation", "Last Online"], rows, "No kiosks are assigned to this account.")}
   `;
 }
 
@@ -4112,14 +4026,13 @@ function renderRefunds() {
     refund.paymentId || "",
     money(refund.amount || 0),
     refund.reason || "",
-    refund.status || "",
-    /pending/i.test(refund.status || "") ? "Approve / Reject" : "Receipt"
+    refund.status || ""
   ]);
 
   return `
-    ${renderAdminHeader("Refund Management", "Refunds are created for print failed, duplicate payment, wrong print, or payment deducted without job.", `<button class="secondary-button">Export Refunds</button>`)}
+    ${renderAdminHeader("Refunds", "Read-only refund records for your assigned projects and kiosks.")}
     ${adminNotice()}
-    ${renderTable(["Refund ID", "Job ID", "Payment ID", "Amount", "Reason", "Status", "Action"], rows.length ? rows : emptyRows("No refund requests have been created yet.", 7))}
+    ${renderPaginatedTable("refunds", ["Refund ID", "Job ID", "Payment ID", "Amount", "Reason", "Status"], rows, "No refund records found.")}
   `;
 }
 
@@ -4131,12 +4044,13 @@ function renderAlerts() {
     ...failedJobs.map((job) => ({ title: "Payment success but print failed", detail: `${job.id} ${job.file}`, tone: "warn" })),
     ...pendingRefunds.map((refund) => ({ title: "Refund request", detail: `${refund.refundId} ${money(refund.amount || 0)}`, tone: "warn" }))
   ];
+  const page = adminPaginated(alerts, "alerts");
 
   return `
     ${renderAdminHeader("Notifications", "Dashboard, email, SMS, and WhatsApp alerts can be wired here.")}
     ${adminNotice()}
     <div class="module-grid">
-      ${(alerts.length ? alerts : [{ title: "No live alerts", detail: "Backend and local device checks are clear.", tone: "good" }]).map((alert) => `
+      ${(page.items.length ? page.items : [{ title: "No live alerts", detail: "Backend and assigned kiosk checks are clear.", tone: "good" }]).map((alert) => `
         <div class="module-card">
           <h2>${escapeHtml(alert.title)}</h2>
           <p class="helper-text">${escapeHtml(alert.detail)}</p>
@@ -4144,6 +4058,7 @@ function renderAlerts() {
         </div>
       `).join("")}
     </div>
+    ${renderAdminPagination("alerts", page)}
   `;
 }
 
@@ -4185,8 +4100,6 @@ function renderFilters() {
         <option value="failed" ${state.filters.status === "failed" ? "selected" : ""}>Failed</option>
         <option value="refund" ${state.filters.status === "refund" ? "selected" : ""}>Refund</option>
       </select>
-      <input type="date" value="2026-06-07" />
-      <button class="secondary-button">Apply</button>
     </div>
   `;
 }
@@ -4274,9 +4187,14 @@ async function handleClick(event) {
     return;
   }
 
+  if (target.dataset.adminPaginationKey && target.dataset.adminPaginationPage) {
+    state.adminPagination[target.dataset.adminPaginationKey] = Math.max(1, Number(target.dataset.adminPaginationPage) || 1);
+    render();
+    return;
+  }
+
   if (target.dataset.service) {
     if (!printerReadyForCustomerFlow()) {
-      alertPrinterUnavailable();
       render();
       return;
     }
@@ -4350,13 +4268,20 @@ async function handleClick(event) {
     return;
   }
 
+  if (target.dataset.previewFileIndex !== undefined) {
+    state.previewFileIndex = Math.max(0, Math.min(jobFiles().length - 1, Number(target.dataset.previewFileIndex) || 0));
+    state.previewZoom = 1;
+    render();
+    return;
+  }
+
   if (target.dataset.source) {
     if (!state.selectedService) {
       state.selectedService = "print";
     }
 
-    revokePreviewUrl();
-    state.file = createSourceFile(target.dataset.source);
+    clearCurrentFile();
+    setJobFiles([createSourceFile(target.dataset.source)]);
     state.uploadError = "";
     state.step = 2;
     render();
@@ -4371,8 +4296,8 @@ async function handleClick(event) {
     }
 
     stopUploadPolling();
-    revokePreviewUrl();
-    state.file = createTemplateFile(template);
+    clearCurrentFile();
+    setJobFiles([createTemplateFile(template)]);
     state.uploadError = "";
     state.uploadSession = null;
     state.step = 2;
@@ -4381,6 +4306,9 @@ async function handleClick(event) {
   }
 
   switch (target.dataset.action) {
+    case "refresh-admin":
+      loadAdminData();
+      break;
     case "create-kiosk":
       await createAdminKiosk();
       break;
@@ -4444,29 +4372,11 @@ async function handleClick(event) {
     case "pay-razorpay":
       startRazorpayPayment();
       break;
-    case "payment-failed":
-      state.paymentStatus = "Failed";
-      state.paymentStatusMessage = "";
-      state.paymentError = "Payment was marked failed.";
-      state.paymentBusy = false;
-      state.step = 5;
-      render();
-      break;
-    case "advance-print":
-      advancePrint();
-      render();
-      break;
-    case "print-failed":
-      addJob("Payment Success Print Failed");
-      state.printError = "Payment succeeded, but the printer did not complete the job.";
-      syncBackendPrintStatus("Payment Success Print Failed", state.printError);
-      render();
-      break;
     case "retry-print":
       state.printError = "";
       state.printProgress = 0;
       state.printStatusMessage = "";
-      state.step = 6;
+      state.step = 3;
       render();
       startLocalPrintJob();
       break;
@@ -4542,26 +4452,41 @@ async function handleChange(event) {
       state.selectedService = "print";
     }
 
-    const file = target.files[0];
-    const result = createFileRecord(file.name, file.size, 1, file.type);
-
-    if (result.error) {
+    const selectedFiles = Array.from(target.files);
+    if (selectedFiles.length > MAX_FILES_PER_JOB) {
       clearCurrentFile();
-      state.uploadError = result.error;
+      state.uploadError = `Choose no more than ${MAX_FILES_PER_JOB} files.`;
       render();
       return;
     }
 
-    revokePreviewUrl();
-
-    if (["pdf", "image"].includes(result.file.previewKind)) {
-      result.file.previewUrl = URL.createObjectURL(file);
+    const invalidFile = selectedFiles.find((file) => !customerUploadExtensions.includes(normalizedFileExtension(file.name)));
+    if (invalidFile) {
+      clearCurrentFile();
+      state.uploadError = "Only PDF, JPG, and PNG files are supported.";
+      render();
+      return;
     }
 
-    state.file = result.file;
-    state.uploadError = "";
-    state.step = 2;
-    render();
+    try {
+      const records = await Promise.all(selectedFiles.map(async (file) => {
+        const result = createFileRecord(file.name, file.size, 1, file.type);
+        if (result.error) throw new Error(result.error);
+        result.file.previewUrl = URL.createObjectURL(file);
+        result.file.printContentBase64 = await readFileAsBase64(file);
+        return result.file;
+      }));
+
+      clearCurrentFile();
+      setJobFiles(records);
+      state.uploadError = "";
+      state.step = 2;
+      render();
+    } catch (error) {
+      clearCurrentFile();
+      state.uploadError = error.message || "The selected files could not be read.";
+      render();
+    }
     return;
   }
 
@@ -4605,6 +4530,7 @@ async function handleChange(event) {
 
   if (target.dataset.filter) {
     state.filters[target.dataset.filter] = target.value;
+    state.adminPagination.history = 1;
     render();
     return;
   }
@@ -4654,6 +4580,7 @@ function handleInput(event) {
 
   if (target.dataset.filter) {
     state.filters[target.dataset.filter] = target.value;
+    state.adminPagination.history = 1;
   }
 
   if (target.dataset.kioskCreateField) {
@@ -4710,14 +4637,32 @@ function syncKioskCreateDraftFromDom() {
   });
 }
 
-function advancePrint() {
-  state.printProgress += 1;
-
-  if (state.printProgress >= 5) {
-    addJob("Completed");
-    state.step = 7;
-    state.printProgress = 0;
+function stopReceiptRedirect() {
+  if (state.receiptRedirectTimer) {
+    clearInterval(state.receiptRedirectTimer);
+    state.receiptRedirectTimer = null;
   }
+}
+
+function startReceiptRedirect() {
+  if (state.receiptRedirectTimer) return;
+
+  state.receiptSecondsLeft = RECEIPT_REDIRECT_SECONDS;
+  state.receiptRedirectTimer = setInterval(() => {
+    state.receiptSecondsLeft -= 1;
+
+    if (state.receiptSecondsLeft <= 0) {
+      stopReceiptRedirect();
+      resetCustomer();
+      render();
+      refreshPrinterStatus();
+      return;
+    }
+
+    if (state.mode === "customer" && state.step === 4) {
+      render();
+    }
+  }, 1000);
 }
 
 function addJob(printStatus) {
@@ -4751,12 +4696,14 @@ function addJob(printStatus) {
 
 function resetCustomer() {
   stopUploadPolling();
+  stopReceiptRedirect();
   state.mode = "customer";
   state.step = 0;
   state.selectedService = null;
   clearCurrentFile();
   state.uploadSession = null;
   state.previewZoom = 1;
+  state.previewFileIndex = 0;
   state.paymentStatus = "Pending";
   state.paymentStatusMessage = "";
   state.paymentError = "";
@@ -4768,6 +4715,7 @@ function resetCustomer() {
   state.printJob = null;
   state.activeJobId = null;
   state.lastCompletedJob = null;
+  state.receiptSecondsLeft = RECEIPT_REDIRECT_SECONDS;
   state.printer = {
     ...state.printer,
     online: false,
@@ -4793,6 +4741,27 @@ function resetCustomer() {
 }
 
 if (TEST_HOOKS_ENABLED) {
+  window.kioskTestOpenAdmin = function kioskTestOpenAdmin(page = "dashboard") {
+    state.adminAuthed = true;
+    state.adminToken = "ui-test-session";
+    state.adminAccount = { name: "Kiosk Admin" };
+    openAdmin(page);
+    return state.adminPage;
+  };
+
+  window.kioskTestSetAdminData = function kioskTestSetAdminData(payload = {}) {
+    state.adminData = { ...state.adminData, ...payload };
+    state.adminPagination = {};
+    render();
+    return state.adminData;
+  };
+
+  window.kioskTestOpenCustomer = function kioskTestOpenCustomer() {
+    resetCustomer();
+    render();
+    return state.mode;
+  };
+
   window.kioskTestReceiveUpload = function kioskTestReceiveUpload({ name, size = 1024, mimeType = "application/pdf" }) {
     if (!state.selectedService) {
       state.selectedService = "print";
@@ -4813,15 +4782,15 @@ if (TEST_HOOKS_ENABLED) {
       return result;
     }
 
-    revokePreviewUrl();
-
     if (["pdf", "image"].includes(result.file.previewKind)) {
       const blob = new Blob([new Uint8Array(size)], { type: mimeType });
       result.file.previewUrl = URL.createObjectURL(blob);
+      result.file.printContentBase64 = btoa("test document");
     }
 
     stopUploadPolling();
-    state.file = result.file;
+    clearCurrentFile();
+    setJobFiles([result.file]);
     state.uploadError = "";
     state.step = 2;
     render();
@@ -4834,13 +4803,38 @@ if (TEST_HOOKS_ENABLED) {
     state.paymentStatusMessage = "Payment marked successful.";
     state.paymentError = "";
     state.paymentBusy = false;
-    state.step = 6;
+    state.step = 3;
     state.printProgress = 0;
     state.printError = "";
     state.printStatusMessage = "";
     state.printJob = null;
     render();
-    startLocalPrintJob();
+  };
+
+  window.kioskTestCompletePrint = function kioskTestCompletePrint() {
+    state.printProgress = 5;
+    addJob("Completed");
+    state.step = 4;
+    render();
+    startReceiptRedirect();
+    return state.lastCompletedJob;
+  };
+
+  window.kioskTestReceiveUploads = function kioskTestReceiveUploads(files) {
+    const records = files.slice(0, MAX_FILES_PER_JOB).map(({ name, size = 1024, mimeType = "application/pdf" }) => {
+      const result = createReceivedFileRecord({ name, size, mimeType, pages: mimeType.startsWith("image/") ? 1 : undefined });
+      if (result.error) throw new Error(result.error);
+      const blob = new Blob([new Uint8Array(size)], { type: mimeType });
+      result.file.previewUrl = URL.createObjectURL(blob);
+      result.file.printContentBase64 = btoa("test document");
+      return result.file;
+    });
+    clearCurrentFile();
+    setJobFiles(records);
+    state.uploadError = "";
+    state.step = 2;
+    render();
+    return records;
   };
 
   window.kioskTestSetPrinterReady = function kioskTestSetPrinterReady() {

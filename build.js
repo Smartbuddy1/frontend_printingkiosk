@@ -45,6 +45,7 @@ function addCacheBusters() {
     const html = fs.readFileSync(filePath, "utf8")
       .replace(/\.\/styles\.css(?:\?v=[^"]*)?/g, `./styles.css?v=${buildVersion}`)
       .replace(/\.\/config\.js(?:\?v=[^"]*)?/g, `./config.js?v=${buildVersion}`)
+      .replace(/\.\/ui-icons\.js(?:\?v=[^"]*)?/g, `./ui-icons.js?v=${buildVersion}`)
       .replace(/\.\/app\.js(?:\?v=[^"]*)?/g, `./app.js?v=${buildVersion}`)
       .replace(/\.\/super-admin\.js(?:\?v=[^"]*)?/g, `./super-admin.js?v=${buildVersion}`);
 

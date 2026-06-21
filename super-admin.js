@@ -19,6 +19,7 @@ const state = {
     password: ""
   },
   search: "",
+  pagination: {},
   selectedKioskId: "",
   editor: null,
   pricingDraft: {}
@@ -28,36 +29,56 @@ const pageGroups = [
   {
     label: "Command",
     pages: [
-      { id: "dashboard", label: "Dashboard" },
-      { id: "hierarchy", label: "Hierarchy" },
-      { id: "pricing", label: "Pricing" }
+      { id: "dashboard", label: "Dashboard", icon: "dashboard" },
+      { id: "hierarchy", label: "Hierarchy", icon: "hierarchy" },
+      { id: "pricing", label: "Pricing", icon: "pricing" }
     ]
   },
   {
     label: "Control",
     pages: [
-      { id: "kioskAdmins", label: "Kiosk Admins" },
-      { id: "kiosks", label: "Kiosks" },
-      { id: "services", label: "Services" },
-      { id: "payments", label: "Payments" },
-      { id: "refunds", label: "Refunds" }
+      { id: "kioskAdmins", label: "Kiosk Admins", icon: "users" },
+      { id: "projects", label: "Projects", icon: "hierarchy" },
+      { id: "kiosks", label: "Kiosks", icon: "kiosks" },
+      { id: "services", label: "Services", icon: "services" },
+      { id: "refunds", label: "Refunds", icon: "refunds" }
     ]
   }
 ];
 
 const collections = {
+  projects: {
+    title: "Project Management",
+    subtitle: "Create projects, allocate each project to a kiosk admin, then add kiosks under it.",
+    key: "projectId",
+    columns: ["projectId", "name", "adminId", "status", "description", "createdAt"],
+    fields: [
+      { key: "projectId", label: "Project ID", required: true },
+      { key: "name", label: "Project Name", required: true },
+      { key: "adminId", label: "Allocated Kiosk Admin", type: "select-data", collection: "kioskAdmins", valueKey: "adminId", labelKey: "name", allowEmpty: true },
+      { key: "status", label: "Status", type: "select", options: ["active", "inactive"] },
+      { key: "description", label: "Description", type: "textarea" }
+    ],
+    defaults: () => ({
+      projectId: `project-${Date.now().toString().slice(-5)}`,
+      name: "New Project",
+      adminId: "",
+      status: "active",
+      description: ""
+    })
+  },
   kioskAdmins: {
-    title: "Kiosk Admin CRUD",
-    subtitle: "Create kiosk admin logins and assign kiosk IDs they can manage.",
+    title: "Kiosk Admin Management",
+    subtitle: "Create read-only kiosk admin logins and allocate projects they can view.",
     key: "adminId",
-    columns: ["adminId", "name", "email", "status", "kioskIds", "lastLoginAt"],
+    columns: ["adminId", "name", "email", "status", "projectIds", "lastLoginAt"],
     fields: [
       { key: "adminId", label: "Admin ID", required: true },
       { key: "name", label: "Name", required: true },
       { key: "email", label: "Email", required: true },
       { key: "password", label: "Password" },
       { key: "status", label: "Status", type: "select", options: ["active", "disabled"] },
-      { key: "kioskIds", label: "Extra Kiosk IDs" }
+      { key: "projectIds", label: "Assigned Project IDs" }
     ],
     defaults: () => ({
       adminId: `admin-${Date.now().toString().slice(-5)}`,
@@ -65,19 +86,19 @@ const collections = {
       email: "",
       password: "",
       status: "active",
-      kioskIds: []
+      projectIds: []
     })
   },
   kiosks: {
-    title: "Kiosk CRUD",
-    subtitle: "Kiosk identity, branch, devices, app version, and operational status.",
+    title: "Kiosk Management",
+    subtitle: "Create kiosks under a project. Kiosk creation is available only to super admins.",
     key: "kioskId",
-    columns: ["kioskId", "name", "branch", "adminId", "status", "printer", "scanner", "appVersion", "lastOnline"],
+    columns: ["kioskId", "name", "projectId", "branch", "status", "printer", "scanner", "appVersion", "lastOnline"],
     fields: [
       { key: "kioskId", label: "Kiosk ID", required: true },
       { key: "name", label: "Name", required: true },
+      { key: "projectId", label: "Project", required: true, type: "select-data", collection: "projects", valueKey: "projectId", labelKey: "name" },
       { key: "branch", label: "Branch", required: true },
-      { key: "adminId", label: "Kiosk Admin ID", required: true },
       { key: "status", label: "Status", type: "select", options: ["online", "offline", "maintenance"] },
       { key: "printer", label: "Printer" },
       { key: "scanner", label: "Scanner" },
@@ -87,8 +108,8 @@ const collections = {
     defaults: () => ({
       kioskId: `KIOSK-${Date.now().toString().slice(-5)}`,
       name: "New Kiosk",
+      projectId: state.snapshot?.data?.projects?.[0]?.projectId || "",
       branch: "Unassigned Branch",
-      adminId: state.snapshot?.data?.kioskAdmins?.[0]?.adminId || "default-admin",
       status: "offline",
       printer: "unknown",
       scanner: "unknown",
@@ -210,6 +231,10 @@ const collections = {
 
 function qs(selector) {
   return document.querySelector(selector);
+}
+
+function uiIcon(name, size = 20) {
+  return window.PrintHubUI?.icon(name, size) || "";
 }
 
 function escapeHtml(value) {
@@ -397,6 +422,26 @@ function data(collection) {
   return state.snapshot?.data?.[collection] || [];
 }
 
+function paginated(items, key, pageSize = 10) {
+  const pageCount = Math.max(1, Math.ceil(items.length / pageSize));
+  const currentPage = Math.min(Math.max(1, Number(state.pagination[key] || 1)), pageCount);
+  state.pagination[key] = currentPage;
+  const start = (currentPage - 1) * pageSize;
+  return { items: items.slice(start, start + pageSize), currentPage, pageCount, total: items.length };
+}
+
+function renderPagination(key, page) {
+  if (page.total <= 10) return "";
+  return `
+    <nav class="pagination" aria-label="Pagination">
+      <span>${page.total} records</span>
+      <button class="ghost-button small-button" data-pagination-key="${escapeHtml(key)}" data-pagination-page="${page.currentPage - 1}" ${page.currentPage === 1 ? "disabled" : ""}>Previous</button>
+      <strong>Page ${page.currentPage} of ${page.pageCount}</strong>
+      <button class="ghost-button small-button" data-pagination-key="${escapeHtml(key)}" data-pagination-page="${page.currentPage + 1}" ${page.currentPage === page.pageCount ? "disabled" : ""}>Next</button>
+    </nav>
+  `;
+}
+
 function pricingFor(serviceId) {
   return state.pricingDraft?.[serviceId] || state.snapshot?.data?.pricing?.[serviceId] || { bw: 0, color: 0 };
 }
@@ -456,6 +501,10 @@ function renderShell() {
 }
 
 function renderTopbar() {
+  const pendingRefunds = data("refunds").filter((refund) => /pending/i.test(refund.status || "")).length;
+  const failedJobs = data("jobs").filter((job) => /failed/i.test(job.printStatus || "")).length;
+  const alertCount = pendingRefunds + failedJobs;
+
   return `
     <header class="topbar admin-topbar">
       <div class="brand">
@@ -466,9 +515,13 @@ function renderTopbar() {
         </div>
       </div>
       <div class="topbar-actions">
-        <button class="ghost-button" data-action="refresh">Refresh</button>
-        <button class="secondary-button" data-action="export-json">Export JSON</button>
-        <button class="danger-button" data-action="logout">Logout</button>
+        <button class="notification-button" data-page="refunds" aria-label="Open operational alerts">
+          ${uiIcon("bell", 22)}
+          ${alertCount ? `<span>${Math.min(alertCount, 99)}</span>` : ""}
+        </button>
+        <button class="topbar-action" data-action="refresh">${uiIcon("refresh", 18)}<span>Refresh</span></button>
+        <button class="topbar-action" data-action="export-json">${uiIcon("download", 18)}<span>Export</span></button>
+        <button class="topbar-logout" data-action="logout">${uiIcon("logout", 19)}<span>Logout</span></button>
       </div>
     </header>
   `;
@@ -481,10 +534,18 @@ function renderNav() {
         <div class="admin-nav-group">
           <div class="admin-nav-label">${escapeHtml(group.label)}</div>
           ${group.pages.map((page) => `
-            <button class="${state.page === page.id ? "active" : ""}" data-page="${page.id}">${escapeHtml(page.label)}</button>
+            <button class="${state.page === page.id ? "active" : ""}" data-page="${page.id}">
+              <span class="admin-nav-icon">${uiIcon(page.icon, 20)}</span>
+              <span>${escapeHtml(page.label)}</span>
+            </button>
           `).join("")}
         </div>
       `).join("")}
+      <div class="admin-nav-help">
+        <span class="admin-nav-help-icon">${uiIcon("support", 22)}</span>
+        <div><strong>Control Center</strong><p>Review kiosk hierarchy and operational records.</p></div>
+        <button data-page="hierarchy">Open Hierarchy</button>
+      </div>
     </nav>
   `;
 }
@@ -524,7 +585,15 @@ function renderHeader(title, subtitle, action = "") {
 function renderNotice() {
   const notices = [
     state.notice ? `<div class="save-note">${escapeHtml(state.notice)}</div>` : "",
-    state.error ? `<div class="empty-note" style="margin-bottom: 16px;">${escapeHtml(state.error)}</div>` : ""
+    state.error ? `<div class="empty-note" style="margin-bottom: 16px;">${escapeHtml(state.error)}</div>` : "",
+    !state.error && state.snapshot?.updatedAt ? `
+      <div class="admin-live-status">
+        <span class="live-indicator"></span>
+        <strong>Live backend data.</strong>
+        <span>Last updated: ${escapeHtml(formatDateTime(state.snapshot.updatedAt))}</span>
+        <button data-action="refresh" aria-label="Refresh super admin data">${uiIcon("refresh", 18)}</button>
+      </div>
+    ` : ""
   ].filter(Boolean);
 
   return notices.join("");
@@ -537,29 +606,32 @@ function renderDashboard() {
   const pendingRefunds = data("refunds").filter((refund) => /pending/i.test(refund.status || ""));
 
   return `
-    ${renderHeader("Super Admin Dashboard", "Master operational view across every kiosk and record.", `<button class="primary-button" data-page="hierarchy">Open Hierarchy</button>`)}
+    ${renderHeader("Super Admin Dashboard", "Master operational view across every kiosk and record.", `<button class="primary-button" data-page="hierarchy">${uiIcon("hierarchy", 18)} Open Hierarchy</button>`)}
     ${renderNotice()}
-    <div class="metrics-grid">
+    <div class="metrics-grid dashboard-metrics">
       ${[
-        ["Kiosks", summary.kiosks || 0, `${summary.activeKiosks || 0} online`],
-        ["Services", summary.services || 0, `${summary.templates || 0} templates`],
-        ["Jobs", summary.jobs || 0, `${summary.failedJobs || 0} failed`],
-        ["Payments", summary.payments || 0, money(summary.gross || 0)],
-        ["Refunds", summary.refunds || 0, `${pendingRefunds.length} pending`],
-        ["Net Revenue", money(summary.net || 0), "After refunds"],
-        ["Backend", state.error ? "Offline" : "Online", state.snapshot?.updatedAt ? formatDateTime(state.snapshot.updatedAt) : ""],
-        ["Records", totalRecords(), "All collections"]
-      ].map(([label, value, detail]) => `
-        <div class="metric-card">
-          <span>${escapeHtml(label)}</span>
-          <strong>${escapeHtml(value)}</strong>
-          <small>${escapeHtml(detail)}</small>
+        ["Kiosks", summary.kiosks || 0, `${summary.activeKiosks || 0} online`, "kiosks", "purple"],
+        ["Services", summary.services || 0, `${summary.templates || 0} templates`, "services", "blue"],
+        ["Jobs", summary.jobs || 0, `${summary.failedJobs || 0} failed`, "history", summary.failedJobs ? "red" : "cyan"],
+        ["Payments", summary.payments || 0, money(summary.gross || 0), "payments", "green"],
+        ["Refunds", summary.refunds || 0, `${pendingRefunds.length} pending`, "refunds", pendingRefunds.length ? "red" : "green"],
+        ["Net Revenue", money(summary.net || 0), "After refunds", "pricing", "green"],
+        ["Backend", state.error ? "Offline" : "Online", state.snapshot?.updatedAt ? formatDateTime(state.snapshot.updatedAt) : "", "system", state.error ? "red" : "blue"],
+        ["Records", totalRecords(), "All collections", "activity", "amber"]
+      ].map(([label, value, detail, icon, tone]) => `
+        <div class="metric-card has-icon tone-${tone}">
+          <span class="metric-icon">${uiIcon(icon, 25)}</span>
+          <div class="metric-copy">
+            <span>${escapeHtml(label)}</span>
+            <strong>${escapeHtml(value)}</strong>
+            <small>${escapeHtml(detail)}</small>
+          </div>
         </div>
       `).join("")}
     </div>
-    <div class="module-grid">
-      <div class="module-card">
-        <h2>Recent Jobs</h2>
+    <div class="module-grid dashboard-modules">
+      <div class="module-card dashboard-panel">
+        <div class="module-card-title"><span>${uiIcon("history", 20)}</span><h2>Recent Jobs</h2></div>
         <div class="info-list">
           ${(recentJobs.length ? recentJobs : [{ jobId: "No jobs", fileName: "", printStatus: "" }]).map((job) => `
             <div class="info-row">
@@ -569,8 +641,8 @@ function renderDashboard() {
           `).join("")}
         </div>
       </div>
-      <div class="module-card">
-        <h2>Support Queue</h2>
+      <div class="module-card dashboard-panel">
+        <div class="module-card-title"><span>${uiIcon("support", 20)}</span><h2>Support Queue</h2></div>
         <div class="health-list">
           ${renderHealth("Failed jobs", `${failedJobs.length}`, failedJobs.length ? "warn" : "good")}
           ${renderHealth("Pending refunds", `${pendingRefunds.length}`, pendingRefunds.length ? "warn" : "good")}
@@ -582,7 +654,7 @@ function renderDashboard() {
 }
 
 function totalRecords() {
-  return ["kiosks", "services", "jobs", "payments", "refunds"]
+  return ["projects", "kioskAdmins", "kiosks", "services", "jobs", "refunds"]
     .reduce((sum, key) => sum + data(key).length, 0);
 }
 
@@ -597,14 +669,38 @@ function renderHealth(label, value, tone) {
 
 function renderHierarchy() {
   const hierarchy = state.snapshot?.hierarchy || [];
+  const projectPage = paginated(data("projects"), "hierarchy-projects");
 
   return `
-    ${renderHeader("Kiosk Hierarchy", "Kiosk to service to template, job, payment, and refund ownership.", `<button class="primary-button" data-collection-create="kiosks">Add Kiosk</button>`)}
+    ${renderHeader("Project and Kiosk Hierarchy", "Project to kiosk ownership, allocated kiosk admin, services, and operational records.", `<button class="primary-button" data-collection-create="projects">Add Project</button><button class="secondary-button" data-collection-create="kiosks">Add Kiosk</button>`)}
     ${renderNotice()}
     <div class="super-tree">
-      ${hierarchy.length ? hierarchy.map(renderKioskNode).join("") : `<div class="empty-note">No kiosks found.</div>`}
+      ${projectPage.items.length ? projectPage.items.map((project) => renderProjectNode(project, hierarchy)).join("") : `<div class="empty-note">No projects found. Create a project before adding kiosks.</div>`}
     </div>
+    ${renderPagination("hierarchy-projects", projectPage)}
     ${renderEditorPanel()}
+  `;
+}
+
+function renderProjectNode(project, hierarchy) {
+  const kiosks = hierarchy.filter((kiosk) => kiosk.projectId === project.projectId);
+  const admin = data("kioskAdmins").find((item) => item.adminId === project.adminId || (item.projectIds || []).includes(project.projectId));
+  const kioskPage = paginated(kiosks, `project-${project.projectId}-kiosks`);
+
+  return `
+    <section class="project-hierarchy-node">
+      <div class="hierarchy-node-head project-head">
+        <div>
+          <h2>${escapeHtml(project.name)} <span class="badge ${project.status === "active" ? "good" : "warn"}">${escapeHtml(project.status)}</span></h2>
+          <p class="helper-text">${escapeHtml(project.projectId)} | Admin: ${escapeHtml(admin?.name || project.adminId || "Unallocated")} | ${kiosks.length} kiosk${kiosks.length === 1 ? "" : "s"}</p>
+        </div>
+        <button class="secondary-button" data-record-edit="projects" data-record-id="${escapeHtml(project.projectId)}">Edit Project</button>
+      </div>
+      <div class="super-tree project-kiosk-list">
+        ${kioskPage.items.length ? kioskPage.items.map(renderKioskNode).join("") : `<div class="empty-note">No kiosks in this project.</div>`}
+      </div>
+      ${renderPagination(`project-${project.projectId}-kiosks`, kioskPage)}
+    </section>
   `;
 }
 
@@ -636,7 +732,7 @@ function renderKioskNode(kiosk) {
           job.fileName,
           job.paymentStatus,
           job.printStatus
-        ]), "No jobs for this kiosk.")}
+        ]), "No jobs for this kiosk.", `hierarchy-jobs-${kiosk.kioskId}`)}
       </div>
     </div>
   `;
@@ -678,8 +774,9 @@ function renderMiniStat(label, value) {
   `;
 }
 
-function renderSmallTable(headers, rows, emptyMessage) {
-  const displayRows = rows.length ? rows : [[emptyMessage, "", "", ""]];
+function renderSmallTable(headers, rows, emptyMessage, paginationKey = "small-table") {
+  const page = paginated(rows, paginationKey);
+  const displayRows = page.items.length ? page.items : [[emptyMessage, ...Array(Math.max(0, headers.length - 1)).fill("")]];
 
   return `
     <div class="table-wrap compact-table">
@@ -690,6 +787,7 @@ function renderSmallTable(headers, rows, emptyMessage) {
         </tbody>
       </table>
     </div>
+    ${renderPagination(paginationKey, page)}
   `;
 }
 
@@ -730,12 +828,14 @@ function renderServiceIcon(service) {
 
 function renderKioskServices() {
   const kiosks = data("kiosks");
+  const kioskPage = paginated(kiosks, "service-kiosk-picker");
   const kioskId = selectedKioskId();
   const selectedKiosk = kiosks.find((kiosk) => kiosk.kioskId === kioskId);
   const search = state.search.trim().toLowerCase();
   const services = data("services")
     .filter((service) => serviceForKiosk(service, kioskId))
     .filter((service) => !search || JSON.stringify(service).toLowerCase().includes(search));
+  const servicePage = paginated(services, `kiosk-services-${kioskId}`);
 
   return `
     ${renderHeader(
@@ -752,22 +852,24 @@ function renderKioskServices() {
       <div class="kiosk-service-layout">
         <aside class="kiosk-picker">
           <div class="kiosk-picker-title">Kiosks</div>
-          ${kiosks.map((kiosk) => `
+          ${kioskPage.items.map((kiosk) => `
             <button class="${kiosk.kioskId === kioskId ? "active" : ""}" data-kiosk-select="${escapeHtml(kiosk.kioskId)}">
               <strong>${escapeHtml(kiosk.kioskId)}</strong>
               <span>${escapeHtml(kiosk.branch || kiosk.name || kiosk.status || "")}</span>
             </button>
           `).join("")}
+          ${renderPagination("service-kiosk-picker", kioskPage)}
         </aside>
         <section class="kiosk-service-main">
           <div class="filters">
             <input placeholder="Search services for ${escapeHtml(kioskId)}" value="${escapeHtml(state.search)}" data-action-input="search" />
           </div>
           <div class="kiosk-service-grid">
-            ${services.length ? services.map((service) => renderKioskServiceCard(service, kioskId)).join("") : `
+            ${servicePage.items.length ? servicePage.items.map((service) => renderKioskServiceCard(service, kioskId)).join("") : `
               <div class="empty-note">No services match this kiosk and search.</div>
             `}
           </div>
+          ${renderPagination(`kiosk-services-${kioskId}`, servicePage)}
           ${renderEditorPanel()}
         </section>
       </div>
@@ -837,6 +939,8 @@ function filteredRows(collection) {
 function renderCollectionTable(collection, rows) {
   const meta = collections[collection];
   const columns = meta.columns;
+  const pageKey = `collection-${collection}`;
+  const page = paginated(rows, pageKey);
 
   return `
     <div class="table-wrap">
@@ -848,7 +952,7 @@ function renderCollectionTable(collection, rows) {
           </tr>
         </thead>
         <tbody>
-          ${rows.length ? rows.map((row) => `
+          ${page.items.length ? page.items.map((row) => `
             <tr>
               ${columns.map((column) => `<td>${formatCell(collection, column, row)}</td>`).join("")}
               <td>
@@ -864,6 +968,7 @@ function renderCollectionTable(collection, rows) {
         </tbody>
       </table>
     </div>
+    ${renderPagination(pageKey, page)}
   `;
 }
 
@@ -879,6 +984,7 @@ function formatCell(collection, column, row) {
   if (collection === "services" && column === "color") return escapeHtml(money((row.pricing || pricingFor(row.id)).color || 0));
   if (collection === "services" && column === "templates") return escapeHtml(String(row.templates?.length || 0));
   if (column === "kioskIds") return escapeHtml((row.kioskIds || []).join(", ") || "All");
+  if (column === "projectIds") return escapeHtml((row.projectIds || []).join(", ") || "None");
   if (column === "amount") return escapeHtml(money(row[column] || 0));
   if (/At$|Date|Online/i.test(column)) return escapeHtml(formatDateTime(row[column]));
   if (Array.isArray(row[column])) return escapeHtml(row[column].join(", "));
@@ -920,6 +1026,22 @@ function renderGenericEditor(collection) {
 
 function renderField(field, draft, disabled = false) {
   const value = draft[field.key] ?? "";
+
+  if (field.type === "select-data") {
+    const options = data(field.collection);
+    return `
+      <label class="setting-field">${escapeHtml(field.label)}
+        <select data-editor-field="${escapeHtml(field.key)}" ${disabled ? "disabled" : ""}>
+          ${field.allowEmpty ? `<option value="">Unallocated</option>` : ""}
+          ${options.map((option) => {
+            const optionValue = option[field.valueKey];
+            const optionLabel = option[field.labelKey] || optionValue;
+            return `<option value="${escapeHtml(optionValue)}" ${String(value) === String(optionValue) ? "selected" : ""}>${escapeHtml(optionLabel)} (${escapeHtml(optionValue)})</option>`;
+          }).join("")}
+        </select>
+      </label>
+    `;
+  }
 
   if (field.type === "select") {
     return `
@@ -1026,12 +1148,13 @@ function renderDraftTemplate(template, index) {
 
 function renderPricing() {
   const services = data("services");
+  const page = paginated(services, "pricing-services");
 
   return `
     ${renderHeader("Pricing Control", "Master B/W and color pricing by service.", `<button class="primary-button" data-pricing-save-all>Save All</button>`)}
     ${renderNotice()}
     <div class="settings-grid pricing-settings-grid">
-      ${services.map((service) => {
+      ${page.items.map((service) => {
         const rates = pricingFor(service.id);
 
         return `
@@ -1049,6 +1172,7 @@ function renderPricing() {
         `;
       }).join("")}
     </div>
+    ${renderPagination("pricing-services", page)}
   `;
 }
 
@@ -1121,10 +1245,17 @@ async function handleClick(event) {
     return;
   }
 
+  if (button.dataset.paginationKey && button.dataset.paginationPage) {
+    state.pagination[button.dataset.paginationKey] = Math.max(1, Number(button.dataset.paginationPage) || 1);
+    render();
+    return;
+  }
+
   if (button.dataset.page) {
     state.page = button.dataset.page;
     state.editor = null;
     state.search = "";
+    state.pagination = {};
     render();
     return;
   }
@@ -1133,6 +1264,7 @@ async function handleClick(event) {
     state.selectedKioskId = button.dataset.kioskSelect;
     state.editor = null;
     state.search = "";
+    state.pagination = {};
     render();
     return;
   }
@@ -1209,6 +1341,7 @@ function handleInput(event) {
 
   if (target.dataset.actionInput === "search") {
     state.search = target.value;
+    state.pagination = {};
     render();
     return;
   }
@@ -1359,6 +1492,8 @@ function updateDraftField(field, value) {
   const fieldConfig = meta.fields.find((item) => item.key === field) || {};
   if (field === "kioskIds") {
     draft[field] = String(value || "").split(",").map((item) => item.trim().toUpperCase()).filter(Boolean);
+  } else if (field === "projectIds") {
+    draft[field] = String(value || "").split(",").map((item) => slug(item, "")).filter(Boolean);
   } else {
     draft[field] = fieldConfig.type === "number" ? numeric(value, 0) : value;
   }
@@ -1429,9 +1564,17 @@ function editorPayload() {
     draft.adminId = slug(draft.adminId || draft.email || draft.name, "kiosk-admin");
     draft.email = String(draft.email || "").trim().toLowerCase();
     draft.status = draft.status === "disabled" ? "disabled" : "active";
+    draft.projectIds = Array.isArray(draft.projectIds)
+      ? draft.projectIds.map((item) => slug(item, "")).filter(Boolean)
+      : String(draft.projectIds || "").split(",").map((item) => slug(item, "")).filter(Boolean);
     draft.kioskIds = Array.isArray(draft.kioskIds)
       ? draft.kioskIds.map((item) => String(item || "").trim().toUpperCase()).filter(Boolean)
       : String(draft.kioskIds || "").split(",").map((item) => item.trim().toUpperCase()).filter(Boolean);
+  }
+
+  if (state.editor.collection === "projects") {
+    draft.projectId = slug(draft.projectId || draft.name, "project");
+    draft.adminId = draft.adminId ? slug(draft.adminId, "") : "";
   }
 
   return draft;
