@@ -890,6 +890,22 @@ function clearAdminSession() {
   } catch {}
 }
 
+function isSessionAuthError(error) {
+  const message = String(error?.message || "").toLowerCase();
+  return error?.status === 401 || message.includes("admin login required") || message.includes("login required");
+}
+
+function expireAdminSession(message = "Session expired. Please sign in again.") {
+  state.adminAuthed = false;
+  state.adminNavOpen = false;
+  state.adminToken = "";
+  state.adminAccount = null;
+  state.adminLoginError = message;
+  clearAdminSession();
+  stopAdminPolling();
+  render();
+}
+
 function redirectToSuperAdmin() {
   window.location.href = `./super-admin.html${window.location.search || ""}`;
 }
@@ -2070,7 +2086,9 @@ async function fetchJson(url, options = {}) {
   const payload = await response.json().catch(() => ({}));
 
   if (!response.ok) {
-    throw new Error(payload.error || `Request failed: ${response.status}`);
+    const error = new Error(payload.error || `Request failed: ${response.status}`);
+    error.status = response.status;
+    throw error;
   }
 
   return payload;
@@ -2082,11 +2100,19 @@ function adminAuthHeaders(headers = {}) {
     : { ...headers };
 }
 
-function fetchAdminJson(path, options = {}) {
-  return fetchJson(`${BACKEND_URL}${path}`, {
-    ...options,
-    headers: adminAuthHeaders(options.headers)
-  });
+async function fetchAdminJson(path, options = {}) {
+  try {
+    return await fetchJson(`${BACKEND_URL}${path}`, {
+      ...options,
+      headers: adminAuthHeaders(options.headers)
+    });
+  } catch (error) {
+    if (state.adminToken && isSessionAuthError(error)) {
+      expireAdminSession();
+      error.sessionExpired = true;
+    }
+    throw error;
+  }
 }
 
 function isMissingAuthEndpoint(error) {
@@ -2322,14 +2348,16 @@ async function loadAdminData({ rerender = true } = {}) {
       }, { rerender: false, source: "admin" });
     }
   } catch (error) {
-    state.adminData = {
-      ...state.adminData,
-      backendOnline: false,
-      error: error.message || "Admin backend is offline."
-    };
+    if (!error.sessionExpired) {
+      state.adminData = {
+        ...state.adminData,
+        backendOnline: false,
+        error: error.message || "Admin backend is offline."
+      };
+    }
   }
 
-  if (rerender && state.mode === "admin") {
+  if (rerender && state.mode === "admin" && (state.adminAuthed || !state.adminLoginError)) {
     render();
   }
 }

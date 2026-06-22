@@ -293,6 +293,25 @@ function clearAdminSession() {
   } catch {}
 }
 
+function isSessionAuthError(error) {
+  const message = String(error?.message || "").toLowerCase();
+  return error?.status === 401 || message.includes("admin login required") || message.includes("login required");
+}
+
+function expireAdminSession(message = "Session expired. Please sign in again.") {
+  state.authed = false;
+  state.authToken = "";
+  state.snapshot = null;
+  state.loading = false;
+  state.notice = "";
+  state.error = "";
+  state.editor = null;
+  state.navOpen = false;
+  state.loginError = message;
+  clearAdminSession();
+  render();
+}
+
 function redirectToKioskAdmin() {
   window.location.href = `./admin.html${window.location.search || ""}`;
 }
@@ -413,7 +432,15 @@ async function fetchJson(path, options = {}) {
   const payload = await response.json().catch(() => ({}));
 
   if (!response.ok) {
-    throw new Error(payload.error || `Request failed: ${response.status}`);
+    const error = new Error(payload.error || `Request failed: ${response.status}`);
+    error.status = response.status;
+
+    if (state.authToken && isSessionAuthError(error)) {
+      expireAdminSession();
+      error.sessionExpired = true;
+    }
+
+    throw error;
   }
 
   return payload;
@@ -480,10 +507,12 @@ async function loadSnapshot({ quiet = false } = {}) {
     state.pricingDraft = clone(snapshot.data?.pricing || {});
     state.error = "";
   } catch (error) {
-    state.error = error.message || "Super admin backend is offline.";
+    if (!error.sessionExpired) {
+      state.error = error.message || "Super admin backend is offline.";
+    }
   } finally {
     state.loading = false;
-    render();
+    if (state.authed || !state.loginError) render();
   }
 }
 
@@ -2283,6 +2312,7 @@ async function savePricing(serviceId) {
     state.notice = "Pricing saved.";
     await loadSnapshot({ quiet: true });
   } catch (error) {
+    if (error.sessionExpired) return;
     state.error = error.message || "Pricing save failed.";
     render();
   }
@@ -2301,6 +2331,7 @@ async function saveAllPricing() {
     state.notice = "All pricing saved.";
     await loadSnapshot({ quiet: true });
   } catch (error) {
+    if (error.sessionExpired) return;
     state.error = error.message || "Pricing save failed.";
     render();
   }
