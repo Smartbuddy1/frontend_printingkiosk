@@ -17,27 +17,14 @@
         window.PRINTING_KIOSK_ELECTRON = isElectronKiosk;
         document.addEventListener("contextmenu", (event) => event.preventDefault());
         document.addEventListener("dragstart", (event) => event.preventDefault());
-
-        if (!isElectronKiosk) {
-          document.getElementById("app").innerHTML = `
-            <main class="electron-required">
-              <section>
-                <h1>Open the installed kiosk app</h1>
-                <p>This customer screen runs only inside SmartPrintingKiosk Electron. Use the desktop kiosk shortcut.</p>
-              </section>
-            </main>
-          `;
-        }
       })();
     </script>
     <script src="./config.js"></script>
     <script src="./ui-icons.js"></script>
     <script>
-      if (window.PRINTING_KIOSK_ELECTRON) {
-        const appScript = document.createElement("script");
-        appScript.src = "./app.js";
-        document.body.appendChild(appScript);
-      }
+      const appScript = document.createElement("script");
+      appScript.src = "./app.js";
+      document.body.appendChild(appScript);
     </script>
   </body>
 </html>

@@ -4,6 +4,24 @@ const DEFAULT_BACKEND_URL = /^https?:$/.test(window.location.protocol) ? window.
 const BACKEND_URL = (runtimeConfig.get("backendUrl") || frontendConfig.backendUrl || DEFAULT_BACKEND_URL).replace(/\/+$/, "");
 const ADMIN_SESSION_KEY = "printingKioskAdminSession";
 const UNASSIGNED_KIOSK_ID = "UNASSIGNED-KIOSK";
+const DEFAULT_KIOSK_CUSTOMER_SETTINGS = Object.freeze({
+  bw: true,
+  color: true,
+  copies: true
+});
+const KIOSK_CUSTOMER_SETTING_FIELDS = [
+  ["bw", "B/W printing"],
+  ["color", "Color printing"],
+  ["copies", "Copies"]
+];
+const DEFAULT_SERVICE_PRINT_DEFAULTS = Object.freeze({
+  colorMode: "bw",
+  copies: 1,
+  paperSize: "A4",
+  sides: "single",
+  orientation: "portrait",
+  range: "all"
+});
 
 const state = {
   authed: false,
@@ -20,28 +38,35 @@ const state = {
   },
   search: "",
   pagination: {},
-  selectedKioskId: "",
+  selectedProjectId: "",
+  navOpen: false,
   editor: null,
-  pricingDraft: {}
+  pricingDraft: {},
+  releaseDraft: {
+    version: "",
+    channel: "production",
+    downloadUrl: "",
+    sha256: "",
+    signature: "",
+    sizeBytes: "",
+    rolloutPercentage: 10,
+    targetKioskIds: "",
+    mandatory: false,
+    active: true,
+    notes: ""
+  }
 };
 
 const pageGroups = [
   {
-    label: "Command",
+    label: "Setup and Control",
     pages: [
       { id: "dashboard", label: "Dashboard", icon: "dashboard" },
-      { id: "hierarchy", label: "Hierarchy", icon: "hierarchy" },
-      { id: "pricing", label: "Pricing", icon: "pricing" }
-    ]
-  },
-  {
-    label: "Control",
-    pages: [
       { id: "kioskAdmins", label: "Kiosk Admins", icon: "users" },
       { id: "projects", label: "Projects", icon: "hierarchy" },
       { id: "kiosks", label: "Kiosks", icon: "kiosks" },
       { id: "services", label: "Services", icon: "services" },
-      { id: "refunds", label: "Refunds", icon: "refunds" }
+      { id: "pricing", label: "Pricing", icon: "pricing" }
     ]
   }
 ];
@@ -51,34 +76,31 @@ const collections = {
     title: "Project Management",
     subtitle: "Create projects, allocate each project to a kiosk admin, then add kiosks under it.",
     key: "projectId",
-    columns: ["projectId", "name", "adminId", "status", "description", "createdAt"],
+    columns: ["name", "adminId", "status", "description", "createdAt"],
     fields: [
-      { key: "projectId", label: "Project ID", required: true },
       { key: "name", label: "Project Name", required: true },
-      { key: "adminId", label: "Allocated Kiosk Admin", type: "select-data", collection: "kioskAdmins", valueKey: "adminId", labelKey: "name", allowEmpty: true },
+      { key: "adminId", label: "Allocated Kiosk Admin", type: "select-data", collection: "kioskAdmins", valueKey: "adminId", labelKey: "name" },
       { key: "status", label: "Status", type: "select", options: ["active", "inactive"] },
       { key: "description", label: "Description", type: "textarea" }
     ],
     defaults: () => ({
       projectId: `project-${Date.now().toString().slice(-5)}`,
       name: "New Project",
-      adminId: "",
+      adminId: state.snapshot?.data?.kioskAdmins?.[0]?.adminId || "",
       status: "active",
       description: ""
     })
   },
   kioskAdmins: {
     title: "Kiosk Admin Management",
-    subtitle: "Create read-only kiosk admin logins and allocate projects they can view.",
+    subtitle: "Create kiosk admin logins first. Allocate each admin from the Project form.",
     key: "adminId",
-    columns: ["adminId", "name", "email", "status", "projectIds", "lastLoginAt"],
+    columns: ["name", "email", "status", "projectIds", "lastLoginAt"],
     fields: [
-      { key: "adminId", label: "Admin ID", required: true },
       { key: "name", label: "Name", required: true },
       { key: "email", label: "Email", required: true },
       { key: "password", label: "Password" },
-      { key: "status", label: "Status", type: "select", options: ["active", "disabled"] },
-      { key: "projectIds", label: "Assigned Project IDs" }
+      { key: "status", label: "Status", type: "select", options: ["active", "disabled"] }
     ],
     defaults: () => ({
       adminId: `admin-${Date.now().toString().slice(-5)}`,
@@ -96,32 +118,25 @@ const collections = {
     columns: ["kioskId", "name", "projectId", "branch", "status", "printer", "scanner", "appVersion", "lastOnline"],
     fields: [
       { key: "kioskId", label: "Kiosk ID", required: true },
+      { key: "setupCode", label: "Mini PC Setup Code", required: true },
       { key: "name", label: "Name", required: true },
       { key: "projectId", label: "Project", required: true, type: "select-data", collection: "projects", valueKey: "projectId", labelKey: "name" },
-      { key: "branch", label: "Branch", required: true },
-      { key: "status", label: "Status", type: "select", options: ["online", "offline", "maintenance"] },
-      { key: "printer", label: "Printer" },
-      { key: "scanner", label: "Scanner" },
-      { key: "appVersion", label: "App Version" },
-      { key: "lastOnline", label: "Last Online" }
+      { key: "branch", label: "Branch", required: true }
     ],
     defaults: () => ({
       kioskId: `KIOSK-${Date.now().toString().slice(-5)}`,
+      setupCode: generateSetupCode(),
       name: "New Kiosk",
       projectId: state.snapshot?.data?.projects?.[0]?.projectId || "",
       branch: "Unassigned Branch",
-      status: "offline",
-      printer: "unknown",
-      scanner: "unknown",
-      appVersion: "1.0.0",
-      lastOnline: new Date().toISOString()
+      customerSettings: { ...DEFAULT_KIOSK_CUSTOMER_SETTINGS }
     })
   },
   services: {
     title: "Service CRUD",
     subtitle: "Customer services, kiosk assignment, rates, service images, and nested form templates.",
     key: "id",
-    columns: ["id", "title", "mode", "enabled", "kioskIds", "bw", "color", "templates"],
+    columns: ["id", "title", "mode", "enabled", "projectIds", "bw", "color", "templates"],
     fields: [],
     defaults: () => ({
       id: `service-${Date.now().toString().slice(-5)}`,
@@ -132,7 +147,10 @@ const collections = {
       mode: "upload",
       imageUrl: "",
       enabled: true,
+      projectIds: serviceAssignableProjects()[0]?.projectId ? [serviceAssignableProjects()[0].projectId] : [],
       kioskIds: [],
+      customerSettings: { ...DEFAULT_KIOSK_CUSTOMER_SETTINGS },
+      printDefaults: { ...DEFAULT_SERVICE_PRINT_DEFAULTS },
       pricing: { bw: 2, color: 10 },
       templates: []
     })
@@ -145,7 +163,7 @@ const collections = {
     fields: [
       { key: "jobId", label: "Job ID", required: true },
       { key: "kioskId", label: "Kiosk ID", required: true },
-      { key: "service", label: "Service ID", required: true },
+      { key: "service", label: "Service", required: true, type: "select-data", collection: "services", valueKey: "id", labelKey: "title" },
       { key: "fileName", label: "File Name", required: true },
       { key: "fileType", label: "File Type" },
       { key: "pageCount", label: "Pages", type: "number" },
@@ -320,6 +338,57 @@ function slug(value, fallback = "record") {
   return normalized || fallback;
 }
 
+function normalizeKioskCode(value) {
+  return String(value || "")
+    .trim()
+    .toUpperCase()
+    .replace(/[^A-Z0-9-]/g, "")
+    .slice(0, 32);
+}
+
+function generateSetupCode() {
+  const alphabet = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
+  const bytes = new Uint8Array(8);
+
+  if (window.crypto?.getRandomValues) {
+    window.crypto.getRandomValues(bytes);
+  } else {
+    for (let index = 0; index < bytes.length; index += 1) {
+      bytes[index] = Math.floor(Math.random() * 256);
+    }
+  }
+
+  return Array.from(bytes, (byte) => alphabet[byte % alphabet.length]).join("");
+}
+
+function normalizeKioskCustomerSettings(settings = {}) {
+  const source = {
+    ...DEFAULT_KIOSK_CUSTOMER_SETTINGS,
+    ...(settings && typeof settings === "object" ? settings : {})
+  };
+  const normalized = Object.fromEntries(
+    Object.keys(DEFAULT_KIOSK_CUSTOMER_SETTINGS).map((key) => [key, source[key] !== false])
+  );
+
+  if (!normalized.bw && !normalized.color) {
+    normalized.bw = true;
+  }
+
+  return normalized;
+}
+
+function normalizeServicePrintDefaults(defaults = {}) {
+  const source = { ...DEFAULT_SERVICE_PRINT_DEFAULTS, ...(defaults && typeof defaults === "object" ? defaults : {}) };
+  return {
+    colorMode: source.colorMode === "color" ? "color" : "bw",
+    copies: Math.max(1, Math.min(99, Number(source.copies || 1))),
+    paperSize: ["A4", "A3", "Letter", "Legal"].includes(source.paperSize) ? source.paperSize : "A4",
+    sides: source.sides === "duplex" ? "duplex" : "single",
+    orientation: source.orientation === "landscape" ? "landscape" : "portrait",
+    range: String(source.range || "all").trim() || "all"
+  };
+}
+
 function numeric(value, fallback = 0) {
   const number = Number(value);
   return Number.isFinite(number) && number >= 0 ? number : fallback;
@@ -422,6 +491,15 @@ function data(collection) {
   return state.snapshot?.data?.[collection] || [];
 }
 
+function serviceAssignableProjects() {
+  const projectIdsWithKiosks = new Set(data("kiosks").map((kiosk) => kiosk.projectId).filter(Boolean));
+  return data("projects").filter((project) => projectIdsWithKiosks.has(project.projectId));
+}
+
+function serviceAssignableProjectIds() {
+  return new Set(serviceAssignableProjects().map((project) => project.projectId));
+}
+
 function paginated(items, key, pageSize = 10) {
   const pageCount = Math.max(1, Math.ceil(items.length / pageSize));
   const currentPage = Math.min(Math.max(1, Number(state.pagination[key] || 1)), pageCount);
@@ -511,7 +589,7 @@ function renderTopbar() {
         <div class="brand-mark"><img src="./assets/printhub-mark.png" alt="PrintHub" /></div>
         <div>
           <div class="brand-title">PrintHub Super Admin</div>
-          <div class="brand-subtitle">Hierarchy, kiosks, services, jobs, payments, refunds</div>
+          <div class="brand-subtitle">Kiosks, services, jobs, payments, refunds</div>
         </div>
       </div>
       <div class="topbar-actions">
@@ -521,6 +599,9 @@ function renderTopbar() {
         </button>
         <button class="topbar-action" data-action="refresh">${uiIcon("refresh", 18)}<span>Refresh</span></button>
         <button class="topbar-action" data-action="export-json">${uiIcon("download", 18)}<span>Export</span></button>
+        <button class="mobile-nav-toggle" data-action="toggle-nav" aria-controls="super-admin-navigation" aria-expanded="${state.navOpen}" aria-label="${state.navOpen ? "Close navigation" : "Open navigation"}">
+          ${uiIcon(state.navOpen ? "close" : "menu", 22)}
+        </button>
         <button class="topbar-logout" data-action="logout">${uiIcon("logout", 19)}<span>Logout</span></button>
       </div>
     </header>
@@ -529,7 +610,12 @@ function renderTopbar() {
 
 function renderNav() {
   return `
-    <nav class="admin-nav">
+    <button class="admin-nav-backdrop ${state.navOpen ? "is-open" : ""}" data-action="close-nav" aria-label="Close navigation"></button>
+    <nav id="super-admin-navigation" class="admin-nav ${state.navOpen ? "is-open" : ""}" aria-label="Super Admin navigation">
+      <div class="admin-nav-drawer-head">
+        <strong>Navigation</strong>
+        <button data-action="close-nav" aria-label="Close navigation">${uiIcon("close", 22)}</button>
+      </div>
       ${pageGroups.map((group) => `
         <div class="admin-nav-group">
           <div class="admin-nav-label">${escapeHtml(group.label)}</div>
@@ -543,8 +629,8 @@ function renderNav() {
       `).join("")}
       <div class="admin-nav-help">
         <span class="admin-nav-help-icon">${uiIcon("support", 22)}</span>
-        <div><strong>Control Center</strong><p>Review kiosk hierarchy and operational records.</p></div>
-        <button data-page="hierarchy">Open Hierarchy</button>
+        <div><strong>Control Center</strong><p>Review kiosks, services, and operational records.</p></div>
+        <button data-page="kiosks">Open Kiosks</button>
       </div>
     </nav>
   `;
@@ -563,7 +649,6 @@ function renderCurrentPage() {
   }
 
   if (state.page === "dashboard") return renderDashboard();
-  if (state.page === "hierarchy") return renderHierarchy();
   if (state.page === "pricing") return renderPricing();
   if (state.page === "services") return renderKioskServices();
   if (collections[state.page]) return renderCollection(state.page);
@@ -606,7 +691,7 @@ function renderDashboard() {
   const pendingRefunds = data("refunds").filter((refund) => /pending/i.test(refund.status || ""));
 
   return `
-    ${renderHeader("Super Admin Dashboard", "Master operational view across every kiosk and record.", `<button class="primary-button" data-page="hierarchy">${uiIcon("hierarchy", 18)} Open Hierarchy</button>`)}
+    ${renderHeader("Super Admin Dashboard", "Master operational view across every kiosk and record.", `<button class="primary-button" data-page="kiosks">${uiIcon("kiosks", 18)} Open Kiosks</button>`)}
     ${renderNotice()}
     <div class="metrics-grid dashboard-metrics">
       ${[
@@ -791,85 +876,95 @@ function renderSmallTable(headers, rows, emptyMessage, paginationKey = "small-ta
   `;
 }
 
-function selectedKioskId() {
-  const kiosks = data("kiosks");
+function selectedServiceProjectId() {
+  const projects = serviceAssignableProjects();
 
-  if (!state.selectedKioskId || !kiosks.some((kiosk) => kiosk.kioskId === state.selectedKioskId)) {
-    state.selectedKioskId = kiosks[0]?.kioskId || "";
+  if (!state.selectedProjectId || !projects.some((project) => project.projectId === state.selectedProjectId)) {
+    state.selectedProjectId = projects[0]?.projectId || "";
   }
 
-  return state.selectedKioskId;
+  return state.selectedProjectId;
 }
 
-function serviceForKiosk(service, kioskId) {
-  const kioskIds = service.kioskIds || [];
-  return !kioskId || !kioskIds.length || kioskIds.includes(kioskId);
+function kiosksForProject(projectId) {
+  return data("kiosks").filter((kiosk) => kiosk.projectId === projectId);
 }
 
-function serviceScopeLabel(service, kioskId) {
+function serviceForProject(service, projectId) {
+  const projectIds = service.projectIds || [];
   const kioskIds = service.kioskIds || [];
-  if (!kioskIds.length) return "All kiosks";
-  if (kioskIds.length === 1 && kioskIds[0] === kioskId) return "This kiosk";
-  return `${kioskIds.length} kiosks`;
+  if (projectIds.length) return projectIds.includes(projectId);
+  if (kioskIds.length) {
+    const projectKioskIds = new Set(kiosksForProject(projectId).map((kiosk) => kiosk.kioskId));
+    return kioskIds.some((kioskId) => projectKioskIds.has(kioskId));
+  }
+  return true;
+}
+
+function serviceProjectLabel(projectId) {
+  return data("projects").find((project) => project.projectId === projectId)?.name || projectId;
 }
 
 function serviceScopeTone(service) {
   if (service.enabled === false) return "bad";
-  return (service.kioskIds || []).length ? "warn" : "good";
+  return "good";
 }
 
 function renderServiceIcon(service) {
-  if (service.imageUrl) {
-    return `<span class="kiosk-service-icon image"><img alt="" src="${escapeHtml(service.imageUrl)}" /></span>`;
-  }
-
   return `<span class="kiosk-service-icon">${escapeHtml(service.icon || service.title?.slice(0, 2) || "SV")}</span>`;
 }
 
 function renderKioskServices() {
-  const kiosks = data("kiosks");
-  const kioskPage = paginated(kiosks, "service-kiosk-picker");
-  const kioskId = selectedKioskId();
-  const selectedKiosk = kiosks.find((kiosk) => kiosk.kioskId === kioskId);
+  const projects = serviceAssignableProjects();
+  const projectPage = paginated(projects, "service-project-picker");
+  const projectId = selectedServiceProjectId();
+  const selectedProject = projects.find((project) => project.projectId === projectId);
+  const projectKiosks = kiosksForProject(projectId);
   const search = state.search.trim().toLowerCase();
   const services = data("services")
-    .filter((service) => serviceForKiosk(service, kioskId))
+    .filter((service) => serviceForProject(service, projectId))
     .filter((service) => !search || JSON.stringify(service).toLowerCase().includes(search));
-  const servicePage = paginated(services, `kiosk-services-${kioskId}`);
+  const servicePage = paginated(services, `project-services-${projectId}`);
 
   return `
     ${renderHeader(
-      "Kiosk Wise Services",
-      selectedKiosk
-        ? `${selectedKiosk.kioskId} | ${selectedKiosk.branch || selectedKiosk.name || "Selected kiosk"}`
-        : "Create a kiosk first, then assign services.",
-      `<button class="primary-button" data-kiosk-service-create ${kioskId ? "" : "disabled"}>Add Service</button><button class="secondary-button" data-action="refresh">Refresh</button>`
+      "Project Services",
+      selectedProject
+        ? `${selectedProject.name || selectedProject.projectId} | ${projectKiosks.length} kiosk${projectKiosks.length === 1 ? "" : "s"}`
+        : "Create a kiosk under a project before assigning services.",
+      `<button class="primary-button" data-project-service-create ${projectId ? "" : "disabled"}>Add Service</button><button class="secondary-button" data-action="refresh">Refresh</button>`
     )}
     ${renderNotice()}
-    ${!kiosks.length ? `
-      <div class="empty-note">No kiosks found. Open Kiosks and create a kiosk before adding kiosk-wise services.</div>
+    ${!projects.length ? `
+      <div class="empty-note">No projects with kiosks found. Create a kiosk under a project before adding services.</div>
     ` : `
       <div class="kiosk-service-layout">
-        <aside class="kiosk-picker">
-          <div class="kiosk-picker-title">Kiosks</div>
-          ${kioskPage.items.map((kiosk) => `
-            <button class="${kiosk.kioskId === kioskId ? "active" : ""}" data-kiosk-select="${escapeHtml(kiosk.kioskId)}">
-              <strong>${escapeHtml(kiosk.kioskId)}</strong>
-              <span>${escapeHtml(kiosk.branch || kiosk.name || kiosk.status || "")}</span>
+        <aside class="kiosk-picker project-picker">
+          <div class="kiosk-picker-title">Projects</div>
+          ${projectPage.items.map((project) => {
+            const kioskCount = kiosksForProject(project.projectId).length;
+            return `
+            <button class="${project.projectId === projectId ? "active" : ""}" data-project-select="${escapeHtml(project.projectId)}">
+              <strong>${escapeHtml(project.name || project.projectId)}</strong>
+              <span>${kioskCount} kiosk${kioskCount === 1 ? "" : "s"}</span>
             </button>
-          `).join("")}
-          ${renderPagination("service-kiosk-picker", kioskPage)}
+          `}).join("")}
+          ${renderPagination("service-project-picker", projectPage)}
         </aside>
         <section class="kiosk-service-main">
           <div class="filters">
-            <input placeholder="Search services for ${escapeHtml(kioskId)}" value="${escapeHtml(state.search)}" data-action-input="search" />
+            <input placeholder="Search services for ${escapeHtml(selectedProject?.name || projectId)}" value="${escapeHtml(state.search)}" data-action-input="search" />
+          </div>
+          <div class="project-kiosk-summary">
+            <strong>Kiosks receiving these services</strong>
+            <span>${projectKiosks.map((kiosk) => escapeHtml(kiosk.kioskId)).join(", ")}</span>
           </div>
           <div class="kiosk-service-grid">
-            ${servicePage.items.length ? servicePage.items.map((service) => renderKioskServiceCard(service, kioskId)).join("") : `
-              <div class="empty-note">No services match this kiosk and search.</div>
+            ${servicePage.items.length ? servicePage.items.map((service) => renderKioskServiceCard(service, projectId)).join("") : `
+              <div class="empty-note">No services are assigned to this project.</div>
             `}
           </div>
-          ${renderPagination(`kiosk-services-${kioskId}`, servicePage)}
+          ${renderPagination(`project-services-${projectId}`, servicePage)}
           ${renderEditorPanel()}
         </section>
       </div>
@@ -877,9 +972,10 @@ function renderKioskServices() {
   `;
 }
 
-function renderKioskServiceCard(service, kioskId) {
+function renderKioskServiceCard(service, projectId) {
   const rates = service.pricing || pricingFor(service.id);
   const templates = service.templates || [];
+  const kioskCount = kiosksForProject(projectId).length;
 
   return `
     <article class="module-card kiosk-service-card">
@@ -887,11 +983,12 @@ function renderKioskServiceCard(service, kioskId) {
         ${renderServiceIcon(service)}
         <div>
           <h2>${escapeHtml(service.title)}</h2>
-          <p class="helper-text">${escapeHtml(service.id)} | ${escapeHtml(service.mode || "upload")}</p>
+          <p class="helper-text">${escapeHtml(service.mode || "upload")}</p>
         </div>
-        <span class="badge ${serviceScopeTone(service)}">${escapeHtml(serviceScopeLabel(service, kioskId))}</span>
+        <span class="badge ${serviceScopeTone(service)}">${escapeHtml(serviceProjectLabel(projectId))}</span>
       </div>
       <p class="helper-text">${escapeHtml(service.description || "Customer service.")}</p>
+      <p class="helper-text">Applied to all ${kioskCount} kiosk${kioskCount === 1 ? "" : "s"} in this project.</p>
       <div class="kiosk-service-stats">
         ${renderMiniStat("B/W", money(rates.bw || 0))}
         ${renderMiniStat("Color", money(rates.color || 0))}
@@ -905,7 +1002,7 @@ function renderKioskServiceCard(service, kioskId) {
       ` : ""}
       <div class="table-actions">
         <button class="secondary-button small-button" data-kiosk-service-edit="${escapeHtml(service.id)}">Edit</button>
-        <button class="danger-button small-button" data-kiosk-service-delete="${escapeHtml(service.id)}">Delete from Kiosk</button>
+        <button class="danger-button small-button" data-project-service-delete="${escapeHtml(service.id)}">Remove from Project</button>
       </div>
     </article>
   `;
@@ -947,7 +1044,7 @@ function renderCollectionTable(collection, rows) {
       <table>
         <thead>
           <tr>
-            ${columns.map((column) => `<th>${escapeHtml(labelize(column))}</th>`).join("")}
+            ${columns.map((column) => `<th>${escapeHtml(collectionColumnLabel(column))}</th>`).join("")}
             <th>Actions</th>
           </tr>
         </thead>
@@ -979,12 +1076,41 @@ function labelize(value) {
     .replace(/\b\w/g, (letter) => letter.toUpperCase());
 }
 
+function collectionColumnLabel(column) {
+  if (column === "adminId") return "Kiosk Admin";
+  if (column === "projectId") return "Project";
+  if (column === "projectIds") return "Projects";
+  return labelize(column);
+}
+
+function projectName(projectId) {
+  return data("projects").find((project) => project.projectId === projectId)?.name || "Unassigned";
+}
+
+function kioskAdminName(adminId) {
+  return data("kioskAdmins").find((admin) => admin.adminId === adminId)?.name || "Unallocated";
+}
+
+function assignedProjectIdsForAdmin(admin = {}) {
+  const directIds = Array.isArray(admin.projectIds) ? admin.projectIds : [];
+  const projectIds = data("projects")
+    .filter((project) => project.adminId && project.adminId === admin.adminId)
+    .map((project) => project.projectId);
+
+  return [...new Set([...directIds, ...projectIds].filter(Boolean))];
+}
+
 function formatCell(collection, column, row) {
   if (collection === "services" && column === "bw") return escapeHtml(money((row.pricing || pricingFor(row.id)).bw || 0));
   if (collection === "services" && column === "color") return escapeHtml(money((row.pricing || pricingFor(row.id)).color || 0));
   if (collection === "services" && column === "templates") return escapeHtml(String(row.templates?.length || 0));
   if (column === "kioskIds") return escapeHtml((row.kioskIds || []).join(", ") || "All");
-  if (column === "projectIds") return escapeHtml((row.projectIds || []).join(", ") || "None");
+  if (column === "adminId") return escapeHtml(kioskAdminName(row.adminId));
+  if (column === "projectId") return escapeHtml(projectName(row.projectId));
+  if (collection === "kioskAdmins" && column === "projectIds") {
+    return escapeHtml(assignedProjectIdsForAdmin(row).map(projectName).join(", ") || "None");
+  }
+  if (column === "projectIds") return escapeHtml((row.projectIds || []).map(projectName).join(", ") || "None");
   if (column === "amount") return escapeHtml(money(row[column] || 0));
   if (/At$|Date|Online/i.test(column)) return escapeHtml(formatDateTime(row[column]));
   if (Array.isArray(row[column])) return escapeHtml(row[column].join(", "));
@@ -996,31 +1122,67 @@ function renderEditorPanel() {
   if (!state.editor) return "";
 
   const { collection } = state.editor;
-  if (collection === "services") return renderServiceEditor();
-  return renderGenericEditor(collection);
+  const content = collection === "services" ? renderServiceEditor() : renderGenericEditor(collection);
+  const title = state.editor.mode === "create" ? `Create ${collection.slice(0, -1) || collection}` : `Edit ${collection.slice(0, -1) || collection}`;
+
+  return `
+    <div class="editor-modal-shell" role="dialog" aria-modal="true" aria-label="${escapeHtml(title)}">
+      <button class="editor-modal-backdrop" data-editor-cancel aria-label="Close editor"></button>
+      <div class="editor-modal-content">
+        ${content}
+      </div>
+    </div>
+  `;
 }
 
 function renderGenericEditor(collection) {
   const meta = collections[collection];
   const draft = state.editor.draft;
+  const helper = collection === "projects"
+    ? "Allocate this project to a kiosk admin before adding kiosks."
+    : collection === "kioskAdmins"
+      ? "Create login details first, then allocate this admin to a project."
+      : `Kiosk ID: ${draft.kioskId || "new"}`;
 
   return `
     <div class="module-card editor-panel">
       <div class="editor-head">
         <div>
           <h2>${state.editor.mode === "create" ? "Create" : "Edit"} ${escapeHtml(collection.slice(0, -1) || collection)}</h2>
-          <p class="helper-text">${escapeHtml(meta.key)}: ${escapeHtml(draft[meta.key] || "new")}</p>
+          <p class="helper-text">${escapeHtml(helper)}</p>
         </div>
         <button class="ghost-button" data-editor-cancel>Close</button>
       </div>
       <div class="settings-grid service-editor-grid">
         ${meta.fields.map((field) => renderField(field, draft, state.editor.mode === "edit" && field.key === meta.key)).join("")}
       </div>
+      ${collection === "kiosks" ? renderKioskCustomerSettingsEditor(draft) : ""}
       <div class="flow-actions">
         <button class="primary-button" data-editor-save>Save</button>
         <button class="ghost-button" data-editor-cancel>Cancel</button>
       </div>
     </div>
+  `;
+}
+
+function renderKioskCustomerSettingsEditor(draft) {
+  const settings = normalizeKioskCustomerSettings(draft.customerSettings);
+
+  return `
+    <section class="kiosk-settings-panel">
+      <div class="section-heading">
+        <h2>Customer Screen Settings</h2>
+        <span>Unchecked options stay hidden on this kiosk</span>
+      </div>
+      <div class="kiosk-settings-checks">
+        ${KIOSK_CUSTOMER_SETTING_FIELDS.map(([key, label]) => `
+          <label class="kiosk-setting-check">
+            <input type="checkbox" data-kiosk-customer-setting="${escapeHtml(key)}" ${settings[key] ? "checked" : ""} />
+            <span>${escapeHtml(label)}</span>
+          </label>
+        `).join("")}
+      </div>
+    </section>
   `;
 }
 
@@ -1036,7 +1198,7 @@ function renderField(field, draft, disabled = false) {
           ${options.map((option) => {
             const optionValue = option[field.valueKey];
             const optionLabel = option[field.labelKey] || optionValue;
-            return `<option value="${escapeHtml(optionValue)}" ${String(value) === String(optionValue) ? "selected" : ""}>${escapeHtml(optionLabel)} (${escapeHtml(optionValue)})</option>`;
+            return `<option value="${escapeHtml(optionValue)}" ${String(value) === String(optionValue) ? "selected" : ""}>${escapeHtml(optionLabel)}</option>`;
           }).join("")}
         </select>
       </label>
@@ -1078,24 +1240,23 @@ function renderServiceEditor() {
       <div class="editor-head">
         <div>
           <h2>${editing ? "Edit Service" : "Create Service"}</h2>
-          <p class="helper-text">${escapeHtml(draft.id || "new-service")} | ${escapeHtml(draft.mode || "upload")}</p>
+          <p class="helper-text">Configure this service for the selected project and its kiosks.</p>
         </div>
         <button class="ghost-button" data-editor-cancel>Close</button>
       </div>
       <div class="settings-grid service-editor-grid">
-        ${renderField({ key: "id", label: "Service ID" }, draft, editing)}
         ${renderField({ key: "icon", label: "Icon" }, draft)}
         ${renderField({ key: "title", label: "Service Name" }, draft)}
         ${renderField({ key: "description", label: "Description" }, draft)}
         ${renderField({ key: "defaultPages", label: "Default Pages", type: "number" }, draft)}
         ${renderField({ key: "mode", label: "Mode", type: "select", options: ["upload", "template"] }, draft)}
         ${renderField({ key: "enabled", label: "Enabled", type: "select", options: ["true", "false"] }, { ...draft, enabled: String(draft.enabled !== false) })}
-        ${renderField({ key: "kioskIds", label: "Assigned Kiosk IDs" }, { ...draft, kioskIds: (draft.kioskIds || []).join(", ") })}
-        ${renderField({ key: "imageUrl", label: "Service Image URL" }, draft)}
         ${renderField({ key: "bw", label: "B/W Rate", type: "number" }, { bw: rates.bw || 0 })}
         ${renderField({ key: "color", label: "Color Rate", type: "number" }, { color: rates.color || 0 })}
       </div>
-      <div class="template-editor-section">
+      ${renderServiceProjectSelector(draft)}
+      ${renderServicePrintSettingsEditor(draft)}
+      ${draft.mode === "template" ? `<div class="template-editor-section">
         <div class="template-editor-header">
           <h3>Templates</h3>
           <button class="secondary-button" data-draft-template-add>Add Template</button>
@@ -1103,7 +1264,12 @@ function renderServiceEditor() {
         <div class="template-editor-list">
           ${(draft.templates || []).length ? draft.templates.map(renderDraftTemplate).join("") : `<div class="empty-note">No templates in this service.</div>`}
         </div>
-      </div>
+      </div>` : `<div class="template-editor-section">
+        <div class="template-editor-header">
+          <h3>Upload Service</h3>
+          <p class="helper-text">This service will show QR upload to customers. Change mode to Form templates if it should contain forms.</p>
+        </div>
+      </div>`}
       <div class="flow-actions">
         <button class="primary-button" data-editor-save>Save Service</button>
         <button class="ghost-button" data-editor-cancel>Cancel</button>
@@ -1112,13 +1278,79 @@ function renderServiceEditor() {
   `;
 }
 
+function renderServiceProjectSelector(draft) {
+  const projects = serviceAssignableProjects();
+  const selected = new Set(Array.isArray(draft.projectIds) ? draft.projectIds : []);
+
+  return `
+    <section class="kiosk-settings-panel">
+      <div class="section-heading">
+        <h2>Project Assignment</h2>
+        <span>Select projects where this service is available</span>
+      </div>
+      <div class="kiosk-settings-checks">
+        ${projects.length ? projects.map((project) => `
+          <label class="kiosk-setting-check">
+            <input type="checkbox" data-service-project-id="${escapeHtml(project.projectId)}" ${selected.has(project.projectId) ? "checked" : ""} />
+            <span>${escapeHtml(project.name || project.projectId)}</span>
+          </label>
+        `).join("") : `<div class="empty-note">Create a kiosk under a project before assigning services.</div>`}
+      </div>
+    </section>
+  `;
+}
+
+function renderServicePrintSettingsEditor(draft) {
+  const settings = normalizeKioskCustomerSettings(draft.customerSettings);
+  const defaults = normalizeServicePrintDefaults(draft.printDefaults);
+
+  return `
+    <section class="kiosk-settings-panel">
+      <div class="section-heading">
+        <h2>Customer Print Options</h2>
+        <span>Unchecked options stay hidden for customers and kiosk admins</span>
+      </div>
+      <div class="kiosk-settings-checks">
+        ${KIOSK_CUSTOMER_SETTING_FIELDS.map(([key, label]) => `
+          <label class="kiosk-setting-check">
+            <input type="checkbox" data-service-customer-setting="${escapeHtml(key)}" ${settings[key] ? "checked" : ""} />
+            <span>${escapeHtml(label)}</span>
+          </label>
+        `).join("")}
+      </div>
+      <div class="settings-grid service-editor-grid">
+        <label class="setting-field">Default Color
+          <select data-service-print-default="colorMode">
+            <option value="bw" ${defaults.colorMode === "bw" ? "selected" : ""}>B/W</option>
+            <option value="color" ${defaults.colorMode === "color" ? "selected" : ""}>Color</option>
+          </select>
+        </label>
+        <label class="setting-field">Default Copies
+          <input type="number" min="1" max="99" value="${defaults.copies}" data-service-print-default="copies" />
+        </label>
+      </div>
+    </section>
+  `;
+}
+
+function renderEditorImagePreview(imageUrl = "", fallback = "TM") {
+  const label = String(fallback || "TM").trim().toUpperCase().slice(0, 2) || "TM";
+
+  if (imageUrl) {
+    return `<span class="admin-image-preview service-image"><img alt="" src="${escapeHtml(imageUrl)}" draggable="false" data-no-visual-search /></span>`;
+  }
+
+  return `<span class="admin-image-preview">${escapeHtml(label)}</span>`;
+}
+
 function renderDraftTemplate(template, index) {
   return `
     <div class="template-editor-card">
       <div class="template-editor-top">
+        ${renderEditorImagePreview(template.imageUrl, template.title || `T${index + 1}`)}
         <div>
           <h4>${escapeHtml(template.title || `Template ${index + 1}`)}</h4>
-          <p class="helper-text">${escapeHtml(template.id || "")}</p>
+          <p class="helper-text">${escapeHtml(template.id || "")} | ${escapeHtml(template.imageUrl ? "Image ready" : "No image selected")}</p>
         </div>
         <button class="danger-button" data-draft-template-delete="${index}">Remove</button>
       </div>
@@ -1140,6 +1372,9 @@ function renderDraftTemplate(template, index) {
         </label>
         <label class="setting-field">Image URL
           <input value="${escapeHtml(template.imageUrl || "")}" data-template-index="${index}" data-template-field="imageUrl" />
+        </label>
+        <label class="setting-field">Update Template Image
+          <input type="file" accept="image/*" data-template-image-upload data-template-index="${index}" />
         </label>
       </div>
     </div>
@@ -1173,6 +1408,96 @@ function renderPricing() {
       }).join("")}
     </div>
     ${renderPagination("pricing-services", page)}
+  `;
+}
+
+function updateStatusClass(status) {
+  const value = String(status || "current").toLowerCase();
+  if (["failed", "rollback"].includes(value)) return "danger";
+  if (["available", "downloading", "deferred", "installing"].includes(value)) return "warning";
+  return "good";
+}
+
+function renderUpdates() {
+  const releases = data("releases").slice().sort((left, right) => String(right.publishedAt || "").localeCompare(String(left.publishedAt || "")));
+  const kiosks = data("kiosks");
+  const activeReleases = releases.filter((release) => release.active).length;
+  const pendingKiosks = kiosks.filter((kiosk) => ["available", "downloading", "deferred", "installing"].includes(kiosk.updateStatus)).length;
+  const failedKiosks = kiosks.filter((kiosk) => ["failed", "rollback"].includes(kiosk.updateStatus)).length;
+  const draft = state.releaseDraft;
+
+  return `
+    ${renderHeader("Kiosk Update Management", "Signed releases, staged rollout, and device update status.", `<button class="secondary-button" data-action="refresh">${uiIcon("refresh", 18)} Refresh</button>`)}
+    ${renderNotice()}
+    <div class="metrics-grid update-metrics">
+      ${[
+        ["Published Releases", releases.length, `${activeReleases} active`, "download", "blue"],
+        ["Pending Kiosks", pendingKiosks, "Waiting or installing", "activity", "purple"],
+        ["Update Failures", failedKiosks, "Includes rollbacks", "alert", "orange"]
+      ].map(([label, value, detail, icon, tone]) => `
+        <article class="metric-card ${tone}">
+          <span class="metric-icon">${uiIcon(icon, 22)}</span>
+          <div><p>${escapeHtml(label)}</p><strong>${escapeHtml(value)}</strong><small>${escapeHtml(detail)}</small></div>
+        </article>
+      `).join("")}
+    </div>
+
+    <section class="module-card update-publisher">
+      <div class="editor-head">
+        <div><h2>Publish Signed Release</h2><p class="helper-text">Production artifacts must use HTTPS and a matching RSA signature.</p></div>
+        <button class="ghost-button" data-release-reset>Reset</button>
+      </div>
+      <div class="settings-grid update-release-grid">
+        <label class="setting-field">Version<input value="${escapeHtml(draft.version)}" data-release-field="version" placeholder="1.2.0" /></label>
+        <label class="setting-field">Channel<select data-release-field="channel"><option value="production" ${draft.channel === "production" ? "selected" : ""}>Production</option><option value="staging" ${draft.channel === "staging" ? "selected" : ""}>Staging</option></select></label>
+        <label class="setting-field update-url-field">Artifact URL<input value="${escapeHtml(draft.downloadUrl)}" data-release-field="downloadUrl" placeholder="https://.../SmartPrintingKiosk-win-x64.zip" /></label>
+        <label class="setting-field">Size in bytes<input type="number" min="1000000" value="${escapeHtml(draft.sizeBytes)}" data-release-field="sizeBytes" /></label>
+        <label class="setting-field">Rollout percentage<input type="number" min="0" max="100" value="${escapeHtml(draft.rolloutPercentage)}" data-release-field="rolloutPercentage" /></label>
+        <label class="setting-field update-target-field">Target kiosk IDs<input value="${escapeHtml(draft.targetKioskIds)}" data-release-field="targetKioskIds" placeholder="KIOSK-001, KIOSK-002" /></label>
+        <label class="setting-field update-hash-field">SHA-256<input value="${escapeHtml(draft.sha256)}" data-release-field="sha256" /></label>
+        <label class="setting-field update-signature-field">RSA signature<textarea data-release-field="signature">${escapeHtml(draft.signature)}</textarea></label>
+        <label class="setting-field update-notes-field">Release notes<textarea data-release-field="notes">${escapeHtml(draft.notes)}</textarea></label>
+      </div>
+      <div class="update-toggle-row">
+        <label><input type="checkbox" data-release-field="mandatory" ${draft.mandatory ? "checked" : ""} /> Mandatory</label>
+        <label><input type="checkbox" data-release-field="active" ${draft.active ? "checked" : ""} /> Active</label>
+      </div>
+      <div class="flow-actions"><button class="primary-button" data-release-publish>${uiIcon("download", 18)} Publish Release</button></div>
+    </section>
+
+    <section class="update-section">
+      <div class="section-heading"><h2>Release History</h2><span>${releases.length} releases</span></div>
+      <div class="table-wrap">
+        <table><thead><tr><th>Version</th><th>Channel</th><th>Rollout</th><th>Published</th><th>Status</th><th>Actions</th></tr></thead>
+        <tbody>${releases.length ? releases.map((release) => `
+          <tr>
+            <td><strong>${escapeHtml(release.version)}</strong><br/><span class="table-subtext">${escapeHtml(release.releaseId)}</span></td>
+            <td>${escapeHtml(release.channel)}</td>
+            <td>${escapeHtml(release.targetKioskIds?.length ? release.targetKioskIds.join(", ") : `${release.rolloutPercentage}%`)}</td>
+            <td>${escapeHtml(formatDateTime(release.publishedAt))}</td>
+            <td><span class="status-pill ${release.active ? "" : "warning"}">${release.active ? "Active" : "Paused"}</span></td>
+            <td><div class="table-actions"><button class="secondary-button small-button" data-release-toggle="${escapeHtml(release.releaseId)}" data-release-active="${release.active}">${release.active ? "Pause" : "Resume"}</button><button class="danger-button small-button" data-release-delete="${escapeHtml(release.releaseId)}">Delete</button></div></td>
+          </tr>`).join("") : `<tr><td colspan="6">No kiosk releases published.</td></tr>`}</tbody>
+        </table>
+      </div>
+    </section>
+
+    <section class="update-section">
+      <div class="section-heading"><h2>Kiosk Update Status</h2><span>${kiosks.length} kiosks</span></div>
+      <div class="table-wrap">
+        <table><thead><tr><th>Kiosk</th><th>Installed</th><th>Channel</th><th>Update Status</th><th>Target</th><th>Last Check</th></tr></thead>
+        <tbody>${kiosks.length ? kiosks.map((kiosk) => `
+          <tr>
+            <td><strong>${escapeHtml(kiosk.kioskId)}</strong><br/><span class="table-subtext">${escapeHtml(kiosk.branch || kiosk.name)}</span></td>
+            <td>${escapeHtml(kiosk.appVersion || "Unknown")}</td>
+            <td>${escapeHtml(kiosk.updateChannel || "production")}</td>
+            <td><span class="status-pill ${updateStatusClass(kiosk.updateStatus)}">${escapeHtml(kiosk.updateStatus || "current")}</span>${kiosk.updateMessage ? `<div class="update-error">${escapeHtml(kiosk.updateMessage)}</div>` : ""}</td>
+            <td>${escapeHtml(kiosk.updateTargetVersion || "-")}</td>
+            <td>${escapeHtml(formatDateTime(kiosk.updateLastCheckAt))}</td>
+          </tr>`).join("") : `<tr><td colspan="6">No kiosks found.</td></tr>`}</tbody>
+        </table>
+      </div>
+    </section>
   `;
 }
 
@@ -1235,6 +1560,18 @@ async function handleClick(event) {
     return;
   }
 
+  if (button.dataset.action === "toggle-nav") {
+    state.navOpen = !state.navOpen;
+    render();
+    return;
+  }
+
+  if (button.dataset.action === "close-nav") {
+    state.navOpen = false;
+    render();
+    return;
+  }
+
   if (button.dataset.action === "refresh") {
     await loadSnapshot();
     return;
@@ -1253,6 +1590,7 @@ async function handleClick(event) {
 
   if (button.dataset.page) {
     state.page = button.dataset.page;
+    state.navOpen = false;
     state.editor = null;
     state.search = "";
     state.pagination = {};
@@ -1260,8 +1598,8 @@ async function handleClick(event) {
     return;
   }
 
-  if (button.dataset.kioskSelect) {
-    state.selectedKioskId = button.dataset.kioskSelect;
+  if (button.dataset.projectSelect) {
+    state.selectedProjectId = button.dataset.projectSelect;
     state.editor = null;
     state.search = "";
     state.pagination = {};
@@ -1269,8 +1607,8 @@ async function handleClick(event) {
     return;
   }
 
-  if ("kioskServiceCreate" in button.dataset) {
-    beginCreateServiceForKiosk();
+  if ("projectServiceCreate" in button.dataset) {
+    beginCreateServiceForProject();
     return;
   }
 
@@ -1279,8 +1617,8 @@ async function handleClick(event) {
     return;
   }
 
-  if (button.dataset.kioskServiceDelete) {
-    await deleteKioskService(button.dataset.kioskServiceDelete);
+  if (button.dataset.projectServiceDelete) {
+    await deleteProjectService(button.dataset.projectServiceDelete);
     return;
   }
 
@@ -1327,10 +1665,31 @@ async function handleClick(event) {
 
   if ("pricingSaveAll" in button.dataset) {
     await saveAllPricing();
+    return;
+  }
+
+  if ("releaseReset" in button.dataset) {
+    resetReleaseDraft();
+    render();
+    return;
+  }
+
+  if ("releasePublish" in button.dataset) {
+    await publishRelease();
+    return;
+  }
+
+  if (button.dataset.releaseToggle) {
+    await setReleaseActive(button.dataset.releaseToggle, button.dataset.releaseActive !== "true");
+    return;
+  }
+
+  if (button.dataset.releaseDelete) {
+    await deleteRelease(button.dataset.releaseDelete);
   }
 }
 
-function handleInput(event) {
+async function handleInput(event) {
   const target = event.target;
 
   if (target.dataset.loginField) {
@@ -1346,8 +1705,34 @@ function handleInput(event) {
     return;
   }
 
+  if (target.dataset.templateImageUpload !== undefined && target.files?.length) {
+    await uploadSuperAdminTemplateImage(target.files[0], Number(target.dataset.templateIndex || 0));
+    target.value = "";
+    return;
+  }
+
   if (target.dataset.editorField) {
     updateDraftField(target.dataset.editorField, target.value);
+    return;
+  }
+
+  if (target.dataset.kioskCustomerSetting) {
+    updateKioskCustomerSetting(target.dataset.kioskCustomerSetting, target.checked);
+    return;
+  }
+
+  if (target.dataset.serviceProjectId) {
+    updateServiceProjectSelection(target.dataset.serviceProjectId, target.checked);
+    return;
+  }
+
+  if (target.dataset.serviceCustomerSetting) {
+    updateServiceCustomerSetting(target.dataset.serviceCustomerSetting, target.checked);
+    return;
+  }
+
+  if (target.dataset.servicePrintDefault) {
+    updateServicePrintDefault(target.dataset.servicePrintDefault, target.value);
     return;
   }
 
@@ -1365,10 +1750,114 @@ function handleInput(event) {
         [target.dataset.pricingKey]: numeric(target.value, 0)
       }
     };
+    return;
+  }
+
+  if (target.dataset.releaseField) {
+    const field = target.dataset.releaseField;
+    if (["mandatory", "active"].includes(field)) {
+      state.releaseDraft[field] = target.checked;
+    } else {
+      state.releaseDraft[field] = target.value;
+    }
+  }
+}
+
+function resetReleaseDraft() {
+  state.releaseDraft = {
+    version: "",
+    channel: "production",
+    downloadUrl: "",
+    sha256: "",
+    signature: "",
+    sizeBytes: "",
+    rolloutPercentage: 10,
+    targetKioskIds: "",
+    mandatory: false,
+    active: true,
+    notes: ""
+  };
+}
+
+async function publishRelease() {
+  const draft = state.releaseDraft;
+  const release = {
+    ...draft,
+    sizeBytes: Number(draft.sizeBytes || 0),
+    rolloutPercentage: Math.max(0, Math.min(100, Number(draft.rolloutPercentage || 0))),
+    targetKioskIds: String(draft.targetKioskIds || "").split(",").map((item) => item.trim().toUpperCase()).filter(Boolean)
+  };
+
+  state.notice = "Publishing signed release...";
+  state.error = "";
+  render();
+  try {
+    await fetchJson("/api/super-admin/releases", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(release)
+    });
+    resetReleaseDraft();
+    state.notice = `Release ${release.version} published.`;
+    await loadSnapshot({ quiet: true });
+  } catch (error) {
+    state.error = error.message || "Release publish failed.";
+    render();
+  }
+}
+
+async function setReleaseActive(releaseId, active) {
+  state.notice = active ? "Resuming release..." : "Pausing release...";
+  render();
+  try {
+    await fetchJson(`/api/super-admin/releases/${encodeURIComponent(releaseId)}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ active })
+    });
+    state.notice = active ? "Release resumed." : "Release paused.";
+    await loadSnapshot({ quiet: true });
+  } catch (error) {
+    state.error = error.message || "Release status change failed.";
+    render();
+  }
+}
+
+async function deleteRelease(releaseId) {
+  if (!window.confirm(`Delete release ${releaseId}?`)) return;
+  state.notice = "Deleting release...";
+  render();
+  try {
+    await fetchJson(`/api/super-admin/releases/${encodeURIComponent(releaseId)}`, { method: "DELETE" });
+    state.notice = "Release deleted.";
+    await loadSnapshot({ quiet: true });
+  } catch (error) {
+    state.error = error.message || "Release delete failed.";
+    render();
   }
 }
 
 function beginCreate(collection) {
+  if (collection === "projects" && !data("kioskAdmins").length) {
+    state.error = "Create a kiosk admin before creating a project.";
+    state.page = "kioskAdmins";
+    render();
+    return;
+  }
+
+  if (collection === "kiosks" && !data("projects").length) {
+    state.error = "Create and allocate a project before creating a kiosk.";
+    state.page = "projects";
+    render();
+    return;
+  }
+
+  if (collection === "services" && !serviceAssignableProjects().length) {
+    state.error = "Create a kiosk under a project before creating services.";
+    render();
+    return;
+  }
+
   state.page = collection;
   state.editor = {
     mode: "create",
@@ -1379,11 +1868,12 @@ function beginCreate(collection) {
   render();
 }
 
-function beginCreateServiceForKiosk() {
-  const kioskId = selectedKioskId();
+function beginCreateServiceForProject() {
+  const projectId = selectedServiceProjectId();
   const draft = clone(collections.services.defaults());
 
-  draft.kioskIds = kioskId ? [kioskId] : [];
+  draft.projectIds = projectId ? [projectId] : [];
+  draft.kioskIds = [];
 
   state.page = "services";
   state.editor = {
@@ -1404,6 +1894,13 @@ function beginEdit(collection, id) {
   if (collection === "services") {
     draft.pricing = clone(record.pricing || pricingFor(record.id));
     draft.templates = clone(record.templates || []);
+    draft.projectIds = Array.isArray(record.projectIds) ? clone(record.projectIds) : [];
+    draft.kioskIds = [];
+    draft.customerSettings = normalizeKioskCustomerSettings(record.customerSettings);
+    draft.printDefaults = normalizeServicePrintDefaults(record.printDefaults);
+  }
+  if (collection === "kiosks") {
+    draft.customerSettings = normalizeKioskCustomerSettings(record.customerSettings);
   }
 
   state.page = collection === "kiosks" || collection === "services" ? "hierarchy" : collection;
@@ -1418,25 +1915,27 @@ function beginEdit(collection, id) {
   render();
 }
 
-async function deleteKioskService(serviceId) {
-  const kioskId = selectedKioskId();
+async function deleteProjectService(serviceId) {
+  const projectId = selectedServiceProjectId();
+  const project = data("projects").find((item) => item.projectId === projectId);
   const service = data("services").find((item) => item.id === serviceId);
 
-  if (!service || !kioskId) return;
+  if (!service || !projectId) return;
 
-  const kioskIds = data("kiosks").map((kiosk) => kiosk.kioskId).filter(Boolean);
-  const assignedIds = Array.isArray(service.kioskIds) ? service.kioskIds : [];
-  const nextKioskIds = assignedIds.length
-    ? assignedIds.filter((id) => id !== kioskId)
-    : kioskIds.filter((id) => id !== kioskId);
-  const shouldDeleteRecord = nextKioskIds.length === 0;
+  const projectIds = serviceAssignableProjects().map((item) => item.projectId);
+  const assignedProjectIds = Array.isArray(service.projectIds) ? service.projectIds : [];
+  const nextProjectIds = assignedProjectIds.length
+    ? assignedProjectIds.filter((id) => id !== projectId)
+    : projectIds.filter((id) => id !== projectId);
+  const shouldDeleteRecord = nextProjectIds.length === 0;
+  const kioskCount = kiosksForProject(projectId).length;
   const message = shouldDeleteRecord
-    ? `Delete service ${service.title || service.id}? It will be removed because no kiosk remains assigned.`
-    : `Remove service ${service.title || service.id} from ${kioskId}? It will remain available for ${nextKioskIds.length} other kiosk${nextKioskIds.length === 1 ? "" : "s"}.`;
+    ? `Delete service ${service.title || service.id}? This is its only assigned project.`
+    : `Remove service ${service.title || service.id} from ${project?.name || projectId}? All ${kioskCount} kiosk${kioskCount === 1 ? "" : "s"} in this project will stop receiving it.`;
 
   if (!window.confirm(message)) return;
 
-  state.notice = shouldDeleteRecord ? "Deleting service..." : "Removing service from kiosk...";
+  state.notice = shouldDeleteRecord ? "Deleting service..." : "Removing service from project...";
   render();
 
   try {
@@ -1451,10 +1950,11 @@ async function deleteKioskService(serviceId) {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           ...service,
-          kioskIds: nextKioskIds
+          projectIds: nextProjectIds,
+          kioskIds: []
         })
       });
-      state.notice = `Service removed from ${kioskId}.`;
+      state.notice = `Service removed from ${project?.name || projectId}.`;
     }
 
     state.editor = null;
@@ -1472,8 +1972,8 @@ function updateDraftField(field, value) {
   if (state.editor.collection === "services") {
     if (field === "enabled") {
       draft.enabled = value === true || value === "true";
-    } else if (field === "kioskIds") {
-      draft.kioskIds = String(value || "").split(",").map((item) => item.trim()).filter(Boolean);
+    } else if (field === "projectIds") {
+      draft.projectIds = String(value || "").split(",").map((item) => slug(item, "")).filter(Boolean);
     } else if (field === "bw" || field === "color") {
       draft.pricing = {
         ...(draft.pricing || {}),
@@ -1481,6 +1981,18 @@ function updateDraftField(field, value) {
       };
     } else if (field === "defaultPages") {
       draft.defaultPages = Math.max(1, Number(value) || 1);
+    } else if (field === "mode") {
+      draft.mode = value === "template" ? "template" : "upload";
+      if (draft.mode === "template" && !draft.templates?.length) {
+        draft.templates = [{
+          id: "blank-form",
+          title: "Sample Form",
+          description: "Blank printable template.",
+          pages: 1,
+          fields: ["Applicant", "Address", "Mobile", "Purpose", "Signature"],
+          imageUrl: ""
+        }];
+      }
     } else {
       draft[field] = value;
       if (field === "title" && !draft.id) draft.id = slug(value, "service");
@@ -1494,8 +2006,54 @@ function updateDraftField(field, value) {
     draft[field] = String(value || "").split(",").map((item) => item.trim().toUpperCase()).filter(Boolean);
   } else if (field === "projectIds") {
     draft[field] = String(value || "").split(",").map((item) => slug(item, "")).filter(Boolean);
+  } else if (state.editor.collection === "kiosks" && (field === "kioskId" || field === "setupCode")) {
+    draft[field] = normalizeKioskCode(value);
   } else {
     draft[field] = fieldConfig.type === "number" ? numeric(value, 0) : value;
+  }
+}
+
+function updateServiceProjectSelection(projectId, checked) {
+  if (!state.editor || state.editor.collection !== "services") return;
+  const id = slug(projectId, "");
+  const selected = new Set(Array.isArray(state.editor.draft.projectIds) ? state.editor.draft.projectIds : []);
+  if (checked) selected.add(id);
+  else selected.delete(id);
+  state.editor.draft.projectIds = [...selected].filter(Boolean);
+}
+
+function updateServiceCustomerSetting(key, checked) {
+  if (!state.editor || state.editor.collection !== "services") return;
+  const draft = state.editor.draft;
+  draft.customerSettings = {
+    ...normalizeKioskCustomerSettings(draft.customerSettings),
+    [key]: Boolean(checked)
+  };
+  if (!draft.customerSettings.bw && !draft.customerSettings.color) {
+    draft.customerSettings.bw = true;
+  }
+}
+
+function updateServicePrintDefault(key, value) {
+  if (!state.editor || state.editor.collection !== "services") return;
+  const draft = state.editor.draft;
+  draft.printDefaults = normalizeServicePrintDefaults({
+    ...(draft.printDefaults || {}),
+    [key]: key === "copies" ? numeric(value, 1) : value
+  });
+}
+
+function updateKioskCustomerSetting(key, checked) {
+  if (!state.editor || state.editor.collection !== "kiosks") return;
+
+  const draft = state.editor.draft;
+  draft.customerSettings = {
+    ...normalizeKioskCustomerSettings(draft.customerSettings),
+    [key]: Boolean(checked)
+  };
+
+  if (!draft.customerSettings.bw && !draft.customerSettings.color) {
+    draft.customerSettings.bw = true;
   }
 }
 
@@ -1538,6 +2096,48 @@ function deleteDraftTemplate(index) {
   render();
 }
 
+function validateEditorImageFile(file) {
+  if (!file) return "Choose an image file.";
+  if (!file.type.startsWith("image/") && !/\.(png|jpe?g|gif|webp)$/i.test(file.name)) {
+    return "Choose a PNG, JPG, GIF, or WebP image.";
+  }
+  if (file.size > 3 * 1024 * 1024) {
+    return "Image must be 3 MB or smaller.";
+  }
+  return "";
+}
+
+async function uploadSuperAdminTemplateImage(file, templateIndex) {
+  if (!state.editor || state.editor.collection !== "services") return;
+
+  const validationError = validateEditorImageFile(file);
+  if (validationError) {
+    state.error = validationError;
+    render();
+    return;
+  }
+
+  state.notice = "Uploading template image...";
+  state.error = "";
+  render();
+
+  try {
+    const formData = new FormData();
+    formData.append("templateImage", file, file.name);
+    const payload = await fetchJson("/api/super-admin/service-image", {
+      method: "POST",
+      body: formData
+    });
+
+    updateDraftTemplate(templateIndex, "imageUrl", payload.imageUrl || "");
+    state.notice = "Template image updated. Save Service to publish it.";
+  } catch (error) {
+    state.error = error.message || "Template image upload failed.";
+  }
+
+  render();
+}
+
 function editorPayload() {
   syncEditorDraftFromDom();
   const draft = clone(state.editor.draft);
@@ -1545,7 +2145,14 @@ function editorPayload() {
   if (state.editor.collection === "services") {
     draft.icon = String(draft.icon || "SV").trim().toUpperCase().slice(0, 3);
     draft.id = slug(draft.id || draft.title, "service");
-    draft.kioskIds = Array.isArray(draft.kioskIds) ? draft.kioskIds : String(draft.kioskIds || "").split(",").map((item) => item.trim()).filter(Boolean);
+    draft.projectIds = Array.isArray(draft.projectIds)
+      ? draft.projectIds.map((item) => slug(item, "")).filter(Boolean)
+      : String(draft.projectIds || "").split(",").map((item) => slug(item, "")).filter(Boolean);
+    const assignableProjectIds = serviceAssignableProjectIds();
+    draft.projectIds = draft.projectIds.filter((projectId) => assignableProjectIds.has(projectId));
+    draft.kioskIds = [];
+    draft.customerSettings = normalizeKioskCustomerSettings(draft.customerSettings);
+    draft.printDefaults = normalizeServicePrintDefaults(draft.printDefaults);
     draft.pricing = {
       bw: numeric(draft.pricing?.bw, 0),
       color: numeric(draft.pricing?.color, 0)
@@ -1577,6 +2184,12 @@ function editorPayload() {
     draft.adminId = draft.adminId ? slug(draft.adminId, "") : "";
   }
 
+  if (state.editor.collection === "kiosks") {
+    draft.kioskId = normalizeKioskCode(draft.kioskId || `KIOSK-${Date.now().toString().slice(-5)}`);
+    draft.setupCode = normalizeKioskCode(draft.setupCode || generateSetupCode());
+    draft.customerSettings = normalizeKioskCustomerSettings(draft.customerSettings);
+  }
+
   return draft;
 }
 
@@ -1589,12 +2202,29 @@ function syncEditorDraftFromDom() {
   document.querySelectorAll("[data-template-field][data-template-index]").forEach((input) => {
     updateDraftTemplate(Number(input.dataset.templateIndex || 0), input.dataset.templateField, input.value);
   });
+  document.querySelectorAll("[data-service-project-id]").forEach((input) => {
+    updateServiceProjectSelection(input.dataset.serviceProjectId, input.checked);
+  });
+  document.querySelectorAll("[data-service-customer-setting]").forEach((input) => {
+    updateServiceCustomerSetting(input.dataset.serviceCustomerSetting, input.checked);
+  });
+  document.querySelectorAll("[data-service-print-default]").forEach((input) => {
+    updateServicePrintDefault(input.dataset.servicePrintDefault, input.value);
+  });
+  document.querySelectorAll("[data-kiosk-customer-setting]").forEach((input) => {
+    updateKioskCustomerSetting(input.dataset.kioskCustomerSetting, input.checked);
+  });
 }
 
 async function saveEditor() {
   if (!state.editor) return;
   const { collection, mode, id } = state.editor;
   const payload = editorPayload();
+  if (collection === "services" && !payload.projectIds.length) {
+    state.error = "Create a kiosk under a project, then select that project for this service.";
+    render();
+    return;
+  }
   const method = mode === "create" ? "POST" : "PUT";
   const path = mode === "create"
     ? `/api/super-admin/${collection}`

@@ -2,7 +2,10 @@ const runtimeConfig = new URLSearchParams(window.location.search);
 const frontendConfig = window.PRINTING_KIOSK_CONFIG || {};
 const currentPage = window.location.pathname.split("/").pop() || "index.html";
 const currentPath = window.location.pathname.replace(/\/+$/, "");
-const isAdminEntry = currentPage === "admin.html" || currentPath.endsWith("/admin") || runtimeConfig.get("panel") === "admin";
+const runtimeDevice = runtimeConfig.get("device");
+const isKioskDeviceEntry = ["electron", "mini-pc"].includes(runtimeDevice);
+const isWebsiteRootEntry = (currentPage === "index.html" || currentPath === "") && !isKioskDeviceEntry;
+const isAdminEntry = isWebsiteRootEntry || currentPage === "admin.html" || currentPath.endsWith("/admin") || runtimeConfig.get("panel") === "admin";
 const DEFAULT_BACKEND_URL = /^https?:$/.test(window.location.protocol) ? window.location.origin : "http://localhost:5080";
 const LOCAL_AGENT_URL = runtimeConfig.get("localAgentUrl") || frontendConfig.localAgentUrl || "http://localhost:5077";
 const BACKEND_URL = (runtimeConfig.get("backendUrl") || frontendConfig.backendUrl || DEFAULT_BACKEND_URL).replace(/\/+$/, "");
@@ -12,11 +15,355 @@ const MAX_FILES_PER_JOB = 10;
 const RECEIPT_REDIRECT_SECONDS = 15;
 const UNASSIGNED_KIOSK_ID = "UNASSIGNED-KIOSK";
 const ADMIN_SESSION_KEY = "printingKioskAdminSession";
+const ADMIN_LANGUAGE_KEY = "printingKioskAdminLanguage";
+const CUSTOMER_LANGUAGE_KEY = "printingKioskCustomerLanguage";
+const ADMIN_LANGUAGES = new Set(["en", "hi", "mr"]);
+const CUSTOMER_LANGUAGES = ADMIN_LANGUAGES;
 const TEST_HOOKS_ENABLED = frontendConfig.testHooks === true ||
   runtimeConfig.get("testHooks") === "true";
 const KIOSK_ID = readConfiguredKioskId();
 const HAS_EXPLICIT_LOCAL_AGENT = Boolean(runtimeConfig.get("localAgentUrl") || frontendConfig.localAgentUrl);
 let localJobSequence = 0;
+
+const ADMIN_TRANSLATION_ROWS = [
+  ["Language", "भाषा", "भाषा"],
+  ["English", "अंग्रेज़ी", "इंग्रजी"],
+  ["Hindi", "हिंदी", "हिंदी"],
+  ["Marathi", "मराठी", "मराठी"],
+  ["PrintHub Admin Console", "PrintHub एडमिन कंसोल", "PrintHub प्रशासक कन्सोल"],
+  ["read-only assigned project data", "असाइन की गई परियोजनाओं का केवल-पढ़ने योग्य डेटा", "नेमून दिलेल्या प्रकल्पांचा केवळ-वाचन डेटा"],
+  ["Logout", "लॉग आउट", "लॉग आउट"],
+  ["Open alerts", "अलर्ट खोलें", "सूचना उघडा"],
+  ["Open navigation", "नेविगेशन खोलें", "नेव्हिगेशन उघडा"],
+  ["Close navigation", "नेविगेशन बंद करें", "नेव्हिगेशन बंद करा"],
+  ["Refresh admin data", "एडमिन डेटा रीफ़्रेश करें", "प्रशासक डेटा रिफ्रेश करा"],
+  ["Navigation", "नेविगेशन", "नेव्हिगेशन"],
+  ["Operate", "संचालन", "संचालन"],
+  ["Support", "सहायता", "सहाय्य"],
+  ["Dashboard", "डैशबोर्ड", "डॅशबोर्ड"],
+  ["Projects", "परियोजनाएँ", "प्रकल्प"],
+  ["Project", "परियोजना", "प्रकल्प"],
+  ["Kiosks", "कियोस्क", "किऑस्क"],
+  ["Kiosk", "कियोस्क", "किऑस्क"],
+  ["Services", "सेवाएँ", "सेवा"],
+  ["Service", "सेवा", "सेवा"],
+  ["Pricing", "मूल्य निर्धारण", "दर व्यवस्थापन"],
+  ["Revenue", "राजस्व", "महसूल"],
+  ["Print History", "प्रिंट इतिहास", "मुद्रण इतिहास"],
+  ["System Status", "सिस्टम स्थिति", "प्रणाली स्थिती"],
+  ["Need Help?", "सहायता चाहिए?", "मदत हवी आहे?"],
+  ["Check kiosk devices and connection status.", "कियोस्क डिवाइस और कनेक्शन की स्थिति जाँचें।", "किऑस्क उपकरणे आणि जोडणीची स्थिती तपासा."],
+  ["Open System Status", "सिस्टम स्थिति खोलें", "प्रणाली स्थिती उघडा"],
+  ["PrintHub Admin Login", "PrintHub एडमिन लॉगिन", "PrintHub प्रशासक लॉगिन"],
+  ["Use your admin credentials. The system opens the right dashboard automatically.", "अपने एडमिन क्रेडेंशियल का उपयोग करें। सिस्टम सही डैशबोर्ड अपने आप खोलेगा।", "आपली प्रशासक लॉगिन माहिती वापरा. प्रणाली योग्य डॅशबोर्ड आपोआप उघडेल."],
+  ["Email or mobile", "ईमेल या मोबाइल", "ईमेल किंवा मोबाइल"],
+  ["Password", "पासवर्ड", "पासवर्ड"],
+  ["Sign in", "साइन इन", "साइन इन"],
+  ["Enter admin email and password.", "एडमिन ईमेल और पासवर्ड दर्ज करें।", "प्रशासक ईमेल आणि पासवर्ड प्रविष्ट करा."],
+  ["Admin login failed.", "एडमिन लॉगिन विफल रहा।", "प्रशासक लॉगिन अयशस्वी झाले."],
+  ["Read-only operational view of your assigned projects and kiosks.", "आपकी असाइन की गई परियोजनाओं और कियोस्क का केवल-पढ़ने योग्य संचालन दृश्य।", "आपल्या नेमून दिलेल्या प्रकल्प आणि किऑस्कचे केवळ-वाचन संचालन दृश्य."],
+  ["Live backend data.", "लाइव बैकएंड डेटा।", "थेट बॅकएंड डेटा."],
+  ["Loading live backend data...", "लाइव बैकएंड डेटा लोड हो रहा है...", "थेट बॅकएंड डेटा लोड होत आहे..."],
+  ["Last updated", "अंतिम अपडेट", "शेवटचे अद्यतन"],
+  ["Today Revenue", "आज का राजस्व", "आजचा महसूल"],
+  ["Today Jobs", "आज के कार्य", "आजची कामे"],
+  ["Failed Jobs", "विफल कार्य", "अयशस्वी कामे"],
+  ["Pages Printed", "प्रिंट किए गए पृष्ठ", "मुद्रित पाने"],
+  ["Pending Refunds", "लंबित रिफंड", "प्रलंबित परतावे"],
+  ["Queue Length", "कतार की लंबाई", "रांगेची लांबी"],
+  ["Live backend total", "लाइव बैकएंड कुल", "थेट बॅकएंड एकूण"],
+  ["Read-only visibility", "केवल-पढ़ने योग्य दृश्य", "केवळ-वाचन दृश्य"],
+  ["Completed and queued jobs", "पूर्ण और कतारबद्ध कार्य", "पूर्ण आणि रांगेतील कामे"],
+  ["Pending super admin review", "सुपर एडमिन समीक्षा लंबित", "सुपर प्रशासक पुनरावलोकन प्रलंबित"],
+  ["No pending records", "कोई लंबित रिकॉर्ड नहीं", "प्रलंबित नोंदी नाहीत"],
+  ["Live job records", "लाइव कार्य रिकॉर्ड", "थेट कामाच्या नोंदी"],
+  ["Revenue Trend", "राजस्व रुझान", "महसूल कल"],
+  ["paid job(s)", "भुगतान किए गए कार्य", "सशुल्क कामे"],
+  ["daily avg", "दैनिक औसत", "दैनिक सरासरी"],
+  ["peak", "सर्वाधिक", "सर्वाधिक"],
+  ["Failure Safe Queue", "विफलता सुरक्षित कतार", "अपयश सुरक्षित रांग"],
+  ["Payment success print failed", "भुगतान सफल, प्रिंट विफल", "पेमेंट यशस्वी, मुद्रण अयशस्वी"],
+  ["Active print queue", "सक्रिय प्रिंट कतार", "सक्रिय मुद्रण रांग"],
+  ["View full queue details", "पूरी कतार का विवरण देखें", "संपूर्ण रांगेचा तपशील पहा"],
+  ["Latest Alerts", "नवीनतम अलर्ट", "नवीनतम सूचना"],
+  ["View all alerts", "सभी अलर्ट देखें", "सर्व सूचना पहा"],
+  ["No live alerts", "कोई लाइव अलर्ट नहीं", "थेट सूचना नाहीत"],
+  ["Open", "खोलें", "उघडा"],
+  ["Revenue graph for your assigned kiosks and projects.", "आपके असाइन किए गए कियोस्क और परियोजनाओं का राजस्व ग्राफ।", "आपल्या नेमून दिलेल्या किऑस्क आणि प्रकल्पांचा महसूल आलेख."],
+  ["Period Revenue", "अवधि का राजस्व", "कालावधी महसूल"],
+  ["Last 14 days", "पिछले 14 दिन", "मागील 14 दिवस"],
+  ["Paid Jobs", "भुगतान किए गए कार्य", "सशुल्क कामे"],
+  ["Included in graph", "ग्राफ में शामिल", "आलेखात समाविष्ट"],
+  ["Daily Average", "दैनिक औसत", "दैनिक सरासरी"],
+  ["Across this period", "इस अवधि में", "या कालावधीत"],
+  ["Read-only print history for your assigned projects and kiosks.", "आपकी असाइन की गई परियोजनाओं और कियोस्क का केवल-पढ़ने योग्य प्रिंट इतिहास।", "आपल्या नेमून दिलेल्या प्रकल्प आणि किऑस्कचा केवळ-वाचन मुद्रण इतिहास."],
+  ["Search job, kiosk, branch", "कार्य, कियोस्क या शाखा खोजें", "काम, किऑस्क किंवा शाखा शोधा"],
+  ["All statuses", "सभी स्थितियाँ", "सर्व स्थिती"],
+  ["Success", "सफल", "यशस्वी"],
+  ["Failed", "विफल", "अयशस्वी"],
+  ["Refund", "रिफंड", "परतावा"],
+  ["Job ID", "कार्य आईडी", "काम आयडी"],
+  ["Date", "दिनांक", "दिनांक"],
+  ["Branch", "शाखा", "शाखा"],
+  ["File", "फ़ाइल", "फाइल"],
+  ["Pages", "पृष्ठ", "पाने"],
+  ["Copies", "प्रतियाँ", "प्रती"],
+  ["Amount", "राशि", "रक्कम"],
+  ["Payment", "भुगतान", "पेमेंट"],
+  ["Print", "प्रिंट", "मुद्रण"],
+  ["View", "देखें", "पहा"],
+  ["No backend print jobs yet.", "अभी कोई बैकएंड प्रिंट कार्य नहीं है।", "अद्याप बॅकएंड मुद्रण कामे नाहीत."],
+  ["Read-only health data for kiosks in your assigned projects.", "आपकी असाइन की गई परियोजनाओं के कियोस्क का केवल-पढ़ने योग्य स्वास्थ्य डेटा।", "आपल्या नेमून दिलेल्या प्रकल्पांतील किऑस्कचा केवळ-वाचन आरोग्य डेटा."],
+  ["Status", "स्थिति", "स्थिती"],
+  ["Last Online", "अंतिम ऑनलाइन", "शेवटचे ऑनलाइन"],
+  ["Online", "ऑनलाइन", "ऑनलाइन"],
+  ["online", "ऑनलाइन", "ऑनलाइन"],
+  ["Offline", "ऑफलाइन", "ऑफलाइन"],
+  ["offline", "ऑफलाइन", "ऑफलाइन"],
+  ["Unknown", "अज्ञात", "अज्ञात"],
+  ["Unassigned", "असाइन नहीं", "नेमलेले नाही"],
+  ["No kiosk health records are assigned to this account.", "इस खाते को कोई कियोस्क स्वास्थ्य रिकॉर्ड असाइन नहीं है।", "या खात्याला किऑस्क आरोग्य नोंदी नेमलेल्या नाहीत."],
+  ["Service Management", "सेवा प्रबंधन", "सेवा व्यवस्थापन"],
+  ["Services are listed first. Forms appear underneath their parent service. Open a service to create or update details.", "सेवाएँ पहले सूचीबद्ध हैं। फ़ॉर्म उनकी मूल सेवा के नीचे दिखाई देते हैं। विवरण बनाने या अपडेट करने के लिए सेवा खोलें।", "सेवा प्रथम सूचीबद्ध आहेत. फॉर्म त्यांच्या मूळ सेवेखाली दिसतात. तपशील तयार किंवा अद्यतनित करण्यासाठी सेवा उघडा."],
+  ["Create Service", "सेवा बनाएँ", "सेवा तयार करा"],
+  ["Save Changes", "बदल सहेजें", "बदल जतन करा"],
+  ["Unsaved service changes. Use Save Services to publish them to the kiosk backend.", "सेवा के बदलाव सहेजे नहीं गए हैं। उन्हें कियोस्क बैकएंड पर प्रकाशित करने के लिए सेवाएँ सहेजें।", "सेवेतील बदल जतन केलेले नाहीत. ते किऑस्क बॅकएंडवर प्रकाशित करण्यासाठी सेवा जतन करा."],
+  ["Enabled", "सक्षम", "सक्षम"],
+  ["Disabled", "अक्षम", "अक्षम"],
+  ["Off", "बंद", "बंद"],
+  ["Edit", "संपादित करें", "संपादित करा"],
+  ["Delete", "हटाएँ", "हटवा"],
+  ["None", "कोई नहीं", "काहीही नाही"],
+  ["Forms", "फ़ॉर्म", "फॉर्म"],
+  ["Forms under this service", "इस सेवा के फ़ॉर्म", "या सेवेतील फॉर्म"],
+  ["No forms. Customer uses QR upload for PDF, DOC, image, and other supported documents.", "कोई फ़ॉर्म नहीं। ग्राहक PDF, DOC, इमेज और अन्य समर्थित दस्तावेज़ों के लिए QR अपलोड उपयोग करता है।", "फॉर्म नाहीत. ग्राहक PDF, DOC, प्रतिमा आणि इतर समर्थित कागदपत्रांसाठी QR अपलोड वापरतो."],
+  ["No forms added yet. Edit this service to create forms.", "अभी कोई फ़ॉर्म नहीं जोड़ा गया। फ़ॉर्म बनाने के लिए इस सेवा को संपादित करें।", "अद्याप फॉर्म जोडलेले नाहीत. फॉर्म तयार करण्यासाठी ही सेवा संपादित करा."],
+  ["Create a kiosk under an assigned project before creating services.", "सेवाएँ बनाने से पहले असाइन की गई परियोजना के अंतर्गत कियोस्क बनाएँ।", "सेवा तयार करण्यापूर्वी नेमून दिलेल्या प्रकल्पात किऑस्क तयार करा."],
+  ["Edit Service", "सेवा संपादित करें", "सेवा संपादित करा"],
+  ["Update service details on this page, then save to return to the Services list.", "इस पृष्ठ पर सेवा विवरण अपडेट करें, फिर सेवा सूची पर लौटने के लिए सहेजें।", "या पृष्ठावर सेवेचा तपशील अद्यतनित करा, नंतर सेवा यादीत परतण्यासाठी जतन करा."],
+  ["Back to Services", "सेवाओं पर वापस जाएँ", "सेवांकडे परत जा"],
+  ["Save Service", "सेवा सहेजें", "सेवा जतन करा"],
+  ["New Service", "नई सेवा", "नवीन सेवा"],
+  ["Yes", "हाँ", "होय"],
+  ["No", "नहीं", "नाही"],
+  ["Mode", "मोड", "प्रकार"],
+  ["QR upload / image upload", "QR अपलोड / इमेज अपलोड", "QR अपलोड / प्रतिमा अपलोड"],
+  ["Form templates", "फ़ॉर्म टेम्पलेट", "फॉर्म साचे"],
+  ["Icon", "आइकन", "चिन्ह"],
+  ["Service Name", "सेवा का नाम", "सेवेचे नाव"],
+  ["Description", "विवरण", "वर्णन"],
+  ["B/W Rate", "श्याम-श्वेत दर", "कृष्णधवल दर"],
+  ["Color Rate", "रंगीन दर", "रंगीत दर"],
+  ["Upload Service", "अपलोड सेवा", "अपलोड सेवा"],
+  ["This service will show QR upload to customers. Change mode to Form templates if it should contain forms.", "यह सेवा ग्राहकों को QR अपलोड दिखाएगी। यदि इसमें फ़ॉर्म होने चाहिए तो मोड को फ़ॉर्म टेम्पलेट में बदलें।", "ही सेवा ग्राहकांना QR अपलोड दाखवेल. यात फॉर्म असावेत तर प्रकार फॉर्म साच्यांमध्ये बदला."],
+  ["Cancel", "रद्द करें", "रद्द करा"],
+  ["Forms under", "के अंतर्गत फ़ॉर्म", "अंतर्गत फॉर्म"],
+  ["Add or update the forms that belong to this service.", "इस सेवा से संबंधित फ़ॉर्म जोड़ें या अपडेट करें।", "या सेवेशी संबंधित फॉर्म जोडा किंवा अद्यतनित करा."],
+  ["Add Form", "फ़ॉर्म जोड़ें", "फॉर्म जोडा"],
+  ["Remove Form", "फ़ॉर्म हटाएँ", "फॉर्म काढा"],
+  ["Form Name", "फ़ॉर्म का नाम", "फॉर्मचे नाव"],
+  ["Default Paper Size", "डिफ़ॉल्ट पेपर आकार", "डीफॉल्ट कागद आकार"],
+  ["Printer default (recommended)", "प्रिंटर डिफ़ॉल्ट (अनुशंसित)", "प्रिंटर डीफॉल्ट (शिफारस केलेले)"],
+  ["Default Orientation", "डिफ़ॉल्ट दिशा", "डीफॉल्ट दिशा"],
+  ["Portrait", "पोर्ट्रेट", "उभे"],
+  ["Landscape", "लैंडस्केप", "आडवे"],
+  ["Fields", "फ़ील्ड", "फील्ड"],
+  ["Image URL", "इमेज URL", "प्रतिमा URL"],
+  ["Update Image", "इमेज अपडेट करें", "प्रतिमा अद्यतनित करा"],
+  ["No forms yet. Use Add Form to create the first form for this service.", "अभी कोई फ़ॉर्म नहीं है। इस सेवा का पहला फ़ॉर्म बनाने के लिए फ़ॉर्म जोड़ें उपयोग करें।", "अद्याप फॉर्म नाहीत. या सेवेसाठी पहिला फॉर्म तयार करण्यासाठी फॉर्म जोडा वापरा."],
+  ["Pricing Management", "मूल्य प्रबंधन", "दर व्यवस्थापन"],
+  ["Set page-wise B/W and color rates for each customer service.", "प्रत्येक ग्राहक सेवा के लिए प्रति पृष्ठ श्याम-श्वेत और रंगीन दर निर्धारित करें।", "प्रत्येक ग्राहक सेवेसाठी पानानुसार कृष्णधवल आणि रंगीत दर ठरवा."],
+  ["Save Pricing", "मूल्य सहेजें", "दर जतन करा"],
+  ["B/W per page", "प्रति पृष्ठ श्याम-श्वेत", "प्रति पान कृष्णधवल"],
+  ["Color per page", "प्रति पृष्ठ रंगीन", "प्रति पान रंगीत"],
+  ["Assigned Projects", "असाइन की गई परियोजनाएँ", "नेमून दिलेले प्रकल्प"],
+  ["Projects allocated to your kiosk admin account. Create and manage kiosks from the Kiosks page.", "आपके कियोस्क एडमिन खाते को आवंटित परियोजनाएँ। कियोस्क पृष्ठ से कियोस्क बनाएँ और प्रबंधित करें।", "आपल्या किऑस्क प्रशासक खात्याला दिलेले प्रकल्प. किऑस्क पृष्ठावरून किऑस्क तयार आणि व्यवस्थापित करा."],
+  ["Project Name", "परियोजना का नाम", "प्रकल्पाचे नाव"],
+  ["No projects are assigned to this account.", "इस खाते को कोई परियोजना असाइन नहीं है।", "या खात्याला कोणतेही प्रकल्प नेमलेले नाहीत."],
+  ["Assigned Kiosks", "असाइन किए गए कियोस्क", "नेमून दिलेले किऑस्क"],
+  ["Create and manage kiosks inside your allocated projects.", "अपनी आवंटित परियोजनाओं के अंतर्गत कियोस्क बनाएँ और प्रबंधित करें।", "आपल्या नेमून दिलेल्या प्रकल्पांमध्ये किऑस्क तयार आणि व्यवस्थापित करा."],
+  ["Create Kiosk", "कियोस्क बनाएँ", "किऑस्क तयार करा"],
+  ["Kiosk ID", "कियोस्क आईडी", "किऑस्क आयडी"],
+  ["Name", "नाम", "नाव"],
+  ["Activation", "सक्रियण", "सक्रियकरण"],
+  ["Actions", "कार्रवाई", "कृती"],
+  ["Activated", "सक्रिय", "सक्रिय"],
+  ["Not activated", "सक्रिय नहीं", "सक्रिय नाही"],
+  ["No kiosks are assigned to this account.", "इस खाते को कोई कियोस्क असाइन नहीं है।", "या खात्याला कोणतेही किऑस्क नेमलेले नाहीत."],
+  ["Edit Kiosk", "कियोस्क संपादित करें", "किऑस्क संपादित करा"],
+  ["Mini PC setup uses the kiosk ID and setup code.", "Mini PC सेटअप कियोस्क आईडी और सेटअप कोड का उपयोग करता है।", "Mini PC सेटअप किऑस्क आयडी आणि सेटअप कोड वापरतो."],
+  ["Close", "बंद करें", "बंद करा"],
+  ["No assigned projects found. Ask the super admin to allocate a project first.", "कोई असाइन की गई परियोजना नहीं मिली। पहले सुपर एडमिन से परियोजना आवंटित करने को कहें।", "नेमून दिलेले प्रकल्प आढळले नाहीत. प्रथम सुपर प्रशासकाला प्रकल्प देण्यास सांगा."],
+  ["Mini PC Setup Code", "Mini PC सेटअप कोड", "Mini PC सेटअप कोड"],
+  ["Save Kiosk", "कियोस्क सहेजें", "किऑस्क जतन करा"],
+  ["Notifications", "सूचनाएँ", "सूचना"],
+  ["Dashboard, email, SMS, and WhatsApp alerts can be wired here.", "डैशबोर्ड, ईमेल, SMS और WhatsApp अलर्ट यहाँ जोड़े जा सकते हैं।", "डॅशबोर्ड, ईमेल, SMS आणि WhatsApp सूचना येथे जोडता येतात."],
+  ["Printer offline", "प्रिंटर ऑफलाइन", "प्रिंटर ऑफलाइन"],
+  ["Printer is not ready", "प्रिंटर तैयार नहीं है", "प्रिंटर तयार नाही"],
+  ["Payment success but print failed", "भुगतान सफल लेकिन प्रिंट विफल", "पेमेंट यशस्वी पण मुद्रण अयशस्वी"],
+  ["Refund request", "रिफंड अनुरोध", "परतावा विनंती"],
+  ["Backend and assigned kiosk checks are clear.", "बैकएंड और असाइन किए गए कियोस्क की जाँच ठीक है।", "बॅकएंड आणि नेमून दिलेल्या किऑस्कची तपासणी व्यवस्थित आहे."],
+  ["Previous", "पिछला", "मागील"],
+  ["Next", "अगला", "पुढील"],
+  ["Page", "पृष्ठ", "पान"],
+  ["of", "में से", "पैकी"],
+  ["records", "रिकॉर्ड", "नोंदी"],
+  ["Saving pricing...", "मूल्य सहेजा जा रहा है...", "दर जतन होत आहेत..."],
+  ["Pricing saved for all services.", "सभी सेवाओं का मूल्य सहेजा गया।", "सर्व सेवांचे दर जतन झाले."],
+  ["Saving service...", "सेवा सहेजी जा रही है...", "सेवा जतन होत आहे..."],
+  ["Saving services...", "सेवाएँ सहेजी जा रही हैं...", "सेवा जतन होत आहेत..."],
+  ["Services saved for this kiosk project.", "इस कियोस्क परियोजना की सेवाएँ सहेजी गईं।", "या किऑस्क प्रकल्पासाठी सेवा जतन झाल्या."],
+  ["Uploading image...", "इमेज अपलोड हो रही है...", "प्रतिमा अपलोड होत आहे..."],
+  ["Service name is required.", "सेवा का नाम आवश्यक है।", "सेवेचे नाव आवश्यक आहे."],
+  ["At least one service must remain.", "कम से कम एक सेवा रहनी चाहिए।", "किमान एक सेवा राहणे आवश्यक आहे."],
+  ["Creating kiosk...", "कियोस्क बनाया जा रहा है...", "किऑस्क तयार होत आहे..."],
+  ["Saving kiosk...", "कियोस्क सहेजा जा रहा है...", "किऑस्क जतन होत आहे..."],
+  ["Deleting kiosk...", "कियोस्क हटाया जा रहा है...", "किऑस्क हटवला जात आहे..."],
+  ["Enter a kiosk ID.", "कियोस्क आईडी दर्ज करें।", "किऑस्क आयडी प्रविष्ट करा."],
+  ["Select a project.", "परियोजना चुनें।", "प्रकल्प निवडा."],
+  ["Kiosk not found.", "कियोस्क नहीं मिला।", "किऑस्क सापडला नाही."],
+  ["No", "नहीं", "नाही"]
+];
+
+const ADMIN_TRANSLATIONS = {
+  hi: Object.fromEntries(ADMIN_TRANSLATION_ROWS.map(([english, hindi]) => [english, hindi])),
+  mr: Object.fromEntries(ADMIN_TRANSLATION_ROWS.map(([english, , marathi]) => [english, marathi]))
+};
+
+const CUSTOMER_TRANSLATION_ROWS = [
+  ["Language", "भाषा", "भाषा"],
+  ["English", "अंग्रेज़ी", "इंग्रजी"],
+  ["Hindi", "हिंदी", "हिंदी"],
+  ["Marathi", "मराठी", "मराठी"],
+  ["PrintHub Kiosk", "प्रिंटहब कियोस्क", "प्रिंटहब किऑस्क"],
+  ["Government and education ready", "सरकारी और शिक्षा सेवाओं के लिए तैयार", "सरकारी आणि शैक्षणिक सेवांसाठी तयार"],
+  ["Online", "ऑनलाइन", "ऑनलाइन"],
+  ["Offline", "ऑफलाइन", "ऑफलाइन"],
+  ["New Session", "नया सत्र", "नवे सत्र"],
+  ["Customer Flow", "ग्राहक प्रक्रिया", "ग्राहक प्रक्रिया"],
+  ["Services", "सेवाएँ", "सेवा"],
+  ["Upload", "अपलोड", "अपलोड"],
+  ["Preview", "पूर्वावलोकन", "पूर्वावलोकन"],
+  ["Payment", "भुगतान", "पेमेंट"],
+  ["Receipt", "रसीद", "पावती"],
+  ["Kiosk setup required", "कियोस्क सेटअप आवश्यक है", "किऑस्क सेटअप आवश्यक आहे"],
+  ["Ask the kiosk admin for this machine's kiosk ID and setup code.", "इस मशीन की कियोस्क आईडी और सेटअप कोड के लिए कियोस्क एडमिन से पूछें।", "या मशीनचा किऑस्क आयडी आणि सेटअप कोडसाठी किऑस्क प्रशासकाला विचारा."],
+  ["Available service", "उपलब्ध सेवा", "उपलब्ध सेवा"],
+  ["Choose service", "सेवा चुनें", "सेवा निवडा"],
+  ["This service is available on this kiosk.", "यह सेवा इस कियोस्क पर उपलब्ध है।", "ही सेवा या किऑस्कवर उपलब्ध आहे."],
+  ["Select what you need to print.", "जो प्रिंट करना है उसे चुनें।", "जे मुद्रित करायचे आहे ते निवडा."],
+  ["Choose form template", "फॉर्म टेम्पलेट चुनें", "फॉर्म साचा निवडा"],
+  ["Print Blank Form", "खाली फॉर्म प्रिंट करें", "रिकामा फॉर्म मुद्रित करा"],
+  ["Back to Services", "सेवाओं पर वापस जाएँ", "सेवांकडे परत जा"],
+  ["Upload from phone", "फोन से अपलोड करें", "फोनवरून अपलोड करा"],
+  ["Scan the QR code to send your documents.", "अपने दस्तावेज़ भेजने के लिए QR कोड स्कैन करें।", "आपली कागदपत्रे पाठवण्यासाठी QR कोड स्कॅन करा."],
+  ["Preparing QR code", "QR कोड तैयार हो रहा है", "QR कोड तयार होत आहे"],
+  ["Starting secure mobile upload session...", "सुरक्षित मोबाइल अपलोड सत्र शुरू हो रहा है...", "सुरक्षित मोबाइल अपलोड सत्र सुरू होत आहे..."],
+  ["QR service offline", "QR सेवा ऑफलाइन है", "QR सेवा ऑफलाइन आहे"],
+  ["Start the backend service, then generate a new QR.", "बैकएंड सेवा शुरू करें, फिर नया QR बनाएँ।", "बॅकएंड सेवा सुरू करा, मग नवीन QR तयार करा."],
+  ["Upload QR code", "अपलोड QR कोड", "अपलोड QR कोड"],
+  ["Preview and confirm", "पूर्वावलोकन करें और पुष्टि करें", "पूर्वावलोकन करा आणि पुष्टी करा"],
+  ["Review the document and confirm the print details.", "दस्तावेज़ देखें और प्रिंट विवरण की पुष्टि करें।", "दस्तऐवज तपासा आणि मुद्रण तपशीलांची पुष्टी करा."],
+  ["Print settings", "प्रिंट सेटिंग्स", "मुद्रण सेटिंग्ज"],
+  ["Document", "दस्तावेज़", "दस्तऐवज"],
+  ["Page Color", "पेज रंग", "पानाचा रंग"],
+  ["B/W", "श्याम-श्वेत", "कृष्णधवल"],
+  ["Color", "रंगीन", "रंगीत"],
+  ["Page Copies", "पेज प्रतियाँ", "पानाच्या प्रती"],
+  ["Total Pages", "कुल पेज", "एकूण पाने"],
+  ["Total", "कुल", "एकूण"],
+  ["Continue to Payment", "भुगतान पर जाएँ", "पेमेंटकडे जा"],
+  ["Replace Document", "दस्तावेज़ बदलें", "दस्तऐवज बदला"],
+  ["Back", "वापस", "मागे"],
+  ["No file selected", "कोई फ़ाइल नहीं चुनी गई", "कोणतीही फाइल निवडलेली नाही"],
+  ["Upload a file to see the preview.", "पूर्वावलोकन देखने के लिए फ़ाइल अपलोड करें।", "पूर्वावलोकन पाहण्यासाठी फाइल अपलोड करा."],
+  ["PDF preview unavailable", "PDF पूर्वावलोकन उपलब्ध नहीं है", "PDF पूर्वावलोकन उपलब्ध नाही"],
+  ["The file is valid. Continue after checking file details.", "फ़ाइल मान्य है। फ़ाइल विवरण जाँचने के बाद आगे बढ़ें।", "फाइल योग्य आहे. फाइल तपशील तपासल्यानंतर पुढे जा."],
+  ["Uploaded document preview", "अपलोड दस्तावेज़ पूर्वावलोकन", "अपलोड दस्तऐवज पूर्वावलोकन"],
+  ["Document preview", "दस्तावेज़ पूर्वावलोकन", "दस्तऐवज पूर्वावलोकन"],
+  ["Uploaded document", "अपलोड किया गया दस्तावेज़", "अपलोड केलेला दस्तऐवज"],
+  ["This uploaded document is ready for printing. A full DOC/DOCX visual preview needs server-side conversion to PDF.", "यह अपलोड किया गया दस्तावेज़ प्रिंट के लिए तैयार है। पूरे DOC/DOCX दृश्य पूर्वावलोकन के लिए सर्वर पर PDF रूपांतरण चाहिए।", "हा अपलोड केलेला दस्तऐवज मुद्रणासाठी तयार आहे. संपूर्ण DOC/DOCX दृश्य पूर्वावलोकनासाठी सर्व्हरवर PDF रूपांतरण आवश्यक आहे."],
+  ["Preview placeholder", "पूर्वावलोकन स्थान", "पूर्वावलोकन जागा"],
+  ["A real uploaded PDF or image will render here.", "अपलोड किया गया असली PDF या चित्र यहाँ दिखेगा।", "अपलोड केलेला खरा PDF किंवा प्रतिमा येथे दिसेल."],
+  ["Color Mode", "रंग मोड", "रंग मोड"],
+  ["Copies", "प्रतियाँ", "प्रती"],
+  ["Pay the confirmed total securely to start printing.", "प्रिंट शुरू करने के लिए पुष्टि की गई कुल राशि सुरक्षित रूप से चुकाएँ।", "मुद्रण सुरू करण्यासाठी पुष्टी केलेली एकूण रक्कम सुरक्षितपणे भरा."],
+  ["Total payable", "कुल देय", "एकूण देय"],
+  ["Payment received", "भुगतान प्राप्त हुआ", "पेमेंट प्राप्त झाले"],
+  ["Pay with Razorpay", "Razorpay से भुगतान करें", "Razorpay ने पेमेंट करा"],
+  ["Order created", "ऑर्डर बनाया गया", "ऑर्डर तयार झाला"],
+  ["Checkout opened", "चेकआउट खुला", "चेकआउट उघडले"],
+  ["Signature verified", "हस्ताक्षर सत्यापित", "स्वाक्षरी सत्यापित"],
+  ["Printing documents", "दस्तावेज़ प्रिंट हो रहे हैं", "दस्तऐवज मुद्रित होत आहेत"],
+  ["Printer is offline. Payment will be available when it is online.", "प्रिंटर ऑफलाइन है। ऑनलाइन होने पर भुगतान उपलब्ध होगा।", "प्रिंटर ऑफलाइन आहे. ऑनलाइन झाल्यावर पेमेंट उपलब्ध होईल."],
+  ["Processing...", "प्रक्रिया हो रही है...", "प्रक्रिया सुरू आहे..."],
+  ["Pay", "भुगतान करें", "पेमेंट करा"],
+  ["Done", "पूरा", "पूर्ण"],
+  ["Active", "सक्रिय", "सक्रिय"],
+  ["Pending", "लंबित", "प्रलंबित"],
+  ["Printing needs attention", "प्रिंटिंग पर ध्यान चाहिए", "मुद्रणाकडे लक्ष देणे आवश्यक"],
+  ["The paid job is saved in admin history and can be retried without charging again.", "भुगतान किया गया कार्य एडमिन इतिहास में सहेजा गया है और दोबारा शुल्क लिए बिना फिर से कोशिश की जा सकती है।", "सशुल्क काम प्रशासक इतिहासात जतन केले आहे आणि पुन्हा शुल्क न घेता पुन्हा प्रयत्न करता येईल."],
+  ["Recovery Options", "रिकवरी विकल्प", "पुनर्प्राप्ती पर्याय"],
+  ["Success", "सफल", "यशस्वी"],
+  ["Failed", "विफल", "अयशस्वी"],
+  ["Queue", "कतार", "रांग"],
+  ["Saved for retry", "फिर कोशिश के लिए सहेजा गया", "पुन्हा प्रयत्नासाठी जतन केले"],
+  ["Refund", "रिफंड", "परतावा"],
+  ["Available if retry fails", "फिर कोशिश विफल होने पर उपलब्ध", "पुन्हा प्रयत्न अपयशी झाल्यास उपलब्ध"],
+  ["Retry Print", "प्रिंट फिर कोशिश करें", "मुद्रण पुन्हा प्रयत्न करा"],
+  ["Request Refund", "रिफंड माँगें", "परतावा मागा"],
+  ["Printing completed successfully.", "प्रिंटिंग सफलतापूर्वक पूरी हुई।", "मुद्रण यशस्वीरित्या पूर्ण झाले."],
+  ["Payment receipt", "भुगतान रसीद", "पेमेंट पावती"],
+  ["Job ID", "कार्य आईडी", "काम आयडी"],
+  ["Documents", "दस्तावेज़", "दस्तऐवज"],
+  ["Pages", "पेज", "पाने"],
+  ["Amount", "राशि", "रक्कम"],
+  ["Status", "स्थिति", "स्थिती"],
+  ["Return Home", "होम पर लौटें", "मुख्य पानावर परत जा"],
+  ["Service", "सेवा", "सेवा"],
+  ["File", "फ़ाइल", "फाइल"],
+  ["Waiting", "प्रतीक्षा", "प्रतीक्षा"],
+  ["Session", "सत्र", "सत्र"],
+  ["B/W rate", "श्याम-श्वेत दर", "कृष्णधवल दर"],
+  ["Color rate", "रंगीन दर", "रंगीत दर"],
+  ["B/W per page", "प्रति पेज श्याम-श्वेत", "प्रति पान कृष्णधवल"],
+  ["Color per page", "प्रति पेज रंगीन", "प्रति पान रंगीत"],
+  ["Print Document", "दस्तावेज़ प्रिंट करें", "दस्तऐवज मुद्रित करा"],
+  ["Upload PDF, Word, or image files and print after preview.", "PDF, Word या चित्र फ़ाइलें अपलोड करें और पूर्वावलोकन के बाद प्रिंट करें।", "PDF, Word किंवा प्रतिमा फाइल अपलोड करा आणि पूर्वावलोकनानंतर मुद्रित करा."],
+  ["Scan Document", "दस्तावेज़ स्कैन करें", "दस्तऐवज स्कॅन करा"],
+  ["Scan paper documents to PDF with receipt and admin tracking.", "कागज़ी दस्तावेज़ों को रसीद और एडमिन ट्रैकिंग के साथ PDF में स्कैन करें।", "कागदी दस्तऐवज पावती आणि प्रशासक ट्रॅकिंगसह PDF मध्ये स्कॅन करा."],
+  ["Copy Document", "दस्तावेज़ कॉपी करें", "दस्तऐवज कॉपी करा"],
+  ["Create quick photocopies with B/W or color pricing.", "श्याम-श्वेत या रंगीन दरों के साथ तुरंत फोटोकॉपी बनाएँ।", "कृष्णधवल किंवा रंगीत दरांसह जलद फोटोकॉपी करा."],
+  ["Govt Form Print", "सरकारी फॉर्म प्रिंट", "सरकारी फॉर्म मुद्रण"],
+  ["Print blank government form templates without upload.", "बिना अपलोड खाली सरकारी फॉर्म टेम्पलेट प्रिंट करें।", "अपलोडशिवाय रिकामे सरकारी फॉर्म साचे मुद्रित करा."],
+  ["College Form Print", "कॉलेज फॉर्म प्रिंट", "कॉलेज फॉर्म मुद्रण"],
+  ["Print admission, exam, certificate, and fee forms.", "प्रवेश, परीक्षा, प्रमाणपत्र और शुल्क फॉर्म प्रिंट करें।", "प्रवेश, परीक्षा, प्रमाणपत्र आणि फी फॉर्म मुद्रित करा."],
+  ["Certificate Print", "प्रमाणपत्र प्रिंट", "प्रमाणपत्र मुद्रण"],
+  ["Print certificates and supporting documents safely.", "प्रमाणपत्र और सहायक दस्तावेज़ सुरक्षित रूप से प्रिंट करें।", "प्रमाणपत्रे आणि सहाय्यक दस्तऐवज सुरक्षितपणे मुद्रित करा."]
+];
+
+const CUSTOMER_TRANSLATIONS = {
+  hi: Object.fromEntries(CUSTOMER_TRANSLATION_ROWS.map(([english, hindi]) => [english, hindi])),
+  mr: Object.fromEntries(CUSTOMER_TRANSLATION_ROWS.map(([english, , marathi]) => [english, marathi]))
+};
+
+function readStoredAdminLanguage() {
+  try {
+    const language = window.localStorage.getItem(ADMIN_LANGUAGE_KEY) || "en";
+    return ADMIN_LANGUAGES.has(language) ? language : "en";
+  } catch {
+    return "en";
+  }
+}
+
+function readStoredCustomerLanguage() {
+  try {
+    const language = window.localStorage.getItem(CUSTOMER_LANGUAGE_KEY) || "en";
+    return CUSTOMER_LANGUAGES.has(language) ? language : "en";
+  } catch {
+    return "en";
+  }
+}
 
 let services = [
   {
@@ -106,6 +453,21 @@ const customerSteps = [
 
 const allowedUploadExtensions = ["PDF", "DOC", "DOCX", "JPG", "JPEG", "PNG"];
 const customerUploadExtensions = ["PDF", "JPG", "JPEG", "PNG"];
+const PRINT_PAPER_SIZES = ["A4", "A3", "Letter", "Legal"];
+const DEFAULT_KIOSK_CUSTOMER_SETTINGS = Object.freeze({
+  bw: true,
+  color: true,
+  copies: true
+});
+const CUSTOMER_VISIBLE_SETTING_KEYS = new Set(["bw", "color", "copies"]);
+const DEFAULT_SERVICE_PRINT_DEFAULTS = Object.freeze({
+  colorMode: "bw",
+  copies: 1,
+  paperSize: "A4",
+  sides: "single",
+  orientation: "portrait",
+  range: "all"
+});
 
 let formTemplates = {
   "govt-form": [
@@ -188,7 +550,10 @@ const state = {
   adminAuthed: false,
   adminToken: "",
   adminAccount: null,
+  adminLanguage: readStoredAdminLanguage(),
+  customerLanguage: readStoredCustomerLanguage(),
   adminPage: runtimeConfig.get("adminPage") || "dashboard",
+  adminNavOpen: false,
   adminLoginError: "",
   adminLoginDraft: {
     email: "",
@@ -212,6 +577,7 @@ const state = {
     range: "all",
     staple: "no"
   },
+  settingsCustomized: false,
   printer: {
     online: false,
     checking: true,
@@ -220,6 +586,9 @@ const state = {
     toner: "Unknown",
     queue: 0,
     supportsColor: null,
+    supportsDuplex: null,
+    defaultPaperSize: "A4",
+    paperSizes: [...PRINT_PAPER_SIZES],
     scanner: "Connected",
     internet: "Online",
     agent: "Checking",
@@ -252,12 +621,24 @@ const state = {
   },
   adminPoller: null,
   adminPagination: {},
+  kioskCreate: {
+    kioskId: "",
+    name: "",
+    projectId: "",
+    branch: "",
+    setupCode: ""
+  },
+  kioskCreateStatus: "",
+  kioskEditorOpen: false,
+  kioskEditId: "",
   kiosk: {
     kioskId: KIOSK_ID,
     name: "",
     branch: "",
+    projectId: "",
     status: ""
   },
+  kioskCustomerSettings: { ...DEFAULT_KIOSK_CUSTOMER_SETTINGS },
   pricing: readStoredPricing(),
   pricingSaveStatus: "",
   servicesDirty: false,
@@ -282,6 +663,172 @@ function uiIcon(name, size = 20) {
   return window.PrintHubUI?.icon(name, size) || "";
 }
 
+function adminLocale() {
+  return {
+    en: "en-IN",
+    hi: "hi-IN",
+    mr: "mr-IN"
+  }[state.adminLanguage] || "en-IN";
+}
+
+function storeAdminLanguage() {
+  try {
+    window.localStorage.setItem(ADMIN_LANGUAGE_KEY, state.adminLanguage);
+  } catch {
+    // Language selection still works for the current session when storage is unavailable.
+  }
+}
+
+function storeCustomerLanguage() {
+  try {
+    window.localStorage.setItem(CUSTOMER_LANGUAGE_KEY, state.customerLanguage);
+  } catch {
+    // Language selection still works for the current session when storage is unavailable.
+  }
+}
+
+function customerTranslateText(value) {
+  const text = String(value || "").trim();
+  const language = state.customerLanguage;
+  if (!text || language === "en") return text;
+
+  const translations = CUSTOMER_TRANSLATIONS[language] || {};
+  if (translations[text]) return translations[text];
+
+  const translated = (english) => translations[english] || english;
+  const patterns = [
+    [/^(.+) \| Government and education ready$/, (match) => `${match[1]} | ${translated("Government and education ready")}`],
+    [/^Printer (Online|Offline)$/, (match) => `${language === "hi" ? "प्रिंटर" : "प्रिंटर"} ${translated(match[1])}`],
+    [/^(.+) selected\. Pick a form template to preview and print\.$/, (match) => language === "hi"
+      ? `${match[1]} चुना गया। पूर्वावलोकन और प्रिंट के लिए फॉर्म टेम्पलेट चुनें।`
+      : `${match[1]} निवडले. पूर्वावलोकन आणि मुद्रणासाठी फॉर्म साचा निवडा.`],
+    [/^(\d+) pages?$/, (match) => `${match[1]} ${translated("Pages")}`],
+    [/^(\d+) page(s?)$/, (match) => `${match[1]} ${language === "hi" ? "पेज" : "पाने"}`],
+    [/^(\d+) cop(?:y|ies)$/, (match) => `${match[1]} ${translated("Copies")}`],
+    [/^(\d+) pages? .+ (\d+) cop(?:y|ies)$/, (match) => `${match[1]} ${translated("Pages")} · ${match[2]} ${translated("Copies")}`],
+    [/^Document (\d+) .+ (.+)$/, (match) => `${translated("Document")} ${match[1]} · ${match[2]}`],
+    [/^Page (\d+) of (\d+)$/, (match) => `${translated("Pages")} ${match[1]} / ${match[2]}`],
+    [/^Page (\d+)$/, (match) => `${translated("Pages")} ${match[1]}`],
+    [/^Scan the code, select up to (\d+) files, and send them to this kiosk\.$/, (match) => language === "hi"
+      ? `कोड स्कैन करें, अधिकतम ${match[1]} फ़ाइलें चुनें और उन्हें इस कियोस्क पर भेजें।`
+      : `कोड स्कॅन करा, जास्तीत जास्त ${match[1]} फाइल निवडा आणि त्या या किऑस्कवर पाठवा.`],
+    [/^No services are enabled for (.+)\. Open Admin Services to enable or assign services\.$/, (match) => language === "hi"
+      ? `${match[1]} के लिए कोई सेवा सक्षम नहीं है। सेवाएँ सक्षम या असाइन करने के लिए एडमिन सर्विसेज खोलें।`
+      : `${match[1]} साठी कोणतीही सेवा सक्षम नाही. सेवा सक्षम किंवा नेमण्यासाठी प्रशासक सेवा उघडा.`],
+    [/^Printing completed successfully\. Returning to the home page in (\d+) seconds\.$/, (match) => language === "hi"
+      ? `प्रिंटिंग सफलतापूर्वक पूरी हुई। ${match[1]} सेकंड में होम पेज पर लौट रहे हैं।`
+      : `मुद्रण यशस्वीरित्या पूर्ण झाले. ${match[1]} सेकंदात मुख्य पानावर परत जात आहे.`],
+    [/^(.+) The paid job is saved in admin history and can be retried without charging again\.$/, (match) => `${match[1]} ${translated("The paid job is saved in admin history and can be retried without charging again.")}`],
+    [/^Pay (Rs\. .+)$/, (match) => `${translated("Pay")} ${match[1]}`],
+    [/^(Rs\. .+) \/ page$/, (match) => language === "hi" ? `${match[1]} / पेज` : `${match[1]} / पान`],
+    [/^(Rs\. .+) B\/W per page$/, (match) => `${match[1]} ${translated("B/W per page")}`],
+    [/^(Rs\. .+) Color per page$/, (match) => `${match[1]} ${translated("Color per page")}`]
+  ];
+
+  for (const [pattern, formatter] of patterns) {
+    const match = text.match(pattern);
+    if (match) return formatter(match);
+  }
+
+  return text;
+}
+
+function applyCustomerTranslations(root) {
+  if (state.mode !== "customer" || !root) return;
+
+  document.documentElement.lang = state.customerLanguage;
+  if (state.customerLanguage === "en") return;
+
+  const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT);
+  const textNodes = [];
+  while (walker.nextNode()) textNodes.push(walker.currentNode);
+
+  textNodes.forEach((node) => {
+    const parent = node.parentElement;
+    if (!parent || parent.closest("[data-no-customer-translation]") || ["SCRIPT", "STYLE"].includes(parent.tagName)) return;
+    const source = node.nodeValue || "";
+    const trimmed = source.trim();
+    if (!trimmed) return;
+    const next = customerTranslateText(trimmed);
+    if (next !== trimmed) node.nodeValue = source.replace(trimmed, next);
+  });
+
+  root.querySelectorAll("[placeholder], [aria-label], [title], [alt]").forEach((element) => {
+    ["placeholder", "aria-label", "title", "alt"].forEach((attribute) => {
+      if (!element.hasAttribute(attribute)) return;
+      const source = element.getAttribute(attribute);
+      const next = customerTranslateText(source);
+      if (next !== source) element.setAttribute(attribute, next);
+    });
+  });
+}
+
+function adminTranslateText(value) {
+  const text = String(value || "").trim();
+  const language = state.adminLanguage;
+  if (!text || language === "en") return text;
+
+  const translations = ADMIN_TRANSLATIONS[language] || {};
+  if (translations[text]) return translations[text];
+
+  const translated = (english) => translations[english] || english;
+  const patterns = [
+    [/^(.+) \| read-only assigned project data$/, (match) => `${match[1]} | ${translated("read-only assigned project data")}`],
+    [/^Last updated:\s*(.+)$/, (match) => `${translated("Last updated")}: ${match[1]}`],
+    [/^(\d+) records$/, (match) => `${match[1]} ${translated("records")}`],
+    [/^Page (\d+) of (\d+)$/, (match) => `${translated("Page")} ${match[1]} ${translated("of")} ${match[2]}`],
+    [/^(\d+) kiosk record\(s\)$/, (match) => `${match[1]} ${language === "hi" ? "कियोस्क रिकॉर्ड" : "किऑस्क नोंदी"}`],
+    [/^(\d+) job\(s\)$/, (match) => `${match[1]} ${language === "hi" ? "कार्य" : "कामे"}`],
+    [/^(\d+) paid job\(s\)$/, (match) => `${match[1]} ${translated("paid job(s)")}`],
+    [/^(\d+) services?$/, (match) => `${match[1]} ${translated("Services")}`],
+    [/^(\d+) forms?$/, (match) => `${match[1]} ${translated("Forms")}`],
+    [/^(\d+) pages?$/, (match) => `${match[1]} ${translated("Pages")}`],
+    [/^Forms under (.+)$/, (match) => language === "hi" ? `${match[1]} के अंतर्गत फ़ॉर्म` : `${match[1]} अंतर्गत फॉर्म`],
+    [/^Form (\d+): (.+)$/, (match) => `${language === "hi" ? "फ़ॉर्म" : "फॉर्म"} ${match[1]}: ${match[2]}`],
+    [/^Delete kiosk (.+)\?$/, (match) => language === "hi" ? `कियोस्क ${match[1]} हटाएँ?` : `किऑस्क ${match[1]} हटवायचा?`],
+    [/^Saved (.+)\.$/, (match) => language === "hi" ? `${match[1]} सहेजा गया।` : `${match[1]} जतन झाले.`],
+    [/^Deleted (.+)\.$/, (match) => language === "hi" ? `${match[1]} हटाया गया।` : `${match[1]} हटवला.`],
+    [/^Created (.+)\. Setup code: (.+)$/, (match) => language === "hi" ? `${match[1]} बनाया गया। सेटअप कोड: ${match[2]}` : `${match[1]} तयार झाला. सेटअप कोड: ${match[2]}`]
+  ];
+
+  for (const [pattern, formatter] of patterns) {
+    const match = text.match(pattern);
+    if (match) return formatter(match);
+  }
+
+  return text;
+}
+
+function applyAdminTranslations(root) {
+  if (state.mode !== "admin" || !root) return;
+
+  document.documentElement.lang = state.adminLanguage;
+  if (state.adminLanguage === "en") return;
+
+  const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT);
+  const textNodes = [];
+  while (walker.nextNode()) textNodes.push(walker.currentNode);
+
+  textNodes.forEach((node) => {
+    const parent = node.parentElement;
+    if (!parent || parent.closest("[data-no-admin-translation]") || ["SCRIPT", "STYLE"].includes(parent.tagName)) return;
+    const source = node.nodeValue || "";
+    const trimmed = source.trim();
+    if (!trimmed) return;
+    const next = adminTranslateText(trimmed);
+    if (next !== trimmed) node.nodeValue = source.replace(trimmed, next);
+  });
+
+  root.querySelectorAll("[placeholder], [aria-label], [title]").forEach((element) => {
+    ["placeholder", "aria-label", "title"].forEach((attribute) => {
+      if (!element.hasAttribute(attribute)) return;
+      const source = element.getAttribute(attribute);
+      const next = adminTranslateText(source);
+      if (next !== source) element.setAttribute(attribute, next);
+    });
+  });
+}
+
 function money(value) {
   return `Rs. ${Number(value).toLocaleString("en-IN")}`;
 }
@@ -297,6 +844,21 @@ function escapeHtml(value) {
 
 function normalizeKioskId(value) {
   return String(value || "").trim().toUpperCase();
+}
+
+function generateKioskSetupCode() {
+  const alphabet = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
+  const bytes = new Uint8Array(8);
+
+  if (window.crypto?.getRandomValues) {
+    window.crypto.getRandomValues(bytes);
+  } else {
+    for (let index = 0; index < bytes.length; index += 1) {
+      bytes[index] = Math.floor(Math.random() * 256);
+    }
+  }
+
+  return Array.from(bytes, (byte) => alphabet[byte % alphabet.length]).join("");
 }
 
 function readConfiguredKioskId() {
@@ -444,6 +1006,82 @@ function normalizeTemplateFields(fields) {
     .slice(0, 8);
 }
 
+function normalizePaperSize(value, fallback = "A4", allowAuto = false) {
+  const normalized = String(value || "").trim().toLowerCase();
+  if (allowAuto && ["auto", "printer default", "default"].includes(normalized)) return "Auto";
+  return PRINT_PAPER_SIZES.find((size) => new RegExp(`(^|[^a-z0-9])${size.toLowerCase()}([^a-z0-9]|$)`).test(normalized)) || fallback;
+}
+
+function normalizeOrientation(value) {
+  return String(value || "").toLowerCase() === "landscape" ? "landscape" : "portrait";
+}
+
+function normalizeKioskCustomerSettings(settings = {}) {
+  const source = {
+    ...DEFAULT_KIOSK_CUSTOMER_SETTINGS,
+    ...(settings && typeof settings === "object" ? settings : {})
+  };
+  const normalized = Object.fromEntries(
+    Object.keys(DEFAULT_KIOSK_CUSTOMER_SETTINGS).map((key) => [key, source[key] !== false])
+  );
+
+  if (!normalized.bw && !normalized.color) {
+    normalized.bw = true;
+  }
+
+  return normalized;
+}
+
+function normalizeServicePrintDefaults(defaults = {}) {
+  const source = { ...DEFAULT_SERVICE_PRINT_DEFAULTS, ...(defaults && typeof defaults === "object" ? defaults : {}) };
+  return {
+    colorMode: source.colorMode === "color" ? "color" : "bw",
+    copies: Math.max(1, Math.min(99, Number(source.copies || 1))),
+    paperSize: PRINT_PAPER_SIZES.includes(source.paperSize) ? source.paperSize : "A4",
+    sides: source.sides === "duplex" ? "duplex" : "single",
+    orientation: normalizeOrientation(source.orientation),
+    range: String(source.range || "all").trim() || "all"
+  };
+}
+
+function serviceCustomerSettings(service = selectedService()) {
+  return normalizeKioskCustomerSettings(service?.customerSettings);
+}
+
+function customerSettingEnabled(key, service = selectedService()) {
+  return CUSTOMER_VISIBLE_SETTING_KEYS.has(key)
+    && state.kioskCustomerSettings?.[key] !== false
+    && serviceCustomerSettings(service)?.[key] !== false;
+}
+
+function enforceCustomerSettings(service = selectedService()) {
+  state.kioskCustomerSettings = normalizeKioskCustomerSettings(state.kioskCustomerSettings);
+
+  if (!customerSettingEnabled("color", service) && state.settings.colorMode === "color") {
+    state.settings.colorMode = "bw";
+  }
+  if (!customerSettingEnabled("bw", service) && state.settings.colorMode === "bw") {
+    state.settings.colorMode = "color";
+  }
+  if (!customerSettingEnabled("copies", service)) {
+    state.settings.copies = 1;
+  }
+}
+
+function applyServicePrintDefaults(service = selectedService()) {
+  const defaults = normalizeServicePrintDefaults(service?.printDefaults);
+  state.settings = {
+    ...state.settings,
+    colorMode: defaults.colorMode,
+    copies: defaults.copies,
+    paperSize: defaults.paperSize,
+    sides: defaults.sides,
+    orientation: defaults.orientation,
+    range: defaults.range
+  };
+  enforceCustomerSettings(service);
+}
+
 function normalizeTemplates(templates) {
   if (!Array.isArray(templates)) return [];
 
@@ -454,6 +1092,8 @@ function normalizeTemplates(templates) {
       title,
       description: String(template?.description || "Blank printable template.").trim(),
       pages: Math.max(1, Math.min(20, Number(template?.pages || 1))),
+      paperSize: normalizePaperSize(template?.paperSize, "Auto", true),
+      orientation: normalizeOrientation(template?.orientation),
       fields: normalizeTemplateFields(template?.fields).length ? normalizeTemplateFields(template?.fields) : ["Applicant", "Address", "Mobile", "Purpose", "Signature"],
       imageUrl: String(template?.imageUrl || "").trim()
     };
@@ -503,7 +1143,12 @@ function normalizeServicesConfig(value) {
       mode,
       imageUrl: String(service?.imageUrl || fallback.imageUrl || "").trim(),
       enabled: service?.enabled !== false,
+      projectIds: Array.isArray(service?.projectIds)
+        ? service.projectIds.map((item) => slug(item, "")).filter(Boolean)
+        : String(service?.projectIds || "").split(",").map((item) => slug(item, "")).filter(Boolean),
       kioskIds: Array.isArray(service?.kioskIds) ? service.kioskIds.map((item) => String(item).trim()).filter(Boolean) : [],
+      customerSettings: normalizeKioskCustomerSettings(service?.customerSettings || fallback.customerSettings),
+      printDefaults: normalizeServicePrintDefaults(service?.printDefaults || fallback.printDefaults),
       pricing: {
         bw: numericPrice(service?.pricing?.bw, fallback.pricing?.bw ?? defaultServicePricing[id]?.bw ?? defaultServicePricing.print.bw),
         color: numericPrice(service?.pricing?.color, fallback.pricing?.color ?? defaultServicePricing[id]?.color ?? defaultServicePricing.print.color)
@@ -652,6 +1297,10 @@ function isFormTemplateService(serviceId = state.selectedService) {
 }
 
 function serviceAvailableForKiosk(service, kioskId = KIOSK_ID) {
+  const projectIds = Array.isArray(service.projectIds) ? service.projectIds : [];
+  if (projectIds.length) {
+    return service.enabled !== false && Boolean(state.kiosk.projectId && projectIds.includes(state.kiosk.projectId));
+  }
   return service.enabled !== false && (!service.kioskIds?.length || service.kioskIds.includes(kioskId));
 }
 
@@ -669,6 +1318,20 @@ function serviceRates(serviceId = state.selectedService) {
   };
 }
 
+function customerRateRows(rates, rowClass = "info-row", service = selectedService()) {
+  return [
+    customerSettingEnabled("bw", service) ? `<div class="${rowClass}"><span>B/W rate</span><strong>${money(rates.bw)} / page</strong></div>` : "",
+    customerSettingEnabled("color", service) ? `<div class="${rowClass}"><span>Color rate</span><strong>${money(rates.color)} / page</strong></div>` : ""
+  ].filter(Boolean);
+}
+
+function customerServiceRateLabels(rates, service) {
+  return [
+    customerSettingEnabled("bw", service) ? `<span><strong>${money(rates.bw)}</strong> B/W per page</span>` : "",
+    customerSettingEnabled("color", service) ? `<span><strong>${money(rates.color)}</strong> Color per page</span>` : ""
+  ].filter(Boolean).join("");
+}
+
 function imagePreviewMarkup(imageUrl, fallbackText, className) {
   if (imageUrl) {
     return `<span class="${className} service-image"><img alt="" src="${escapeHtml(imageUrl)}" draggable="false" data-no-visual-search /></span>`;
@@ -678,11 +1341,35 @@ function imagePreviewMarkup(imageUrl, fallbackText, className) {
 }
 
 function serviceMediaMarkup(service, className = "service-icon") {
-  return imagePreviewMarkup(service?.imageUrl || "", service?.icon || "SV", className);
+  return imagePreviewMarkup("", service?.icon || "SV", className);
 }
 
 function pageCount() {
   return jobFiles().reduce((total, file) => total + Math.max(1, Number(file.pages) || 1), 0);
+}
+
+function selectedPagesForRange(value, totalPages) {
+  const total = Math.max(1, Number(totalPages) || 1);
+  const input = String(value || "all").trim().toLowerCase();
+  if (!input || input === "all") return Array.from({ length: total }, (_, index) => index + 1);
+  if (!/^\d+(?:\s*-\s*\d+)?(?:\s*,\s*\d+(?:\s*-\s*\d+)?)*$/.test(input)) {
+    return Array.from({ length: total }, (_, index) => index + 1);
+  }
+
+  const selected = new Set();
+  input.split(",").forEach((part) => {
+    const [rawStart, rawEnd] = part.split("-").map((item) => Number(item.trim()));
+    const start = Math.max(1, Math.min(total, rawStart));
+    const end = Math.max(1, Math.min(total, rawEnd || rawStart));
+    for (let page = Math.min(start, end); page <= Math.max(start, end); page += 1) selected.add(page);
+  });
+  return selected.size ? [...selected].sort((a, b) => a - b) : Array.from({ length: total }, (_, index) => index + 1);
+}
+
+function effectivePageCount() {
+  return jobFiles().reduce((total, file) => (
+    total + selectedPagesForRange(state.settings.range, Math.max(1, Number(file.pages) || 1)).length
+  ), 0);
 }
 
 function jobFiles() {
@@ -703,13 +1390,32 @@ function setJobFiles(files) {
 }
 
 function priceDetails() {
-  const pages = Math.max(1, pageCount());
+  const pages = Math.max(1, effectivePageCount());
   const copies = Math.max(1, Number(state.settings.copies) || 1);
   const rates = serviceRates();
   const rate = state.settings.colorMode === "color" ? rates.color : rates.bw;
   const total = pages * copies * rate;
 
   return { pages, copies, rate, rates, total };
+}
+
+function applyPrinterPaperDefault(printer = state.printer) {
+  if (state.settingsCustomized) return;
+  state.settings.paperSize = normalizePaperSize(printer?.defaultPaperSize, "A4");
+  if (printer?.supportsDuplex === false) state.settings.sides = "single";
+  if (printer?.supportsColor === false) state.settings.colorMode = "bw";
+  enforceCustomerSettings();
+}
+
+function applyTemplatePrintDefaults(template) {
+  const configuredPaper = normalizePaperSize(template?.paperSize, "Auto", true);
+  state.settings.paperSize = configuredPaper === "Auto"
+    ? normalizePaperSize(state.printer.defaultPaperSize, "A4")
+    : configuredPaper;
+  state.settings.orientation = normalizeOrientation(template?.orientation);
+  state.settings.range = "all";
+  state.settingsCustomized = configuredPaper !== "Auto";
+  enforceCustomerSettings();
 }
 
 function colorSelectionSupported() {
@@ -1101,6 +1807,8 @@ function createTemplateFile(template) {
       previewUrl: "",
       source: template.title,
       templateId: template.id,
+      templatePaperSize: normalizePaperSize(template.paperSize, "Auto", true),
+      templateOrientation: normalizeOrientation(template.orientation),
       templateKind: "birth-certificate",
       htmlContent: birthCertificateTemplateMarkup(),
       printContentBase64: btoa(unescape(encodeURIComponent(html))),
@@ -1117,6 +1825,8 @@ function createTemplateFile(template) {
       previewUrl: template.imageUrl,
       source: template.title,
       templateId: template.id,
+      templatePaperSize: normalizePaperSize(template.paperSize, "Auto", true),
+      templateOrientation: normalizeOrientation(template.orientation),
       validatedAt: new Date().toISOString()
     };
   }
@@ -1131,6 +1841,8 @@ function createTemplateFile(template) {
     previewUrl: "",
     source: template.title,
     templateId: template.id,
+    templatePaperSize: normalizePaperSize(template.paperSize, "Auto", true),
+    templateOrientation: normalizeOrientation(template.orientation),
     templateKind: "generic-form",
     templateTitle: template.title,
     templateDescription: template.description || service.title,
@@ -1267,6 +1979,9 @@ async function refreshPrinterStatus({ rerender = true } = {}) {
       toner: "N/A",
       queue: 0,
       supportsColor: null,
+      supportsDuplex: null,
+      defaultPaperSize: "A4",
+      paperSizes: [...PRINT_PAPER_SIZES],
       agent: "Not required",
       statusText: "Local printer agent runs only on the kiosk mini-PC."
     };
@@ -1314,9 +2029,15 @@ async function refreshPrinterStatus({ rerender = true } = {}) {
       toner: printer.tonerStatus || "Unknown",
       queue: Number(printer.queueLength || 0),
       supportsColor: typeof printer.supportsColor === "boolean" ? printer.supportsColor : null,
+      supportsDuplex: typeof printer.supportsDuplex === "boolean" ? printer.supportsDuplex : null,
+      defaultPaperSize: normalizePaperSize(printer.defaultPaperSize, "A4"),
+      paperSizes: Array.isArray(printer.paperSizes)
+        ? [...new Set(printer.paperSizes.map((size) => normalizePaperSize(size, "")).filter(Boolean))]
+        : [...PRINT_PAPER_SIZES],
       agent: "Running",
       statusText: printer.errorMessage || (printer.status === "online" ? "Ready" : "Offline")
     };
+    applyPrinterPaperDefault(state.printer);
   } catch (error) {
     state.printer = {
       ...state.printer,
@@ -1426,7 +2147,10 @@ function serviceConfigSignature(nextServices, nextPricing) {
       mode: service.mode,
       imageUrl: service.imageUrl,
       enabled: service.enabled,
+      projectIds: service.projectIds,
       kioskIds: service.kioskIds,
+      customerSettings: service.customerSettings,
+      printDefaults: service.printDefaults,
       pricing: service.pricing,
       templates: service.templates
     })),
@@ -1456,8 +2180,11 @@ function applyServiceConfig(payload, { rerender = true, source = "backend" } = {
       kioskId: normalizeKioskId(payload.kiosk.kioskId) || KIOSK_ID,
       name: String(payload.kiosk.name || "").trim(),
       branch: String(payload.kiosk.branch || "").trim(),
+      projectId: String(payload.kiosk.projectId || "").trim(),
       status: String(payload.kiosk.status || "").trim()
     };
+    state.kioskCustomerSettings = normalizeKioskCustomerSettings(payload.kiosk.customerSettings);
+    enforceCustomerSettings();
   }
   services = normalizeServicesConfig(payload.services);
   state.pricing = normalizePricing(payload.pricing || state.pricing);
@@ -1999,6 +2726,8 @@ function render() {
 
   const app = qs("#app");
   app.innerHTML = state.mode === "customer" ? renderCustomerShell() : renderAdminShell();
+  applyCustomerTranslations(app);
+  applyAdminTranslations(app);
   bindEvents();
 }
 
@@ -2041,6 +2770,15 @@ function renderCustomerTopbar() {
         </div>
       </div>
       <div class="topbar-actions">
+        <label class="customer-language-control">
+          ${uiIcon("language", 19)}
+          <span>Language</span>
+          <select data-customer-language aria-label="Language">
+            <option value="en" ${state.customerLanguage === "en" ? "selected" : ""}>English</option>
+            <option value="hi" ${state.customerLanguage === "hi" ? "selected" : ""}>Hindi</option>
+            <option value="mr" ${state.customerLanguage === "mr" ? "selected" : ""}>Marathi</option>
+          </select>
+        </label>
         <span class="status-pill ${printerClass}" role="status" aria-label="Printer ${printerText}"><span class="dot"></span>${printerText}</span>
         <button class="ghost-button" data-action="reset-session">New Session</button>
       </div>
@@ -2064,12 +2802,24 @@ function renderAdminTopbar() {
         </div>
       </div>
       <div class="topbar-actions">
+        <label class="admin-language-control">
+          ${uiIcon("language", 19)}
+          <span>Language</span>
+          <select data-admin-language aria-label="Language">
+            <option value="en" ${state.adminLanguage === "en" ? "selected" : ""}>English</option>
+            <option value="hi" ${state.adminLanguage === "hi" ? "selected" : ""}>Hindi</option>
+            <option value="mr" ${state.adminLanguage === "mr" ? "selected" : ""}>Marathi</option>
+          </select>
+        </label>
         ${state.adminAuthed ? `
           <button class="notification-button" data-admin-page="alerts" aria-label="Open alerts">
             ${uiIcon("bell", 22)}
             ${alertCount ? `<span>${Math.min(alertCount, 99)}</span>` : ""}
           </button>
-          <button class="topbar-logout" data-action="admin-logout">${uiIcon("logout", 19)}<span>Logout</span></button>
+          <button class="mobile-nav-toggle" data-action="admin-toggle-nav" aria-controls="kiosk-admin-navigation" aria-expanded="${state.adminNavOpen}" aria-label="${state.adminNavOpen ? "Close navigation" : "Open navigation"}">
+            ${uiIcon(state.adminNavOpen ? "close" : "menu", 22)}
+          </button>
+          <button class="topbar-logout" data-action="admin-logout" aria-label="Logout">${uiIcon("logout", 19)}<span>Logout</span></button>
         ` : ""}
       </div>
     </header>
@@ -2127,6 +2877,7 @@ function renderServicesStep() {
   }
 
   const availableServices = customerServices();
+  const hasSingleService = availableServices.length === 1;
   const printerReady = printerReadyForCustomerFlow();
   const printerChecking = state.printer.checking;
   let serviceCountClass = "is-catalog";
@@ -2138,8 +2889,8 @@ function renderServicesStep() {
   return `
     <div class="stage service-stage ${serviceCountClass}">
       <div class="stage-header">
-        <h1>Choose service</h1>
-        <p class="stage-intro">Select what you need to print.</p>
+        <h1>${hasSingleService ? "Services" : "Choose service"}</h1>
+        <p class="stage-intro">${hasSingleService ? "This service is available on this kiosk." : "Select what you need to print."}</p>
       </div>
       ${state.configStatus ? `<div class="save-note">${escapeHtml(state.configStatus)}</div>` : ""}
       <div class="service-grid">
@@ -2154,8 +2905,7 @@ function renderServicesStep() {
                 <p>${escapeHtml(service.description)}</p>
               </div>
               <div class="service-rates">
-                <span><strong>${money(rates.bw)}</strong> B/W per page</span>
-                <span><strong>${money(rates.color)}</strong> Color per page</span>
+                ${customerServiceRateLabels(rates, service)}
               </div>
             </button>
           `;
@@ -2170,7 +2920,7 @@ function renderFormTemplateStep() {
   const templates = formTemplatesForService(service.id);
 
   return `
-    <div class="stage">
+    <div class="stage template-selection-stage">
       <div class="stage-header">
         <h1>Choose form template</h1>
         <p class="stage-intro">${escapeHtml(service.title)} selected. Pick a form template to preview and print.</p>
@@ -2186,7 +2936,7 @@ function renderFormTemplateStep() {
               <p>${escapeHtml(template.description)}</p>
             </div>
             <div class="template-meta">
-              <span>${template.pages} page${template.pages === 1 ? "" : "s"}</span>
+              <span>${template.pages} page${template.pages === 1 ? "" : "s"} · ${escapeHtml(normalizePaperSize(template.paperSize, "Auto", true))} · ${escapeHtml(normalizeOrientation(template.orientation))}</span>
               <strong>Print Blank Form</strong>
             </div>
           </button>
@@ -2201,22 +2951,14 @@ function renderFormTemplateStep() {
 
 function renderUploadStep() {
   const session = state.uploadSession;
-  const service = selectedService();
   return `
-    <div class="stage">
+    <div class="stage upload-stage qr-only-upload-stage">
       <div class="stage-header">
-        <h1>Upload documents</h1>
-        <p class="stage-intro">Choose up to ${MAX_FILES_PER_JOB} PDF, JPG, or PNG files here, or send them from your phone.</p>
+        <h1>Upload from phone</h1>
+        <p class="stage-intro">Scan the QR code to send your documents.</p>
       </div>
-      <div class="upload-sources">
-        <label class="upload-area" for="file-input">
-          <input id="file-input" type="file" accept=".pdf,.jpg,.jpeg,.png,application/pdf,image/jpeg,image/png" multiple />
-          <span class="preview-file-icon">+</span>
-          <strong>Choose files on this kiosk</strong>
-          <span>PDF, JPG, or PNG · Maximum ${MAX_FILES_PER_JOB} files</span>
-        </label>
-        <div class="qr-upload-card">
-          <h2>Upload from phone</h2>
+      <div class="qr-only-upload-panel">
+        <div class="qr-upload-card qr-only-upload-card">
           ${renderQrUploadBox(session)}
           ${state.uploadError ? `<div class="empty-note" style="margin-top: 14px;">${escapeHtml(state.uploadError)}</div>` : ""}
           ${session?.error ? `<div class="empty-note" style="margin-top: 14px;">${escapeHtml(session.error)}</div>` : ""}
@@ -2265,55 +3007,74 @@ function renderPreviewStep() {
   const previewClass = file?.previewUrl && ["pdf", "image"].includes(file.previewKind)
     ? "preview-live"
     : "preview-document-mode";
+  const paperClass = `paper-${normalizePaperSize(state.settings.paperSize, "A4").toLowerCase()} orientation-${normalizeOrientation(state.settings.orientation)} color-${state.settings.colorMode === "color" ? "color" : "bw"}`;
   return `
-    <div class="stage">
+    <div class="stage preview-stage">
       <div class="stage-header">
         <h1>Preview and confirm</h1>
-        <p class="stage-intro">Check your documents, choose print options, and confirm the total before payment.</p>
+        <p class="stage-intro">Review the document and confirm the print details.</p>
       </div>
       <div class="preview-grid">
         <div class="preview-workspace">
-          ${files.length > 1 ? `
-            <div class="document-tabs" aria-label="Uploaded documents">
-              ${files.map((item, index) => `
-                <button class="document-tab ${index === state.previewFileIndex ? "active" : ""}" data-preview-file-index="${index}">
-                  <strong>Document ${index + 1}</strong>
-                  <span>${escapeHtml(item.type)} · ${Math.max(1, Number(item.pages) || 1)} page${Number(item.pages) === 1 ? "" : "s"}</span>
-                </button>
-              `).join("")}
-            </div>
-          ` : ""}
-          <div class="document-preview ${previewClass}" style="transform: scale(${state.previewZoom}); transform-origin: top left;">
-            ${renderPreviewContent()}
+          <div class="document-preview ${previewClass} ${paperClass}" style="--preview-zoom: ${state.previewZoom};">
+            <div class="preview-zoom-layer">${renderPreviewContent()}</div>
           </div>
         </div>
-        <div class="module-card preview-summary-card">
-          <h2>Print summary</h2>
-          <div class="info-list">
-            <div class="info-row"><span>Documents</span><strong>${files.length}</strong></div>
-            <div class="info-row"><span>Total pages</span><strong>${details.pages}</strong></div>
-            <div class="info-row"><span>Copies</span><strong>${details.copies}</strong></div>
-          </div>
-          <div class="preview-tools">
-            <button class="secondary-button" data-action="zoom-in">Zoom</button>
-            <button class="secondary-button" data-action="zoom-out">Fit</button>
-            <button class="ghost-button" data-action="delete-file">Replace files</button>
-          </div>
-          <div class="preview-total"><span>Total</span><strong>${money(details.total)}</strong></div>
-        </div>
-      </div>
-      <section class="preview-settings-section">
-        <div class="section-heading">
-          <h2>Print options</h2>
-          <p>These options apply to every uploaded document.</p>
-        </div>
-        ${renderPrintSettingsFields()}
-      </section>
-      <div class="flow-actions">
-        <button class="ghost-button" data-action="prev-step">Back</button>
-        <button class="primary-button" data-action="next-step">Continue to Payment · ${money(details.total)}</button>
+        ${renderPreviewControlPanel(details, files)}
       </div>
     </div>
+  `;
+}
+
+function renderPreviewControlPanel(details, files) {
+  const colorChoices = [
+    customerSettingEnabled("bw") ? { value: "bw", label: "B/W" } : null,
+    customerSettingEnabled("color") ? { value: "color", label: "Color" } : null
+  ].filter(Boolean);
+
+  return `
+    <aside class="module-card preview-control-panel">
+      <h2>Print settings</h2>
+      <div class="preview-essential-settings">
+        ${files.length > 1 ? `
+          <label class="preview-essential-setting preview-document-select">
+            <span>Document</span>
+            <select data-preview-file-select>
+              ${files.map((item, index) => `<option value="${index}" ${index === state.previewFileIndex ? "selected" : ""}>Document ${index + 1} · ${escapeHtml(item.type)}</option>`).join("")}
+            </select>
+          </label>
+        ` : ""}
+        ${colorChoices.length ? `
+          <div class="preview-essential-setting">
+            <span>Page Color</span>
+            <div class="segmented preview-color-control">
+              ${colorChoices.map((choice) => `
+                <button class="${state.settings.colorMode === choice.value ? "active" : ""}" data-setting="colorMode" data-value="${choice.value}">${choice.label}</button>
+              `).join("")}
+            </div>
+          </div>
+        ` : ""}
+        ${customerSettingEnabled("copies") ? `
+          <div class="preview-essential-setting">
+            <span>Page Copies</span>
+            <div class="copies-stepper" role="group" aria-label="Page copies">
+              <button data-action="decrease-copies" aria-label="Decrease copies" ${state.settings.copies <= 1 ? "disabled" : ""}>&minus;</button>
+              <output aria-live="polite">${details.copies}</output>
+              <button data-action="increase-copies" aria-label="Increase copies" ${state.settings.copies >= 99 ? "disabled" : ""}>+</button>
+            </div>
+          </div>
+        ` : ""}
+      </div>
+      <div class="preview-order-summary">
+        <div><span>Total Pages</span><strong>${details.pages * details.copies}</strong></div>
+        <div><span>Total</span><strong>${money(details.total)}</strong></div>
+      </div>
+      <div class="preview-control-actions">
+        <button class="primary-button" data-action="next-step">Continue to Payment</button>
+        <button class="secondary-button" data-action="delete-file">Replace Document</button>
+        <button class="ghost-button" data-action="prev-step">Back</button>
+      </div>
+    </aside>
   `;
 }
 
@@ -2334,7 +3095,7 @@ function renderPreviewContent() {
   }
 
   if (file.previewKind === "image" && file.previewUrl) {
-    return `<img class="preview-media" src="${escapeHtml(file.previewUrl)}" alt="Uploaded document preview" draggable="false" data-no-visual-search />`;
+    return `<div class="uploaded-image-paper"><img class="preview-media" src="${escapeHtml(file.previewUrl)}" alt="Uploaded document preview" draggable="false" data-no-visual-search /></div>`;
   }
 
   if (file.previewKind === "html-template" && file.htmlContent) {
@@ -2445,52 +3206,29 @@ function renderPreviewFallback(title, message) {
 }
 
 function renderPrintSettingsFields() {
-  return `
-      <div class="settings-grid">
-        <div class="setting-field">
-          <label>Color Mode</label>
-          <div class="segmented">
-            <button class="${state.settings.colorMode === "bw" ? "active" : ""}" data-setting="colorMode" data-value="bw">B/W</button>
-            <button class="${state.settings.colorMode === "color" ? "active" : ""}" data-setting="colorMode" data-value="color">Color</button>
-          </div>
-        </div>
-        <div class="setting-field">
-          <label for="copies">Copies</label>
-          <input id="copies" type="number" min="1" max="99" value="${state.settings.copies}" data-input="copies" />
-        </div>
-        <div class="setting-field">
-          <label for="paperSize">Paper Size</label>
-          <select id="paperSize" data-input="paperSize">
-            ${["A4", "A3", "Letter", "Legal"].map((size) => `<option ${state.settings.paperSize === size ? "selected" : ""}>${size}</option>`).join("")}
-          </select>
-        </div>
-        <div class="setting-field">
-          <label for="sides">Sides</label>
-          <select id="sides" data-input="sides">
-            <option value="single" ${state.settings.sides === "single" ? "selected" : ""}>Single side</option>
-            <option value="duplex" ${state.settings.sides === "duplex" ? "selected" : ""}>Double side</option>
-          </select>
-        </div>
-        <div class="setting-field">
-          <label for="orientation">Orientation</label>
-          <select id="orientation" data-input="orientation">
-            <option value="portrait" ${state.settings.orientation === "portrait" ? "selected" : ""}>Portrait</option>
-            <option value="landscape" ${state.settings.orientation === "landscape" ? "selected" : ""}>Landscape</option>
-          </select>
-        </div>
-        <div class="setting-field">
-          <label for="range">Page Range</label>
-          <input id="range" value="${state.settings.range}" data-input="range" placeholder="all or 1-5" />
-        </div>
-        <div class="setting-field">
-          <label for="staple">Staple</label>
-          <select id="staple" data-input="staple">
-            <option value="no" ${state.settings.staple === "no" ? "selected" : ""}>No</option>
-            <option value="yes" ${state.settings.staple === "yes" ? "selected" : ""}>Yes, if supported</option>
-          </select>
+  const fields = [
+    customerSettingEnabled("bw") && customerSettingEnabled("color") ? `
+      <div class="setting-field">
+        <label>Color Mode</label>
+        <div class="segmented">
+          <button class="${state.settings.colorMode === "bw" ? "active" : ""}" data-setting="colorMode" data-value="bw">B/W</button>
+          <button class="${state.settings.colorMode === "color" ? "active" : ""}" data-setting="colorMode" data-value="color">Color</button>
         </div>
       </div>
-  `;
+    ` : "",
+    customerSettingEnabled("copies") ? `
+      <div class="setting-field">
+        <label for="copies">Copies</label>
+        <input id="copies" type="number" min="1" max="99" value="${state.settings.copies}" data-input="copies" />
+      </div>
+    ` : ""
+  ].filter(Boolean).join("");
+
+  return fields ? `
+      <div class="settings-grid">
+        ${fields}
+      </div>
+  ` : "";
 }
 
 function renderHealthRow(label, value, tone) {
@@ -2509,6 +3247,10 @@ function renderPaymentStep() {
   const paymentComplete = state.paymentStatus === "Success";
   const canPay = paymentReady() && !paymentComplete;
   const blockMessage = paymentBlockMessage();
+  const paymentDetailParts = [
+    `${details.pages} page${details.pages === 1 ? "" : "s"}`,
+    customerSettingEnabled("copies") ? `${details.copies} cop${details.copies === 1 ? "y" : "ies"}` : ""
+  ].filter(Boolean).join(" · ");
   return `
     <div class="stage">
       <div class="stage-header">
@@ -2516,9 +3258,10 @@ function renderPaymentStep() {
         <p class="stage-intro">Pay the confirmed total securely to start printing.</p>
       </div>
       <div class="payment-layout">
-        <div class="payment-total-card">
+        <div class="payment-total-card has-controlled-summary">
           <span>Total payable</span>
           <strong>${money(details.total)}</strong>
+          <small class="payment-total-detail">${escapeHtml(paymentDetailParts)}</small>
           <small>${details.pages} page${details.pages === 1 ? "" : "s"} · ${details.copies} cop${details.copies === 1 ? "y" : "ies"}</small>
         </div>
         <div class="module-card">
@@ -2604,7 +3347,7 @@ function renderThankYouStep() {
         <div class="receipt-row"><span>Job ID</span><strong>${escapeHtml(receiptJob.id)}</strong></div>
         <div class="receipt-row"><span>Documents</span><strong>${jobFiles().length}</strong></div>
         <div class="receipt-row"><span>Pages</span><strong>${receiptJob.pages}</strong></div>
-        <div class="receipt-row"><span>Copies</span><strong>${receiptJob.copies}</strong></div>
+        ${customerSettingEnabled("copies") ? `<div class="receipt-row"><span>Copies</span><strong>${receiptJob.copies}</strong></div>` : ""}
         <div class="receipt-row"><span>Amount</span><strong>${money(receiptJob.amount)}</strong></div>
         <div class="receipt-row"><span>Status</span><strong>${escapeHtml(receiptJob.print)}</strong></div>
         <div class="flow-actions">
@@ -2625,13 +3368,16 @@ function renderSessionPanel() {
   ];
 
   if (state.file && state.step >= 3) {
-    rows.push(`<div class="info-row"><span>Copies</span><strong>${state.settings.copies}</strong></div>`);
-    rows.push(`<div class="info-row"><span>Color</span><strong>${state.settings.colorMode === "color" ? "Color" : "B/W"}</strong></div>`);
+    if (customerSettingEnabled("copies")) {
+      rows.push(`<div class="info-row"><span>Copies</span><strong>${state.settings.copies}</strong></div>`);
+    }
+    if (customerSettingEnabled("bw") && customerSettingEnabled("color")) {
+      rows.push(`<div class="info-row"><span>Color</span><strong>${state.settings.colorMode === "color" ? "Color" : "B/W"}</strong></div>`);
+    }
   }
 
   if (state.file && state.step >= 4) {
-    rows.push(`<div class="info-row"><span>B/W rate</span><strong>${money(rates.bw)} / page</strong></div>`);
-    rows.push(`<div class="info-row"><span>Color rate</span><strong>${money(rates.color)} / page</strong></div>`);
+    rows.push(...customerRateRows(rates));
     rows.push(`<div class="info-row"><span>Total</span><strong>${money(details.total)}</strong></div>`);
   }
 
@@ -2648,12 +3394,17 @@ function renderAdmin() {
 
   return `
     <div class="admin-layout">
-      <nav class="admin-nav">
+      <button class="admin-nav-backdrop ${state.adminNavOpen ? "is-open" : ""}" data-action="admin-close-nav" aria-label="Close navigation"></button>
+      <nav id="kiosk-admin-navigation" class="admin-nav ${state.adminNavOpen ? "is-open" : ""}" aria-label="Kiosk Admin navigation">
+        <div class="admin-nav-drawer-head">
+          <strong>Navigation</strong>
+          <button data-action="admin-close-nav" aria-label="Close navigation">${uiIcon("close", 22)}</button>
+        </div>
         ${adminNavGroups().map((group) => `
           <div class="admin-nav-group">
             <div class="admin-nav-label">${group.label}</div>
             ${group.pages.map((page) => `
-              <button class="${state.adminPage === page.id ? "active" : ""}" data-admin-page="${page.id}">
+              <button class="${state.adminPage === page.id || (state.adminPage === "service-editor" && page.id === "services") ? "active" : ""}" data-admin-page="${page.id}">
                 <span class="admin-nav-icon">${uiIcon(page.icon, 20)}</span>
                 <span>${page.label}</span>
               </button>
@@ -2698,18 +3449,18 @@ function adminNavGroups() {
       label: "Operate",
       pages: [
         { id: "dashboard", label: "Dashboard", icon: "dashboard" },
+        { id: "projects", label: "Projects", icon: "hierarchy" },
+        { id: "kiosks", label: "Kiosks", icon: "kiosks" },
         { id: "services", label: "Services", icon: "services" },
         { id: "pricing", label: "Pricing", icon: "pricing" },
+        { id: "revenue", label: "Revenue", icon: "payments" },
         { id: "history", label: "Print History", icon: "history" }
       ]
     },
     {
       label: "Support",
       pages: [
-        { id: "system", label: "System Status", icon: "system" },
-        { id: "projects", label: "Projects", icon: "hierarchy" },
-        { id: "kiosks", label: "Kiosks", icon: "kiosks" },
-        { id: "refunds", label: "Refunds", icon: "refunds" }
+        { id: "system", label: "System Status", icon: "system" }
       ]
     }
   ];
@@ -2738,8 +3489,10 @@ function renderAdminPage() {
   if (page === "system") return renderSystemStatus();
   if (page === "projects") return renderProjects();
   if (page === "reports") return renderReports();
-  if (page === "services") return renderServicesReadOnly();
-  if (page === "pricing") return renderPricingReadOnly();
+  if (page === "services") return renderServicesAdmin();
+  if (page === "service-editor") return renderServiceEditorPage();
+  if (page === "pricing") return renderPricing();
+  if (page === "revenue") return renderRevenue();
   if (page === "kiosks") return renderKiosks();
   if (page === "refunds") return renderRefunds();
   if (page === "alerts") return renderAlerts();
@@ -2754,7 +3507,7 @@ function formatDateTime(value) {
     return String(value);
   }
 
-  return date.toLocaleString("en-IN", {
+  return date.toLocaleString(state.mode === "admin" ? adminLocale() : "en-IN", {
     year: "numeric",
     month: "2-digit",
     day: "2-digit",
@@ -2818,6 +3571,19 @@ function adminPaginated(items, key, pageSize = 10) {
   return { items: items.slice(start, start + pageSize), currentPage, pageCount, total: items.length };
 }
 
+function adminServiceAssignableProjects() {
+  const projectIdsWithKiosks = new Set(state.adminData.kiosks.map((kiosk) => kiosk.projectId).filter(Boolean));
+  return state.adminData.projects.filter((project) => projectIdsWithKiosks.has(project.projectId));
+}
+
+function adminProjectName(projectId) {
+  return state.adminData.projects.find((project) => project.projectId === projectId)?.name || "Unassigned";
+}
+
+function firstAdminServiceProjectId() {
+  return adminServiceAssignableProjects()[0]?.projectId || "";
+}
+
 function renderAdminPagination(key, page) {
   if (page.total <= 10) return "";
   return `
@@ -2835,6 +3601,126 @@ function renderPaginatedTable(key, headers, rows, emptyMessage) {
   return `${renderTable(headers, page.items.length ? page.items : emptyRows(emptyMessage, headers.length))}${renderAdminPagination(key, page)}`;
 }
 
+function dateKeyFromValue(value) {
+  const date = value ? new Date(value) : null;
+  if (!date || Number.isNaN(date.getTime())) return "";
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, "0");
+  const day = String(date.getDate()).padStart(2, "0");
+  return `${year}-${month}-${day}`;
+}
+
+function shortDateLabel(key) {
+  const date = new Date(`${key}T00:00:00`);
+  if (Number.isNaN(date.getTime())) return key;
+  return date.toLocaleDateString(state.mode === "admin" ? adminLocale() : "en-IN", { day: "2-digit", month: "short" });
+}
+
+function revenueSeries(days = 7) {
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+
+  const series = Array.from({ length: days }, (_, index) => {
+    const date = new Date(today);
+    date.setDate(today.getDate() - (days - 1 - index));
+    const key = dateKeyFromValue(date);
+    return { key, label: shortDateLabel(key), amount: 0, jobs: 0 };
+  });
+
+  const byKey = new Map(series.map((item) => [item.key, item]));
+
+  liveJobs().forEach((job) => {
+    const key = dateKeyFromValue(job.completedAt || job.createdAt || job.date);
+    const item = byKey.get(key);
+    if (!item) return;
+
+    const paid = /success|paid|completed/i.test(`${job.paymentStatus || ""} ${job.payment || ""}`);
+    const printed = !/failed|cancel/i.test(`${job.printStatus || ""} ${job.print || ""}`);
+    if (paid || printed) {
+      item.amount += Number(job.amount || 0);
+      item.jobs += 1;
+    }
+  });
+
+  return series;
+}
+
+function renderRevenueLineChart(series) {
+  const width = 720;
+  const height = 240;
+  const padding = { top: 26, right: 24, bottom: 42, left: 52 };
+  const chartWidth = width - padding.left - padding.right;
+  const chartHeight = height - padding.top - padding.bottom;
+  const maxAmount = Math.max(1, ...series.map((item) => item.amount));
+  const points = series.map((item, index) => {
+    const x = padding.left + (series.length === 1 ? chartWidth / 2 : (chartWidth * index) / (series.length - 1));
+    const y = padding.top + chartHeight - ((item.amount / maxAmount) * chartHeight);
+    return { ...item, x, y };
+  });
+  const path = points.map((point, index) => `${index ? "L" : "M"} ${point.x.toFixed(1)} ${point.y.toFixed(1)}`).join(" ");
+  const fillPath = `${path} L ${points.at(-1)?.x.toFixed(1) || padding.left} ${padding.top + chartHeight} L ${points[0]?.x.toFixed(1) || padding.left} ${padding.top + chartHeight} Z`;
+  const gridLines = [0, 0.25, 0.5, 0.75, 1].map((ratio) => {
+    const y = padding.top + chartHeight - (ratio * chartHeight);
+    return `<line x1="${padding.left}" y1="${y.toFixed(1)}" x2="${width - padding.right}" y2="${y.toFixed(1)}"></line>`;
+  }).join("");
+  const axisLine = `<line x1="${padding.left}" y1="${padding.top + chartHeight}" x2="${width - padding.right}" y2="${padding.top + chartHeight}"></line>`;
+
+  return `
+    <div class="revenue-chart-wrap">
+      <svg class="revenue-line-chart" viewBox="0 0 ${width} ${height}" role="img" aria-label="Revenue line graph">
+        <defs>
+          <linearGradient id="revenueAreaGradient" x1="0" x2="0" y1="0" y2="1">
+            <stop offset="0%" stop-color="#176ee8" stop-opacity="0.22"></stop>
+            <stop offset="100%" stop-color="#176ee8" stop-opacity="0"></stop>
+          </linearGradient>
+          <filter id="revenueLineShadow" x="-10%" y="-20%" width="120%" height="150%">
+            <feDropShadow dx="0" dy="5" stdDeviation="5" flood-color="#176ee8" flood-opacity="0.18"></feDropShadow>
+          </filter>
+        </defs>
+        <g class="revenue-grid">${gridLines}${axisLine}</g>
+        <path class="revenue-area" d="${fillPath}"></path>
+        <path class="revenue-line" d="${path}"></path>
+        ${points.map((point) => `
+          <g class="revenue-point">
+            <circle cx="${point.x.toFixed(1)}" cy="${point.y.toFixed(1)}" r="5"></circle>
+            <circle class="revenue-point-inner" cx="${point.x.toFixed(1)}" cy="${point.y.toFixed(1)}" r="2"></circle>
+            <title>${escapeHtml(point.label)}: ${escapeHtml(money(point.amount))}</title>
+          </g>
+        `).join("")}
+        ${points.map((point, index) => `
+          <text class="revenue-x-label" x="${point.x.toFixed(1)}" y="${height - 17}" text-anchor="${index === 0 ? "start" : index === points.length - 1 ? "end" : "middle"}">${escapeHtml(point.label)}</text>
+        `).join("")}
+        <text class="revenue-y-label" x="${padding.left}" y="16">${escapeHtml(money(maxAmount))}</text>
+        <text class="revenue-y-label" x="${padding.left}" y="${height - padding.bottom + 16}">Rs. 0</text>
+      </svg>
+    </div>
+  `;
+}
+
+function renderRevenuePanel(compact = false) {
+  const series = revenueSeries(compact ? 7 : 14);
+  const total = series.reduce((sum, item) => sum + item.amount, 0);
+  const jobs = series.reduce((sum, item) => sum + item.jobs, 0);
+  const bestDay = series.reduce((best, item) => item.amount > best.amount ? item : best, series[0] || { amount: 0, label: "Today" });
+  const average = series.length ? Math.round(total / series.length) : 0;
+
+  return `
+    <div class="module-card dashboard-panel revenue-panel ${compact ? "is-compact" : ""}">
+      <div class="module-card-title">
+        <span>${uiIcon("payments", 20)}</span>
+        <h2>Revenue Trend</h2>
+        <strong>${escapeHtml(money(total))}</strong>
+      </div>
+      ${renderRevenueLineChart(series)}
+      <div class="revenue-summary">
+        <span><strong>${escapeHtml(String(jobs))}</strong> paid job(s)</span>
+        <span><strong>${escapeHtml(money(average))}</strong> daily avg</span>
+        <span><strong>${escapeHtml(bestDay.label)}</strong> peak</span>
+      </div>
+    </div>
+  `;
+}
+
 function dashboardMetrics() {
   const dashboard = state.adminData.dashboard || {};
   const revenue = state.adminData.revenue || {};
@@ -2843,17 +3729,14 @@ function dashboardMetrics() {
   const pages = jobs.reduce((sum, job) => sum + (job.pages * job.copies), 0);
   const pendingRefunds = state.adminData.refunds.filter((refund) => /pending/i.test(refund.status || "")).length;
   const queueLength = jobs.filter((job) => /queue|printing|pending/i.test(job.print)).length;
-  const printerReady = state.printer.online ? "Printer ready" : (state.printer.statusText || "Printer unchecked");
 
   return [
     ["Today Revenue", money(revenue.gross ?? dashboard.revenueToday ?? 0), "Live backend total", "pricing", "green"],
     ["Today Jobs", String(dashboard.jobsToday ?? jobs.length), `${state.adminData.kiosks.length || 1} kiosk record(s)`, "services", "blue"],
     ["Failed Jobs", String(failed), "Read-only visibility", "alert", failed ? "red" : "green"],
-    ["Active Kiosks", String(dashboard.activeKiosks ?? state.adminData.kiosks.filter((kiosk) => kiosk.status === "online").length), "Backend kiosk records", "kiosks", "purple"],
     ["Pages Printed", String(pages), "Completed and queued jobs", "printer", "cyan"],
     ["Pending Refunds", String(pendingRefunds), pendingRefunds ? "Pending super admin review" : "No pending records", "refunds", pendingRefunds ? "red" : "green"],
-    ["Queue Length", String(queueLength), "Live job records", "history", queueLength ? "amber" : "blue"],
-    ["System Health", state.adminData.backendOnline ? "Online" : "Offline", printerReady, "system", state.adminData.backendOnline ? "green" : "red"]
+    ["Queue Length", String(queueLength), "Live job records", "history", queueLength ? "amber" : "blue"]
   ];
 }
 
@@ -2862,8 +3745,7 @@ function renderDashboard() {
   const queuedJobs = liveJobs().map(jobRow).filter((job) => /queue|printing|pending/i.test(job.print));
   const alerts = [
     ...failedJobs.map((job) => `${job.id} needs print recovery`),
-    ...state.adminData.refunds.filter((refund) => /pending/i.test(refund.status || "")).map((refund) => `${refund.refundId} refund pending`),
-    ...(state.printer.online ? [] : [state.printer.statusText || "Printer status needs attention"])
+    ...state.adminData.refunds.filter((refund) => /pending/i.test(refund.status || "")).map((refund) => `${refund.refundId} refund pending`)
   ];
 
   return `
@@ -2882,12 +3764,12 @@ function renderDashboard() {
       `).join("")}
     </div>
     <div class="module-grid dashboard-modules">
+      ${renderRevenuePanel(true)}
       <div class="module-card dashboard-panel">
         <div class="module-card-title"><span>${uiIcon("system", 20)}</span><h2>Failure Safe Queue</h2></div>
         <div class="health-list">
           ${renderHealthRow("Payment success print failed", `${failedJobs.length} job(s)`, failedJobs.length ? "warn" : "good")}
           ${renderHealthRow("Active print queue", `${queuedJobs.length} job(s)`, queuedJobs.length ? "warn" : "good")}
-          ${renderHealthRow("Backend", state.adminData.backendOnline ? "Online" : "Offline", state.adminData.backendOnline ? "good" : "bad")}
         </div>
         <button class="panel-link" data-admin-page="history">View full queue details ${uiIcon("history", 17)}</button>
       </div>
@@ -2897,6 +3779,35 @@ function renderDashboard() {
           ${(alerts.length ? alerts : ["No live alerts"]).map((alert, index) => `<div class="info-row ${alerts.length ? "is-alert" : "is-clear"}"><span class="alert-row-icon">${uiIcon(alerts.length ? (index ? "activity" : "alert") : "system", 19)}</span><span>${escapeHtml(alert)}</span><strong>${alerts.length ? "Open" : "OK"}</strong></div>`).join("")}
         </div>
       </div>
+    </div>
+  `;
+}
+
+function renderRevenue() {
+  const series = revenueSeries(14);
+  const total = series.reduce((sum, item) => sum + item.amount, 0);
+  const jobs = series.reduce((sum, item) => sum + item.jobs, 0);
+  const average = series.length ? Math.round(total / series.length) : 0;
+
+  return `
+    ${renderAdminHeader("Revenue", "Revenue graph for your assigned kiosks and projects.")}
+    ${adminNotice()}
+    <div class="metrics-grid dashboard-metrics revenue-metrics">
+      <div class="metric-card has-icon tone-green">
+        <span class="metric-icon">${uiIcon("pricing", 25)}</span>
+        <div class="metric-copy"><span>Period Revenue</span><strong>${escapeHtml(money(total))}</strong><small>Last 14 days</small></div>
+      </div>
+      <div class="metric-card has-icon tone-blue">
+        <span class="metric-icon">${uiIcon("history", 25)}</span>
+        <div class="metric-copy"><span>Paid Jobs</span><strong>${escapeHtml(String(jobs))}</strong><small>Included in graph</small></div>
+      </div>
+      <div class="metric-card has-icon tone-cyan">
+        <span class="metric-icon">${uiIcon("activity", 25)}</span>
+        <div class="metric-copy"><span>Daily Average</span><strong>${escapeHtml(money(average))}</strong><small>Across this period</small></div>
+      </div>
+    </div>
+    <div class="revenue-page-grid">
+      ${renderRevenuePanel(false)}
     </div>
   `;
 }
@@ -2941,10 +3852,7 @@ function renderSystemStatus() {
           <h2>${escapeHtml(kiosk.kioskId || "Kiosk")}</h2>
           <div class="health-list">
             ${renderHealthRow("Project", kiosk.projectId || "Unassigned", kiosk.projectId ? "good" : "warn")}
-            ${renderHealthRow("Kiosk", kiosk.status || "Unknown", kiosk.status === "online" ? "good" : "warn")}
-            ${renderHealthRow("Printer", kiosk.printer || "Unknown", kiosk.printer && kiosk.printer !== "unknown" ? "good" : "warn")}
-            ${renderHealthRow("Scanner", kiosk.scanner || "Unknown", kiosk.scanner && kiosk.scanner !== "unknown" ? "good" : "warn")}
-            ${renderHealthRow("App Version", kiosk.appVersion || "1.0.0", "good")}
+            ${renderHealthRow("Status", kiosk.status || "Unknown", kiosk.status === "online" ? "good" : "warn")}
             ${renderHealthRow("Last Online", formatDateTime(kiosk.lastOnline), kiosk.lastOnline ? "good" : "warn")}
           </div>
         </div>
@@ -2980,7 +3888,7 @@ function renderReports() {
 
 function serviceTemplatesText(service) {
   return (service.templates || [])
-    .map((template) => `${template.title} | ${template.pages} | ${template.description} | ${(template.fields || []).join(", ")}${template.imageUrl ? ` | ${template.imageUrl}` : ""}`)
+    .map((template) => `${template.title} | ${template.pages} | ${template.description} | ${(template.fields || []).join(", ")} | ${template.imageUrl || ""} | ${template.paperSize || "Auto"} | ${template.orientation || "portrait"}`)
     .join("\n");
 }
 
@@ -2988,7 +3896,7 @@ function parseServiceTemplates(value) {
   return String(value || "")
     .split(/\r?\n/)
     .map((line, index) => {
-      const [title, pages, description, fields, imageUrl] = line.split("|").map((part) => part?.trim() || "");
+      const [title, pages, description, fields, imageUrl, paperSize, orientation] = line.split("|").map((part) => part?.trim() || "");
       if (!title) return null;
 
       return {
@@ -2997,38 +3905,12 @@ function parseServiceTemplates(value) {
         pages: Math.max(1, Number(pages) || 1),
         description: description || "Blank printable template.",
         fields: normalizeTemplateFields(fields || "Applicant, Address, Mobile, Purpose, Signature"),
-        imageUrl: imageUrl || ""
+        imageUrl: imageUrl || "",
+        paperSize: normalizePaperSize(paperSize, "Auto", true),
+        orientation: normalizeOrientation(orientation)
       };
     })
     .filter(Boolean);
-}
-
-function renderServiceImageControl(service) {
-  return `
-    <label class="setting-field service-image-field">Service Image
-      <div class="admin-image-row">
-        ${serviceMediaMarkup(service, "admin-image-preview")}
-        <div class="admin-image-controls">
-          <input value="${escapeHtml(service.imageUrl || "")}" placeholder="https://... or uploaded image URL" data-service-field="${escapeHtml(service.id)}" data-field="imageUrl" />
-          <input type="file" accept="image/*" data-service-image="${escapeHtml(service.id)}" />
-        </div>
-      </div>
-    </label>
-  `;
-}
-
-function renderDraftServiceImageControl(service) {
-  return `
-    <label class="setting-field service-image-field">Service Image
-      <div class="admin-image-row">
-        ${serviceMediaMarkup(service, "admin-image-preview")}
-        <div class="admin-image-controls">
-          <input value="${escapeHtml(service.imageUrl || "")}" placeholder="https://... or uploaded image URL" data-service-draft-field="imageUrl" />
-          <input type="file" accept="image/*" data-draft-service-image />
-        </div>
-      </div>
-    </label>
-  `;
 }
 
 function renderTemplateImagePreview(template, service) {
@@ -3095,7 +3977,7 @@ function renderServiceHierarchyRow(service) {
 function renderTemplateEditor(service) {
   const templates = service.templates?.length
     ? service.templates
-    : [{ id: "blank-form", title: "Blank Form", description: "Blank printable template.", pages: 1, fields: ["Applicant", "Address", "Mobile", "Purpose", "Signature"], imageUrl: "" }];
+    : [{ id: "blank-form", title: "Blank Form", description: "Blank printable template.", pages: 1, paperSize: "Auto", orientation: "portrait", fields: ["Applicant", "Address", "Mobile", "Purpose", "Signature"], imageUrl: "" }];
 
   return `
     <div class="template-editor-section">
@@ -3124,6 +4006,17 @@ function renderTemplateEditor(service) {
               <label class="setting-field">Pages
                 <input type="number" min="1" max="20" value="${Number(template.pages || 1)}" data-template-field="${escapeHtml(service.id)}" data-template-index="${index}" data-field="pages" />
               </label>
+              <label class="setting-field">Default Paper Size
+                <select data-template-field="${escapeHtml(service.id)}" data-template-index="${index}" data-field="paperSize">
+                  ${["Auto", ...PRINT_PAPER_SIZES].map((size) => `<option value="${size}" ${normalizePaperSize(template.paperSize, "Auto", true) === size ? "selected" : ""}>${size === "Auto" ? "Printer default (recommended)" : size}</option>`).join("")}
+                </select>
+              </label>
+              <label class="setting-field">Default Orientation
+                <select data-template-field="${escapeHtml(service.id)}" data-template-index="${index}" data-field="orientation">
+                  <option value="portrait" ${normalizeOrientation(template.orientation) === "portrait" ? "selected" : ""}>Portrait</option>
+                  <option value="landscape" ${normalizeOrientation(template.orientation) === "landscape" ? "selected" : ""}>Landscape</option>
+                </select>
+              </label>
               <label class="setting-field">Description
                 <input value="${escapeHtml(template.description || "")}" data-template-field="${escapeHtml(service.id)}" data-template-index="${index}" data-field="description" />
               </label>
@@ -3133,7 +4026,7 @@ function renderTemplateEditor(service) {
               <label class="setting-field">Image URL
                 <input value="${escapeHtml(template.imageUrl || "")}" placeholder="https://... or uploaded image URL" data-template-field="${escapeHtml(service.id)}" data-template-index="${index}" data-field="imageUrl" />
               </label>
-              <label class="setting-field">Upload Image
+              <label class="setting-field">Update Image
                 <input type="file" accept="image/*" data-template-image="${escapeHtml(service.id)}" data-template-index="${index}" />
               </label>
             </div>
@@ -3243,19 +4136,19 @@ function renderServicesAdmin() {
                 ${serviceMediaMarkup(service, "simple-service-icon")}
                 <div>
                   <h2>${escapeHtml(service.title)}</h2>
-                  <p class="helper-text">${escapeHtml(service.id)} | ${escapeHtml(serviceModeLabel(service))}</p>
+                  <p class="helper-text">${escapeHtml(serviceModeLabel(service))}</p>
                 </div>
               </div>
               <div class="simple-service-actions">
                 <span class="badge ${service.enabled ? "good" : "bad"}">${service.enabled ? "Enabled" : "Off"}</span>
                 <button class="secondary-button" data-service-edit="${escapeHtml(service.id)}">Edit</button>
-                <button class="danger-button" data-service-delete="${escapeHtml(service.id)}">Remove</button>
+                <button class="danger-button" data-service-delete="${escapeHtml(service.id)}">Delete</button>
               </div>
             </div>
             <div class="simple-service-meta">
               <span>B/W <strong>${money(rates.bw)}</strong></span>
               <span>Color <strong>${money(rates.color)}</strong></span>
-              <span>Kiosks <strong>${service.kioskIds?.length ? escapeHtml(service.kioskIds.join(", ")) : "All"}</strong></span>
+              <span>Projects <strong>${service.projectIds?.length ? escapeHtml(service.projectIds.map(adminProjectName).join(", ")) : "None"}</strong></span>
               <span>Forms <strong>${(service.templates || []).length}</strong></span>
             </div>
             ${service.description ? `<p class="helper-text simple-service-description">${escapeHtml(service.description)}</p>` : ""}
@@ -3297,6 +4190,17 @@ function renderServiceDraftTemplateEditor(service) {
               <label class="setting-field">Pages
                 <input type="number" min="1" max="20" value="${Number(template.pages || 1)}" data-template-draft-index="${index}" data-template-draft-field="pages" />
               </label>
+              <label class="setting-field">Default Paper Size
+                <select data-template-draft-index="${index}" data-template-draft-field="paperSize">
+                  ${["Auto", ...PRINT_PAPER_SIZES].map((size) => `<option value="${size}" ${normalizePaperSize(template.paperSize, "Auto", true) === size ? "selected" : ""}>${size === "Auto" ? "Printer default (recommended)" : size}</option>`).join("")}
+                </select>
+              </label>
+              <label class="setting-field">Default Orientation
+                <select data-template-draft-index="${index}" data-template-draft-field="orientation">
+                  <option value="portrait" ${normalizeOrientation(template.orientation) === "portrait" ? "selected" : ""}>Portrait</option>
+                  <option value="landscape" ${normalizeOrientation(template.orientation) === "landscape" ? "selected" : ""}>Landscape</option>
+                </select>
+              </label>
               <label class="setting-field">Description
                 <input value="${escapeHtml(template.description || "")}" data-template-draft-index="${index}" data-template-draft-field="description" />
               </label>
@@ -3306,7 +4210,7 @@ function renderServiceDraftTemplateEditor(service) {
               <label class="setting-field">Image URL
                 <input value="${escapeHtml(template.imageUrl || "")}" placeholder="https://... or uploaded image URL" data-template-draft-index="${index}" data-template-draft-field="imageUrl" />
               </label>
-              <label class="setting-field">Upload Image
+              <label class="setting-field">Update Image
                 <input type="file" accept="image/*" data-draft-template-image data-template-draft-index="${index}" />
               </label>
             </div>
@@ -3323,6 +4227,7 @@ function renderServiceEditorPage() {
   const service = editor.draft;
   const rates = service.pricing || { bw: 0, color: 0 };
   const title = editor.mode === "create" ? "Create Service" : "Edit Service";
+  const assignableProjects = adminServiceAssignableProjects();
 
   return `
     ${renderAdminHeader(title, "Update service details on this page, then save to return to the Services list.", `<button class="ghost-button" data-action="cancel-service-editor">Back to Services</button><button class="primary-button" data-action="save-service-editor">Save Service</button>`)}
@@ -3330,17 +4235,14 @@ function renderServiceEditorPage() {
     <div class="module-card service-editor-page">
       <div class="service-admin-head">
         <div class="service-admin-title">
-          ${serviceMediaMarkup(service, "admin-image-preview")}
+          ${imagePreviewMarkup("", service.icon || "SV", "admin-image-preview")}
           <div>
             <h2>${escapeHtml(service.title || "New Service")}</h2>
-            <p class="helper-text">${escapeHtml(service.id || "new-service")} | ${escapeHtml(serviceModeLabel(service))}</p>
+            <p class="helper-text">${escapeHtml(serviceModeLabel(service))}</p>
           </div>
         </div>
       </div>
       <div class="settings-grid service-editor-grid">
-        <label class="setting-field">Service ID
-          <input value="${escapeHtml(service.id || "")}" data-service-draft-field="id" ${editor.mode === "edit" ? "disabled" : ""} />
-        </label>
         <label class="setting-field">Enabled
           <select data-service-draft-field="enabled">
             <option value="true" ${service.enabled !== false ? "selected" : ""}>Yes</option>
@@ -3362,16 +4264,17 @@ function renderServiceEditorPage() {
         <label class="setting-field">Description
           <input value="${escapeHtml(service.description || "")}" data-service-draft-field="description" />
         </label>
-        <label class="setting-field">Kiosk IDs
-          <input value="${escapeHtml((service.kioskIds || []).join(", "))}" placeholder="KIOSK-1, KIOSK-2 (blank = all)" data-service-draft-field="kioskIds" />
-        </label>
+        ${assignableProjects.length ? `<label class="setting-field">Project
+          <select data-service-draft-field="projectIds">
+            ${assignableProjects.map((project) => `<option value="${escapeHtml(project.projectId)}" ${(service.projectIds || []).includes(project.projectId) ? "selected" : ""}>${escapeHtml(project.name || project.projectId)}</option>`).join("")}
+          </select>
+        </label>` : `<div class="empty-note">Create a kiosk under an assigned project before assigning services.</div>`}
         <label class="setting-field">B/W Rate
           <input type="number" min="0" value="${rates.bw || 0}" data-service-draft-field="bw" />
         </label>
         <label class="setting-field">Color Rate
           <input type="number" min="0" value="${rates.color || 0}" data-service-draft-field="color" />
         </label>
-        ${renderDraftServiceImageControl(service)}
       </div>
       ${service.mode === "template" ? renderServiceDraftTemplateEditor(service) : `
         <div class="template-editor-section">
@@ -3513,8 +4416,9 @@ function updateServiceField(serviceId, field, value) {
       next.templates = next.mode === "template" && !next.templates.length
         ? [{ id: "blank-form", title: "Blank Form", description: "Blank printable template.", pages: 1, fields: ["Applicant", "Address", "Mobile", "Purpose", "Signature"] }]
         : next.templates;
-    } else if (field === "kioskIds") {
-      next.kioskIds = String(value || "").split(",").map((item) => item.trim()).filter(Boolean);
+    } else if (field === "projectIds") {
+      next.projectIds = [slug(value, "")].filter(Boolean);
+      next.kioskIds = [];
     } else if (field === "bw" || field === "color") {
       next.pricing = {
         ...next.pricing,
@@ -3557,7 +4461,10 @@ function defaultServiceDraft() {
     mode: "upload",
     imageUrl: "",
     enabled: true,
+    projectIds: firstAdminServiceProjectId() ? [firstAdminServiceProjectId()] : [],
     kioskIds: [],
+    customerSettings: { ...DEFAULT_KIOSK_CUSTOMER_SETTINGS },
+    printDefaults: { ...DEFAULT_SERVICE_PRINT_DEFAULTS },
     pricing: { bw: 2, color: 10 },
     templates: []
   };
@@ -3582,6 +4489,12 @@ function openServiceEditor(serviceId) {
 }
 
 function openCreateServiceEditor() {
+  if (!firstAdminServiceProjectId()) {
+    state.pricingSaveStatus = "Create a kiosk under an assigned project before creating services.";
+    render();
+    return;
+  }
+
   state.serviceEditor = {
     mode: "create",
     originalId: null,
@@ -3615,12 +4528,15 @@ function updateServiceDraftField(field, value) {
         title: "Sample Form",
         description: "Blank printable template.",
         pages: 1,
+        paperSize: "Auto",
+        orientation: "portrait",
         fields: ["Applicant", "Address", "Mobile", "Purpose", "Signature"],
         imageUrl: ""
       }];
     }
-  } else if (field === "kioskIds") {
-    draft.kioskIds = String(value || "").split(",").map((item) => item.trim()).filter(Boolean);
+  } else if (field === "projectIds") {
+    draft.projectIds = [slug(value, "")].filter(Boolean);
+    draft.kioskIds = [];
   } else if (field === "bw" || field === "color") {
     draft.pricing = {
       ...(draft.pricing || {}),
@@ -3648,6 +4564,10 @@ function updateServiceDraftTemplateField(templateIndex, field, value) {
     existing.id = existing.id || slug(existing.title, `template-${templateIndex + 1}`);
   } else if (field === "pages") {
     existing.pages = Math.max(1, Math.min(20, Number(value) || 1));
+  } else if (field === "paperSize") {
+    existing.paperSize = normalizePaperSize(value, "Auto", true);
+  } else if (field === "orientation") {
+    existing.orientation = normalizeOrientation(value);
   } else if (field === "description") {
     existing.description = String(value || "").trimStart();
   } else if (field === "fields") {
@@ -3668,6 +4588,8 @@ function addDraftTemplate() {
     title,
     description: "Blank printable template.",
     pages: 1,
+    paperSize: "Auto",
+    orientation: "portrait",
     fields: ["Applicant", "Address", "Mobile", "Purpose", "Signature"],
     imageUrl: ""
   });
@@ -3690,9 +4612,18 @@ async function saveServiceEditor() {
 
   syncServiceEditorDraftFromDom();
   const normalized = normalizeServicesConfig([editor.draft])[0];
+  const assignableProjectIds = new Set(adminServiceAssignableProjects().map((project) => project.projectId));
+  normalized.projectIds = (normalized.projectIds || []).filter((projectId) => assignableProjectIds.has(projectId));
+  normalized.kioskIds = [];
 
   if (!normalized.title) {
     state.pricingSaveStatus = "Service name is required.";
+    render();
+    return;
+  }
+
+  if (!normalized.projectIds.length) {
+    state.pricingSaveStatus = "Create a kiosk under an assigned project before saving this service.";
     render();
     return;
   }
@@ -3734,6 +4665,8 @@ function updateServiceTemplateField(serviceId, templateIndex, field, value) {
       title: `Template ${templateIndex + 1}`,
       description: "Blank printable template.",
       pages: 1,
+      paperSize: "Auto",
+      orientation: "portrait",
       fields: ["Applicant", "Address", "Mobile", "Purpose", "Signature"],
       imageUrl: ""
     };
@@ -3744,6 +4677,10 @@ function updateServiceTemplateField(serviceId, templateIndex, field, value) {
       next.id = next.id || slug(next.title, `template-${templateIndex + 1}`);
     } else if (field === "pages") {
       next.pages = Math.max(1, Math.min(20, Number(value) || 1));
+    } else if (field === "paperSize") {
+      next.paperSize = normalizePaperSize(value, "Auto", true);
+    } else if (field === "orientation") {
+      next.orientation = normalizeOrientation(value);
     } else if (field === "description") {
       next.description = String(value || "").trimStart();
     } else if (field === "fields") {
@@ -3777,6 +4714,8 @@ function addServiceTemplate(serviceId) {
       title,
       description: "Blank printable template.",
       pages: 1,
+      paperSize: "Auto",
+      orientation: "portrait",
       fields: ["Applicant", "Address", "Mobile", "Purpose", "Signature"],
       imageUrl: ""
     });
@@ -3812,7 +4751,7 @@ function removeServiceTemplate(serviceId, templateIndex) {
   render();
 }
 
-async function uploadAdminImage(file, { serviceId, templateIndex = null, draft = false } = {}) {
+async function uploadAdminTemplateImage(file, { serviceId, templateIndex = 0, draft = false } = {}) {
   const validationError = validateAdminImageFile(file);
 
   if (validationError) {
@@ -3830,7 +4769,7 @@ async function uploadAdminImage(file, { serviceId, templateIndex = null, draft =
 
   try {
     const formData = new FormData();
-    formData.append(templateIndex === null ? "serviceImage" : "templateImage", file, file.name);
+    formData.append("templateImage", file, file.name);
 
     const response = await fetch(`${BACKEND_URL}/api/admin/service-image`, {
       method: "POST",
@@ -3856,12 +4795,8 @@ async function uploadAdminImage(file, { serviceId, templateIndex = null, draft =
     }
   }
 
-  if (draft && templateIndex === null) {
-    updateServiceDraftField("imageUrl", imageUrl);
-  } else if (draft) {
+  if (draft) {
     updateServiceDraftTemplateField(templateIndex, "imageUrl", imageUrl);
-  } else if (templateIndex === null) {
-    updateServiceField(serviceId, "imageUrl", imageUrl);
   } else {
     updateServiceTemplateField(serviceId, templateIndex, "imageUrl", imageUrl);
   }
@@ -3880,6 +4815,12 @@ async function uploadAdminImage(file, { serviceId, templateIndex = null, draft =
 }
 
 function addService() {
+  if (!firstAdminServiceProjectId()) {
+    state.pricingSaveStatus = "Create a kiosk under an assigned project before adding services.";
+    render();
+    return;
+  }
+
   const id = `custom-service-${Date.now().toString().slice(-5)}`;
   const service = {
     id,
@@ -3890,7 +4831,10 @@ function addService() {
     mode: "upload",
     imageUrl: "",
     enabled: true,
+    projectIds: firstAdminServiceProjectId() ? [firstAdminServiceProjectId()] : [],
     kioskIds: [],
+    customerSettings: { ...DEFAULT_KIOSK_CUSTOMER_SETTINGS },
+    printDefaults: { ...DEFAULT_SERVICE_PRINT_DEFAULTS },
     pricing: { bw: 2, color: 10 },
     templates: []
   };
@@ -3985,7 +4929,6 @@ function pricingLabel(key) {
 
 function renderProjects() {
   const rows = state.adminData.projects.map((project) => [
-    project.projectId || "",
     project.name || "",
     project.status || "",
     String(state.adminData.kiosks.filter((kiosk) => kiosk.projectId === project.projectId).length),
@@ -3993,29 +4936,115 @@ function renderProjects() {
   ]);
 
   return `
-    ${renderAdminHeader("Assigned Projects", "Read-only projects allocated to your kiosk admin account.")}
+    ${renderAdminHeader("Assigned Projects", "Projects allocated to your kiosk admin account. Create and manage kiosks from the Kiosks page.")}
     ${adminNotice()}
-    <div class="read-only-banner">Project allocation and kiosk creation are managed only by the super admin.</div>
-    ${renderPaginatedTable("projects", ["Project ID", "Project Name", "Status", "Kiosks", "Description"], rows, "No projects are assigned to this account.")}
+    ${renderPaginatedTable("projects", ["Project Name", "Status", "Kiosks", "Description"], rows, "No projects are assigned to this account.")}
   `;
 }
 
 function renderKiosks() {
-  const rows = state.adminData.kiosks.map((kiosk) => [
-    kiosk.kioskId || "",
-    kiosk.name || "",
-    kiosk.projectId || "",
-    kiosk.branch || "",
-    kiosk.status || "Unknown",
-    kiosk.activatedAt ? "Activated" : "Not activated",
-    kiosk.lastOnline ? formatDateTime(kiosk.lastOnline) : ""
-  ]);
+  return `
+    ${renderAdminHeader("Assigned Kiosks", "Create and manage kiosks inside your allocated projects.", `<button class="primary-button" data-action="open-create-kiosk">Create Kiosk</button>`)}
+    ${adminNotice()}
+    ${state.kioskCreateStatus ? `<div class="save-note">${escapeHtml(state.kioskCreateStatus)}</div>` : ""}
+    ${renderKioskManagementTable()}
+    ${renderKioskEditorModal()}
+  `;
+}
+
+function renderKioskManagementTable() {
+  const page = adminPaginated(state.adminData.kiosks, "kiosks");
+  const kiosks = page.items;
 
   return `
-    ${renderAdminHeader("Assigned Kiosks", "Read-only kiosks within your allocated projects.")}
-    ${adminNotice()}
-    <div class="read-only-banner">Kiosks can only be created, moved, or updated by the super admin.</div>
-    ${renderPaginatedTable("kiosks", ["Kiosk ID", "Name", "Project", "Branch", "Status", "Activation", "Last Online"], rows, "No kiosks are assigned to this account.")}
+    <div class="table-wrap">
+      <table>
+        <thead>
+          <tr>
+            <th>Kiosk ID</th>
+            <th>Name</th>
+            <th>Project</th>
+            <th>Branch</th>
+            <th>Status</th>
+            <th>Activation</th>
+            <th>Last Online</th>
+            <th>Actions</th>
+          </tr>
+        </thead>
+        <tbody>
+          ${kiosks.length ? kiosks.map((kiosk) => `
+            <tr>
+              <td>${escapeHtml(kiosk.kioskId || "")}</td>
+              <td>${escapeHtml(kiosk.name || "")}</td>
+              <td>${escapeHtml(kiosk.projectId || "")}</td>
+              <td>${escapeHtml(kiosk.branch || "")}</td>
+              <td>${escapeHtml(kiosk.status || "Unknown")}</td>
+              <td>${escapeHtml(kiosk.activatedAt ? "Activated" : "Not activated")}</td>
+              <td>${escapeHtml(kiosk.lastOnline ? formatDateTime(kiosk.lastOnline) : "")}</td>
+              <td>
+                <div class="table-actions">
+                  <button class="secondary-button small-button" data-kiosk-edit="${escapeHtml(kiosk.kioskId || "")}">Edit</button>
+                  <button class="danger-button small-button" data-kiosk-delete="${escapeHtml(kiosk.kioskId || "")}">Delete</button>
+                </div>
+              </td>
+            </tr>
+          `).join("") : `
+            <tr><td colspan="8">No kiosks are assigned to this account.</td></tr>
+          `}
+        </tbody>
+      </table>
+    </div>
+    ${renderAdminPagination("kiosks", page)}
+  `;
+}
+
+function renderKioskEditorModal() {
+  if (!state.kioskEditorOpen) return "";
+
+  const editing = Boolean(state.kioskEditId);
+  const draft = state.kioskCreate;
+  const projects = state.adminData.projects;
+
+  return `
+    <div class="editor-modal-shell" role="dialog" aria-modal="true" aria-label="${editing ? "Edit kiosk" : "Create kiosk"}">
+      <button class="editor-modal-backdrop" data-action="cancel-kiosk-editor" aria-label="Close kiosk editor"></button>
+      <div class="editor-modal-content">
+        <div class="module-card editor-panel">
+          <div class="editor-head">
+            <div>
+              <h2>${editing ? "Edit Kiosk" : "Create Kiosk"}</h2>
+              <p class="helper-text">Mini PC setup uses the kiosk ID and setup code.</p>
+            </div>
+            <button class="ghost-button" data-action="cancel-kiosk-editor">Close</button>
+          </div>
+          ${state.kioskCreateStatus ? `<div class="save-note">${escapeHtml(state.kioskCreateStatus)}</div>` : ""}
+          ${projects.length ? "" : `<div class="empty-note">No assigned projects found. Ask the super admin to allocate a project first.</div>`}
+          <div class="settings-grid service-editor-grid">
+            <label class="setting-field">Kiosk ID
+              <input value="${escapeHtml(draft.kioskId)}" data-kiosk-create-field="kioskId" ${editing ? "disabled" : ""} />
+            </label>
+            <label class="setting-field">Mini PC Setup Code
+              <input value="${escapeHtml(draft.setupCode)}" data-kiosk-create-field="setupCode" />
+            </label>
+            <label class="setting-field">Name
+              <input value="${escapeHtml(draft.name)}" data-kiosk-create-field="name" />
+            </label>
+            <label class="setting-field">Project
+              <select data-kiosk-create-field="projectId">
+                ${projects.map((project) => `<option value="${escapeHtml(project.projectId)}" ${draft.projectId === project.projectId ? "selected" : ""}>${escapeHtml(project.name || project.projectId)}</option>`).join("")}
+              </select>
+            </label>
+            <label class="setting-field">Branch
+              <input value="${escapeHtml(draft.branch)}" data-kiosk-create-field="branch" />
+            </label>
+          </div>
+          <div class="flow-actions">
+            <button class="primary-button" data-action="create-kiosk" ${projects.length ? "" : "disabled"}>${editing ? "Save Kiosk" : "Create Kiosk"}</button>
+            <button class="ghost-button" data-action="cancel-kiosk-editor">Cancel</button>
+          </div>
+        </div>
+      </div>
+    </div>
   `;
 }
 
@@ -4200,6 +5229,7 @@ async function handleClick(event) {
     }
 
     state.selectedService = target.dataset.service;
+    applyServicePrintDefaults(selectedService());
     state.step = 1;
     stopUploadPolling();
     clearCurrentFile();
@@ -4226,9 +5256,21 @@ async function handleClick(event) {
 
   if (target.dataset.adminPage) {
     state.adminPage = target.dataset.adminPage;
+    state.adminNavOpen = false;
     state.serviceEditor = null;
+    closeKioskEditor();
     render();
     loadAdminData();
+    return;
+  }
+
+  if (target.dataset.kioskEdit) {
+    openKioskEditor(target.dataset.kioskEdit);
+    return;
+  }
+
+  if (target.dataset.kioskDelete) {
+    await deleteAdminKiosk(target.dataset.kioskDelete);
     return;
   }
 
@@ -4263,7 +5305,11 @@ async function handleClick(event) {
   }
 
   if (target.dataset.setting) {
+    if (target.dataset.setting === "colorMode" && !customerSettingEnabled(target.dataset.value)) {
+      return;
+    }
     state.settings[target.dataset.setting] = target.dataset.value;
+    state.settingsCustomized = true;
     render();
     return;
   }
@@ -4297,6 +5343,7 @@ async function handleClick(event) {
 
     stopUploadPolling();
     clearCurrentFile();
+    applyTemplatePrintDefaults(template);
     setJobFiles([createTemplateFile(template)]);
     state.uploadError = "";
     state.uploadSession = null;
@@ -4306,14 +5353,30 @@ async function handleClick(event) {
   }
 
   switch (target.dataset.action) {
+    case "admin-toggle-nav":
+      state.adminNavOpen = !state.adminNavOpen;
+      render();
+      break;
+    case "admin-close-nav":
+      state.adminNavOpen = false;
+      render();
+      break;
     case "refresh-admin":
       loadAdminData();
+      break;
+    case "open-create-kiosk":
+      openKioskEditor();
+      break;
+    case "cancel-kiosk-editor":
+      closeKioskEditor();
+      render();
       break;
     case "create-kiosk":
       await createAdminKiosk();
       break;
     case "admin-logout":
       state.adminAuthed = false;
+      state.adminNavOpen = false;
       state.adminToken = "";
       state.adminAccount = null;
       clearAdminSession();
@@ -4335,6 +5398,16 @@ async function handleClick(event) {
       } else {
         state.step = Math.max(0, state.step - 1);
       }
+      render();
+      break;
+    case "decrease-copies":
+      state.settings.copies = Math.max(1, Number(state.settings.copies || 1) - 1);
+      state.settingsCustomized = true;
+      render();
+      break;
+    case "increase-copies":
+      state.settings.copies = Math.min(99, Number(state.settings.copies || 1) + 1);
+      state.settingsCustomized = true;
       render();
       break;
     case "next-step":
@@ -4411,20 +5484,35 @@ async function handleClick(event) {
 async function handleChange(event) {
   const target = event.target;
 
+  if (target.dataset.customerLanguage !== undefined) {
+    state.customerLanguage = CUSTOMER_LANGUAGES.has(target.value) ? target.value : "en";
+    storeCustomerLanguage();
+    render();
+    return;
+  }
+
+  if (target.dataset.adminLanguage !== undefined) {
+    state.adminLanguage = ADMIN_LANGUAGES.has(target.value) ? target.value : "en";
+    storeAdminLanguage();
+    render();
+    return;
+  }
+
+  if (target.dataset.previewFileSelect !== undefined) {
+    state.previewFileIndex = Math.max(0, Math.min(jobFiles().length - 1, Number(target.value) || 0));
+    state.previewZoom = 1;
+    render();
+    return;
+  }
+
   if (target.dataset.adminLoginField) {
     state.adminLoginDraft[target.dataset.adminLoginField] = target.value;
     state.adminLoginError = "";
     return;
   }
 
-  if (target.dataset.draftServiceImage !== undefined && target.files?.length) {
-    await uploadAdminImage(target.files[0], { draft: true });
-    target.value = "";
-    return;
-  }
-
   if (target.dataset.draftTemplateImage !== undefined && target.files?.length) {
-    await uploadAdminImage(target.files[0], {
+    await uploadAdminTemplateImage(target.files[0], {
       draft: true,
       templateIndex: Number(target.dataset.templateDraftIndex || 0)
     });
@@ -4432,14 +5520,8 @@ async function handleChange(event) {
     return;
   }
 
-  if (target.dataset.serviceImage && target.files?.length) {
-    await uploadAdminImage(target.files[0], { serviceId: target.dataset.serviceImage });
-    target.value = "";
-    return;
-  }
-
   if (target.dataset.templateImage && target.files?.length) {
-    await uploadAdminImage(target.files[0], {
+    await uploadAdminTemplateImage(target.files[0], {
       serviceId: target.dataset.templateImage,
       templateIndex: Number(target.dataset.templateIndex || 0)
     });
@@ -4491,7 +5573,19 @@ async function handleChange(event) {
   }
 
   if (target.dataset.input) {
-    state.settings[target.dataset.input] = target.value;
+    const field = target.dataset.input;
+    const settingKey = field === "range" ? "pageRange" : field;
+    if (!customerSettingEnabled(settingKey)) {
+      return;
+    }
+    state.settings[field] = field === "paperSize"
+      ? normalizePaperSize(String(target.value).replace(/\s*\(printer default\)$/, ""), "A4")
+      : field === "orientation"
+        ? normalizeOrientation(target.value)
+        : field === "copies"
+          ? Math.max(1, Math.min(99, Number(target.value) || 1))
+          : target.value;
+    state.settingsCustomized = true;
     render();
     return;
   }
@@ -4542,7 +5636,12 @@ function handleInput(event) {
   const target = event.target;
 
   if (target.dataset.input) {
+    const settingKey = target.dataset.input === "range" ? "pageRange" : target.dataset.input;
+    if (!customerSettingEnabled(settingKey)) {
+      return;
+    }
     state.settings[target.dataset.input] = target.value;
+    state.settingsCustomized = true;
   }
 
   if (target.dataset.adminLoginField) {
@@ -4596,10 +5695,11 @@ function handleInput(event) {
 
 async function createAdminKiosk() {
   syncKioskCreateDraftFromDom();
+  const editing = Boolean(state.kioskEditId);
   const kiosk = {
     ...state.kioskCreate,
     kioskId: normalizeKioskId(state.kioskCreate.kioskId),
-    setupCode: normalizeKioskId(state.kioskCreate.setupCode)
+    setupCode: normalizeKioskId(state.kioskCreate.setupCode || (editing ? "" : generateKioskSetupCode()))
   };
 
   if (!kiosk.kioskId) {
@@ -4608,21 +5708,87 @@ async function createAdminKiosk() {
     return;
   }
 
-  state.kioskCreateStatus = "Creating kiosk...";
+  if (!kiosk.projectId) {
+    state.kioskCreateStatus = "Select a project.";
+    render();
+    return;
+  }
+
+  state.kioskCreateStatus = editing ? "Saving kiosk..." : "Creating kiosk...";
   render();
 
   try {
-    const payload = await fetchJson(`${BACKEND_URL}/api/admin/kiosks`, {
-      method: "POST",
-      headers: adminAuthHeaders({ "Content-Type": "application/json" }),
+    const path = editing
+      ? `/api/admin/kiosks/${encodeURIComponent(state.kioskEditId)}`
+      : "/api/admin/kiosks";
+    const payload = await fetchAdminJson(path, {
+      method: editing ? "PUT" : "POST",
+      headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ kiosk })
     });
 
     state.adminData.kiosks = Array.isArray(payload.kiosks) ? payload.kiosks : state.adminData.kiosks;
-    state.kioskCreate = { kioskId: "", name: "", branch: "", setupCode: "" };
-    state.kioskCreateStatus = `Created ${payload.kiosk.kioskId}. Setup code: ${payload.kiosk.setupCode}`;
+    closeKioskEditor();
+    state.kioskCreateStatus = editing
+      ? `Saved ${payload.kiosk.kioskId}.`
+      : `Created ${payload.kiosk.kioskId}. Setup code: ${payload.kiosk.setupCode}`;
   } catch (error) {
-    state.kioskCreateStatus = error.message || "Could not create kiosk.";
+    state.kioskCreateStatus = error.message || (editing ? "Could not save kiosk." : "Could not create kiosk.");
+  }
+
+  render();
+}
+
+function openKioskEditor(kioskId = "") {
+  const editing = Boolean(kioskId);
+  const kiosk = editing
+    ? state.adminData.kiosks.find((item) => String(item.kioskId || "").toUpperCase() === String(kioskId || "").toUpperCase())
+    : null;
+  const projectId = kiosk?.projectId || state.adminData.projects[0]?.projectId || "";
+
+  if (editing && !kiosk) {
+    state.kioskCreateStatus = "Kiosk not found.";
+    render();
+    return;
+  }
+
+  state.kioskEditId = editing ? kiosk.kioskId : "";
+  state.kioskEditorOpen = true;
+  state.kioskCreate = {
+    kioskId: editing ? kiosk.kioskId : `KIOSK-${Date.now().toString().slice(-5)}`,
+    name: editing ? (kiosk.name || "New Kiosk") : "New Kiosk",
+    projectId,
+    branch: editing ? (kiosk.branch || "Unassigned Branch") : "Unassigned Branch",
+    setupCode: editing ? (kiosk.setupCode || "") : generateKioskSetupCode()
+  };
+  state.kioskCreateStatus = "";
+  render();
+}
+
+function closeKioskEditor() {
+  state.kioskEditId = "";
+  state.kioskEditorOpen = false;
+  state.kioskCreate = { kioskId: "", name: "", projectId: "", branch: "", setupCode: "" };
+}
+
+async function deleteAdminKiosk(kioskId) {
+  const normalizedKioskId = normalizeKioskId(kioskId);
+
+  if (!normalizedKioskId || !window.confirm(adminTranslateText(`Delete kiosk ${normalizedKioskId}?`))) {
+    return;
+  }
+
+  state.kioskCreateStatus = "Deleting kiosk...";
+  render();
+
+  try {
+    const payload = await fetchAdminJson(`/api/admin/kiosks/${encodeURIComponent(normalizedKioskId)}`, {
+      method: "DELETE"
+    });
+    state.adminData.kiosks = Array.isArray(payload.kiosks) ? payload.kiosks : state.adminData.kiosks.filter((kiosk) => kiosk.kioskId !== normalizedKioskId);
+    state.kioskCreateStatus = `Deleted ${normalizedKioskId}.`;
+  } catch (error) {
+    state.kioskCreateStatus = error.message || "Could not delete kiosk.";
   }
 
   render();
@@ -4704,6 +5870,17 @@ function resetCustomer() {
   state.uploadSession = null;
   state.previewZoom = 1;
   state.previewFileIndex = 0;
+  state.settings = {
+    colorMode: "bw",
+    copies: 1,
+    paperSize: normalizePaperSize(state.printer.defaultPaperSize, "A4"),
+    sides: "single",
+    orientation: "portrait",
+    range: "all",
+    staple: "no"
+  };
+  state.settingsCustomized = false;
+  enforceCustomerSettings();
   state.paymentStatus = "Pending";
   state.paymentStatusMessage = "";
   state.paymentError = "";
@@ -4728,15 +5905,6 @@ function resetCustomer() {
     agent: "Checking",
     statusText: "Checking printer status...",
     manualReadyOverride: false
-  };
-  state.settings = {
-    colorMode: "bw",
-    copies: 1,
-    paperSize: "A4",
-    sides: "single",
-    orientation: "portrait",
-    range: "all",
-    staple: "no"
   };
 }
 
