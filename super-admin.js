@@ -38,6 +38,7 @@ const state = {
   },
   search: "",
   pagination: {},
+  selectedClientId: "",
   selectedProjectId: "",
   navOpen: false,
   editor: null,
@@ -62,7 +63,7 @@ const pageGroups = [
     label: "Setup and Control",
     pages: [
       { id: "dashboard", label: "Dashboard", icon: "dashboard" },
-      { id: "kioskAdmins", label: "Kiosk Admins", icon: "users" },
+      { id: "kioskAdmins", label: "Clients", icon: "users" },
       { id: "projects", label: "Projects", icon: "hierarchy" },
       { id: "kiosks", label: "Kiosks", icon: "kiosks" },
       { id: "services", label: "Services", icon: "services" },
@@ -74,12 +75,12 @@ const pageGroups = [
 const collections = {
   projects: {
     title: "Project Management",
-    subtitle: "Create projects, allocate each project to a kiosk admin, then add kiosks under it.",
+    subtitle: "Create projects, allocate each project to a client, then add kiosks under it.",
     key: "projectId",
     columns: ["name", "adminId", "status", "description", "createdAt"],
     fields: [
       { key: "name", label: "Project Name", required: true },
-      { key: "adminId", label: "Allocated Kiosk Admin", type: "select-data", collection: "kioskAdmins", valueKey: "adminId", labelKey: "name" },
+      { key: "adminId", label: "Allocated Client", type: "select-data", collection: "kioskAdmins", valueKey: "adminId", labelKey: "name" },
       { key: "status", label: "Status", type: "select", options: ["active", "inactive"] },
       { key: "description", label: "Description", type: "textarea" }
     ],
@@ -92,8 +93,8 @@ const collections = {
     })
   },
   kioskAdmins: {
-    title: "Kiosk Admin Management",
-    subtitle: "Create kiosk admin logins first. Allocate each admin from the Project form.",
+    title: "Client Management",
+    subtitle: "Create client logins first. Allocate each client from the Project form.",
     key: "adminId",
     columns: ["name", "email", "status", "projectIds", "lastLoginAt"],
     fields: [
@@ -104,7 +105,7 @@ const collections = {
     ],
     defaults: () => ({
       adminId: `admin-${Date.now().toString().slice(-5)}`,
-      name: "New Kiosk Admin",
+      name: "New Client",
       email: "",
       password: "",
       status: "active",
@@ -115,7 +116,7 @@ const collections = {
     title: "Kiosk Management",
     subtitle: "Create kiosks under a project. Kiosk creation is available only to super admins.",
     key: "kioskId",
-    columns: ["kioskId", "name", "projectId", "branch", "status", "printer", "scanner", "appVersion", "lastOnline"],
+    columns: ["projectId", "kioskId", "name", "branch", "status", "lastOnline"],
     fields: [
       { key: "kioskId", label: "Kiosk ID", required: true },
       { key: "setupCode", label: "Mini PC Setup Code", required: true },
@@ -142,7 +143,11 @@ const collections = {
       id: `service-${Date.now().toString().slice(-5)}`,
       icon: "SV",
       title: "New Service",
+      titleHi: "",
+      titleMr: "",
       description: "Customer service.",
+      descriptionHi: "",
+      descriptionMr: "",
       defaultPages: 1,
       mode: "upload",
       imageUrl: "",
@@ -475,7 +480,7 @@ async function loginWithLegacyAdminEndpoints(email, password) {
     .map((attempt) => attempt.value);
 
   if (matches.length > 1) {
-    throw new Error("These credentials match both admin roles. Use different super admin and kiosk admin credentials.");
+    throw new Error("These credentials match both admin roles. Use different super admin and client credentials.");
   }
 
   if (matches.length === 1) {
@@ -529,6 +534,50 @@ function serviceAssignableProjectIds() {
   return new Set(serviceAssignableProjects().map((project) => project.projectId));
 }
 
+function clientProjectIds(client = {}) {
+  return new Set([
+    ...(Array.isArray(client.projectIds) ? client.projectIds : []),
+    ...data("projects")
+      .filter((project) => project.adminId && project.adminId === client.adminId)
+      .map((project) => project.projectId)
+  ].filter(Boolean));
+}
+
+function projectsForClient(clientId, projects = data("projects")) {
+  const client = data("kioskAdmins").find((item) => item.adminId === clientId);
+  if (!client) return [];
+
+  const assignedProjectIds = clientProjectIds(client);
+  return projects.filter((project) => (
+    project.adminId === clientId || assignedProjectIds.has(project.projectId)
+  ));
+}
+
+function serviceClients() {
+  const assignableProjects = serviceAssignableProjects();
+  const assignableProjectIds = new Set(assignableProjects.map((project) => project.projectId));
+
+  return data("kioskAdmins").filter((client) => (
+    projectsForClient(client.adminId).some((project) => assignableProjectIds.has(project.projectId))
+  ));
+}
+
+function selectedServiceClientId() {
+  const clients = serviceClients();
+
+  if (!state.selectedClientId || !clients.some((client) => client.adminId === state.selectedClientId)) {
+    state.selectedClientId = clients[0]?.adminId || "";
+  }
+
+  return state.selectedClientId;
+}
+
+function serviceProjectsForSelectedClient() {
+  const clientId = selectedServiceClientId();
+  const assignableProjects = serviceAssignableProjects();
+  return clientId ? projectsForClient(clientId, assignableProjects) : assignableProjects;
+}
+
 function paginated(items, key, pageSize = 10) {
   const pageCount = Math.max(1, Math.ceil(items.length / pageSize));
   const currentPage = Math.min(Math.max(1, Number(state.pagination[key] || 1)), pageCount);
@@ -567,7 +616,7 @@ function renderLogin() {
           <div class="brand-mark"><img src="./assets/printhub-mark.png" alt="PrintHub" /></div>
           <div>
             <div class="brand-title">PrintHub Admin Login</div>
-            <div class="brand-subtitle">One sign-in for kiosk admin and super admin</div>
+            <div class="brand-subtitle">One sign-in for client and super admin</div>
           </div>
         </div>
       </header>
@@ -716,7 +765,6 @@ function renderNotice() {
 function renderDashboard() {
   const summary = state.snapshot?.summary || {};
   const failedJobs = data("jobs").filter((job) => /failed/i.test(job.printStatus || ""));
-  const recentJobs = data("jobs").slice(-5).reverse();
   const pendingRefunds = data("refunds").filter((refund) => /pending/i.test(refund.status || ""));
 
   return `
@@ -743,19 +791,9 @@ function renderDashboard() {
         </div>
       `).join("")}
     </div>
-    <div class="module-grid dashboard-modules">
-      <div class="module-card dashboard-panel">
-        <div class="module-card-title"><span>${uiIcon("history", 20)}</span><h2>Recent Jobs</h2></div>
-        <div class="info-list">
-          ${(recentJobs.length ? recentJobs : [{ jobId: "No jobs", fileName: "", printStatus: "" }]).map((job) => `
-            <div class="info-row">
-              <span>${escapeHtml(job.jobId)} ${escapeHtml(job.fileName || "")}</span>
-              <strong>${escapeHtml(job.printStatus || "")}</strong>
-            </div>
-          `).join("")}
-        </div>
-      </div>
-      <div class="module-card dashboard-panel">
+    <div class="module-grid dashboard-modules dashboard-modules-revenue">
+      ${renderDashboardRevenuePanel(summary)}
+      <div class="module-card dashboard-panel support-panel">
         <div class="module-card-title"><span>${uiIcon("support", 20)}</span><h2>Support Queue</h2></div>
         <div class="health-list">
           ${renderHealth("Failed jobs", `${failedJobs.length}`, failedJobs.length ? "warn" : "good")}
@@ -763,6 +801,152 @@ function renderDashboard() {
           ${renderHealth("Kiosk records", `${summary.kiosks || 0}`, summary.kiosks ? "good" : "warn")}
         </div>
       </div>
+    </div>
+  `;
+}
+
+function dashboardRevenueRows(summary = {}) {
+  const rows = [];
+  const jobById = new Map(data("jobs").map((job) => [String(job.jobId || ""), job]));
+  const paymentJobIds = new Set();
+
+  data("payments").forEach((payment) => {
+    const linkedJob = jobById.get(String(payment.jobId || ""));
+    const amount = Number(payment.amount || 0) || Number(payment.amountInPaise || 0) / 100;
+    const dateValue = payment.createdAt || payment.paidAt || linkedJob?.completedAt || linkedJob?.createdAt || linkedJob?.date;
+    if (Number.isFinite(amount) && amount > 0) {
+      if (payment.jobId) paymentJobIds.add(String(payment.jobId));
+      rows.push({ date: revenueDateKey(dateValue), amount });
+    }
+  });
+
+  data("jobs").forEach((job) => {
+    if (paymentJobIds.has(String(job.jobId || ""))) return;
+    const paid = /success|paid|captured/i.test(String(job.paymentStatus || job.payment || ""));
+    const amount = Number(job.amount || 0);
+    if (paid && Number.isFinite(amount) && amount > 0) {
+      rows.push({ date: revenueDateKey(job.completedAt || job.createdAt || job.date), amount });
+    }
+  });
+
+  if (!rows.length && Number(summary.gross || summary.net || 0) > 0) {
+    rows.push({ date: revenueDateKey(new Date()), amount: Number(summary.gross || summary.net || 0) });
+  }
+
+  return rows;
+}
+
+function revenueDateKey(value) {
+  const date = value ? new Date(value) : new Date();
+  if (Number.isNaN(date.getTime())) return new Date().toISOString().slice(0, 10);
+  return date.toISOString().slice(0, 10);
+}
+
+function buildRevenueSeries(summary = {}, days = 14) {
+  const totals = new Map();
+  dashboardRevenueRows(summary).forEach((row) => {
+    totals.set(row.date, (totals.get(row.date) || 0) + row.amount);
+  });
+
+  const today = new Date();
+  return Array.from({ length: days }, (_, index) => {
+    const date = new Date(today);
+    date.setDate(today.getDate() - (days - index - 1));
+    const key = date.toISOString().slice(0, 10);
+    return {
+      key,
+      label: date.toLocaleDateString("en-IN", { day: "2-digit", month: "short" }),
+      value: Math.round((totals.get(key) || 0) * 100) / 100
+    };
+  });
+}
+
+function renderDashboardRevenuePanel(summary = {}) {
+  const series = buildRevenueSeries(summary, 14);
+  const total = series.reduce((sum, item) => sum + item.value, 0);
+  const peak = series.reduce((max, item) => Math.max(max, item.value), 0);
+  const paidDays = series.filter((item) => item.value > 0).length;
+  const average = series.length ? total / series.length : 0;
+
+  return `
+    <section class="module-card dashboard-revenue-panel">
+      <div class="module-card-title revenue-title">
+        <span>${uiIcon("payments", 20)}</span>
+        <div>
+          <h2>Client Revenue</h2>
+          <p>Whole network revenue trend across all clients.</p>
+        </div>
+        <strong>${money(summary.net || summary.gross || total)}</strong>
+      </div>
+      ${renderRevenueLineChart(series)}
+      <div class="revenue-summary">
+        <span><strong>${money(total || summary.gross || 0)}</strong>14 day gross</span>
+        <span><strong>${money(average)}</strong>daily average</span>
+        <span><strong>${paidDays}</strong>active revenue day${paidDays === 1 ? "" : "s"}</span>
+        <span><strong>${money(peak)}</strong>highest day</span>
+      </div>
+    </section>
+  `;
+}
+
+function renderRevenueLineChart(series = []) {
+  const width = 920;
+  const height = 290;
+  const padding = { top: 24, right: 36, bottom: 46, left: 70 };
+  const chartWidth = width - padding.left - padding.right;
+  const chartHeight = height - padding.top - padding.bottom;
+  const maxValue = Math.max(1, ...series.map((item) => item.value));
+  const yMax = Math.max(10, Math.ceil(maxValue / 10) * 10);
+
+  const points = series.map((item, index) => {
+    const x = padding.left + (series.length <= 1 ? chartWidth : (index / (series.length - 1)) * chartWidth);
+    const y = padding.top + chartHeight - (item.value / yMax) * chartHeight;
+    return { ...item, x, y };
+  });
+
+  const linePath = points.map((point, index) => `${index ? "L" : "M"} ${point.x.toFixed(1)} ${point.y.toFixed(1)}`).join(" ");
+  const areaPath = `${linePath} L ${padding.left + chartWidth} ${padding.top + chartHeight} L ${padding.left} ${padding.top + chartHeight} Z`;
+  const yTicks = [0, 0.25, 0.5, 0.75, 1].map((ratio) => {
+    const value = Math.round(yMax * ratio);
+    const y = padding.top + chartHeight - ratio * chartHeight;
+    return { value, y };
+  });
+
+  return `
+    <div class="revenue-chart-wrap dashboard-revenue-chart">
+      <svg class="revenue-line-chart" viewBox="0 0 ${width} ${height}" role="img" aria-label="Client revenue line graph">
+        <defs>
+          <linearGradient id="dashboardRevenueArea" x1="0" x2="0" y1="0" y2="1">
+            <stop offset="0%" stop-color="#176ee8" stop-opacity="0.24" />
+            <stop offset="100%" stop-color="#0f8f63" stop-opacity="0.03" />
+          </linearGradient>
+          <filter id="dashboardRevenueShadow" x="-10%" y="-20%" width="120%" height="150%">
+            <feDropShadow dx="0" dy="8" stdDeviation="7" flood-color="#176ee8" flood-opacity="0.22" />
+          </filter>
+        </defs>
+        <g class="revenue-grid">
+          ${yTicks.map((tick) => `
+            <line x1="${padding.left}" x2="${padding.left + chartWidth}" y1="${tick.y.toFixed(1)}" y2="${tick.y.toFixed(1)}" />
+            <text class="revenue-y-label" x="${padding.left - 14}" y="${(tick.y + 4).toFixed(1)}" text-anchor="end">${money(tick.value).replace("Rs. ", "")}</text>
+          `).join("")}
+        </g>
+        <path class="revenue-area" d="${areaPath}" fill="url(#dashboardRevenueArea)" />
+        <path class="revenue-line" d="${linePath}" filter="url(#dashboardRevenueShadow)" />
+        <g class="revenue-points">
+          ${points.map((point) => `
+            <g class="revenue-point" transform="translate(${point.x.toFixed(1)} ${point.y.toFixed(1)})">
+              <circle r="7"></circle>
+              <circle class="revenue-point-inner" r="3.2"></circle>
+              <title>${escapeHtml(point.label)}: ${escapeHtml(money(point.value))}</title>
+            </g>
+          `).join("")}
+        </g>
+        <g class="revenue-x-axis">
+          ${points.map((point, index) => index % 2 === 0 || index === points.length - 1 ? `
+            <text class="revenue-x-label" x="${point.x.toFixed(1)}" y="${height - 15}" text-anchor="middle">${escapeHtml(point.label)}</text>
+          ` : "").join("")}
+        </g>
+      </svg>
     </div>
   `;
 }
@@ -786,7 +970,7 @@ function renderHierarchy() {
   const projectPage = paginated(data("projects"), "hierarchy-projects");
 
   return `
-    ${renderHeader("Project and Kiosk Hierarchy", "Project to kiosk ownership, allocated kiosk admin, services, and operational records.", `<button class="primary-button" data-collection-create="projects">Add Project</button><button class="secondary-button" data-collection-create="kiosks">Add Kiosk</button>`)}
+    ${renderHeader("Project and Kiosk Hierarchy", "Project to kiosk ownership, allocated client, services, and operational records.", `<button class="primary-button" data-collection-create="projects">Add Project</button><button class="secondary-button" data-collection-create="kiosks">Add Kiosk</button>`)}
     ${renderNotice()}
     <div class="super-tree">
       ${projectPage.items.length ? projectPage.items.map((project) => renderProjectNode(project, hierarchy)).join("") : `<div class="empty-note">No projects found. Create a project before adding kiosks.</div>`}
@@ -906,7 +1090,7 @@ function renderSmallTable(headers, rows, emptyMessage, paginationKey = "small-ta
 }
 
 function selectedServiceProjectId() {
-  const projects = serviceAssignableProjects();
+  const projects = serviceProjectsForSelectedClient();
 
   if (!state.selectedProjectId || !projects.some((project) => project.projectId === state.selectedProjectId)) {
     state.selectedProjectId = projects[0]?.projectId || "";
@@ -934,6 +1118,11 @@ function serviceProjectLabel(projectId) {
   return data("projects").find((project) => project.projectId === projectId)?.name || projectId;
 }
 
+function clientProjectServiceCount(projects) {
+  const projectIds = projects.map((project) => project.projectId);
+  return data("services").filter((service) => projectIds.some((projectId) => serviceForProject(service, projectId))).length;
+}
+
 function serviceScopeTone(service) {
   if (service.enabled === false) return "bad";
   return "good";
@@ -944,11 +1133,16 @@ function renderServiceIcon(service) {
 }
 
 function renderKioskServices() {
-  const projects = serviceAssignableProjects();
+  const clients = serviceClients();
+  const clientPage = paginated(clients, "service-client-picker");
+  const clientId = selectedServiceClientId();
+  const selectedClient = clients.find((client) => client.adminId === clientId);
+  const projects = serviceProjectsForSelectedClient();
   const projectPage = paginated(projects, "service-project-picker");
   const projectId = selectedServiceProjectId();
   const selectedProject = projects.find((project) => project.projectId === projectId);
   const projectKiosks = kiosksForProject(projectId);
+  const clientKiosks = projects.flatMap((project) => kiosksForProject(project.projectId));
   const search = state.search.trim().toLowerCase();
   const services = data("services")
     .filter((service) => serviceForProject(service, projectId))
@@ -957,18 +1151,30 @@ function renderKioskServices() {
 
   return `
     ${renderHeader(
-      "Project Services",
-      selectedProject
-        ? `${selectedProject.name || selectedProject.projectId} | ${projectKiosks.length} kiosk${projectKiosks.length === 1 ? "" : "s"}`
-        : "Create a kiosk under a project before assigning services.",
+      "Client Services",
+      selectedClient
+        ? `${selectedClient.name || selectedClient.email || selectedClient.adminId} | ${projects.length} project${projects.length === 1 ? "" : "s"} | ${clientKiosks.length} kiosk${clientKiosks.length === 1 ? "" : "s"}`
+        : "Create a client project with kiosks before assigning services.",
       `<button class="primary-button" data-project-service-create ${projectId ? "" : "disabled"}>Add Service</button><button class="secondary-button" data-action="refresh">Refresh</button>`
     )}
     ${renderNotice()}
-    ${!projects.length ? `
-      <div class="empty-note">No projects with kiosks found. Create a kiosk under a project before adding services.</div>
+    ${!clients.length ? `
+      <div class="empty-note">No clients with kiosk projects found. Create a client, allocate a project, then add a kiosk before adding services.</div>
     ` : `
       <div class="kiosk-service-layout">
         <aside class="kiosk-picker project-picker">
+          <div class="kiosk-picker-title">Clients</div>
+          ${clientPage.items.map((client) => {
+            const clientProjects = projectsForClient(client.adminId, serviceAssignableProjects());
+            const kioskCount = clientProjects.reduce((total, project) => total + kiosksForProject(project.projectId).length, 0);
+            const serviceCount = clientProjectServiceCount(clientProjects);
+            return `
+            <button class="${client.adminId === clientId ? "active" : ""}" data-client-select="${escapeHtml(client.adminId)}">
+              <strong>${escapeHtml(client.name || client.email || client.adminId)}</strong>
+              <span>${clientProjects.length} project${clientProjects.length === 1 ? "" : "s"} | ${kioskCount} kiosk${kioskCount === 1 ? "" : "s"} | ${serviceCount} service${serviceCount === 1 ? "" : "s"}</span>
+            </button>
+          `}).join("")}
+          ${renderPagination("service-client-picker", clientPage)}
           <div class="kiosk-picker-title">Projects</div>
           ${projectPage.items.map((project) => {
             const kioskCount = kiosksForProject(project.projectId).length;
@@ -981,8 +1187,14 @@ function renderKioskServices() {
           ${renderPagination("service-project-picker", projectPage)}
         </aside>
         <section class="kiosk-service-main">
+          <div class="project-kiosk-summary">
+            <strong>Selected client</strong>
+            <span>${escapeHtml(selectedClient?.name || selectedClient?.email || clientId)}</span>
+            <strong>Projects</strong>
+            <span>${projects.map((project) => escapeHtml(project.name || project.projectId)).join(", ")}</span>
+          </div>
           <div class="filters">
-            <input placeholder="Search services for ${escapeHtml(selectedProject?.name || projectId)}" value="${escapeHtml(state.search)}" data-action-input="search" />
+            <input placeholder="Search services for ${escapeHtml(selectedClient?.name || selectedClient?.email || "client")} / ${escapeHtml(selectedProject?.name || projectId)}" value="${escapeHtml(state.search)}" data-action-input="search" />
           </div>
           <div class="project-kiosk-summary">
             <strong>Kiosks receiving these services</strong>
@@ -1106,7 +1318,7 @@ function labelize(value) {
 }
 
 function collectionColumnLabel(column) {
-  if (column === "adminId") return "Kiosk Admin";
+  if (column === "adminId") return "Client";
   if (column === "projectId") return "Project";
   if (column === "projectIds") return "Projects";
   return labelize(column);
@@ -1168,7 +1380,7 @@ function renderGenericEditor(collection) {
   const meta = collections[collection];
   const draft = state.editor.draft;
   const helper = collection === "projects"
-    ? "Allocate this project to a kiosk admin before adding kiosks."
+    ? "Allocate this project to a client before adding kiosks."
     : collection === "kioskAdmins"
       ? "Create login details first, then allocate this admin to a project."
       : `Kiosk ID: ${draft.kioskId || "new"}`;
@@ -1277,6 +1489,10 @@ function renderServiceEditor() {
         ${renderField({ key: "icon", label: "Icon" }, draft)}
         ${renderField({ key: "title", label: "Service Name" }, draft)}
         ${renderField({ key: "description", label: "Description" }, draft)}
+        ${renderField({ key: "titleHi", label: "Service Name (Hindi)" }, draft)}
+        ${renderField({ key: "descriptionHi", label: "Description (Hindi)" }, draft)}
+        ${renderField({ key: "titleMr", label: "Service Name (Marathi)" }, draft)}
+        ${renderField({ key: "descriptionMr", label: "Description (Marathi)" }, draft)}
         ${renderField({ key: "defaultPages", label: "Default Pages", type: "number" }, draft)}
         ${renderField({ key: "mode", label: "Mode", type: "select", options: ["upload", "template"] }, draft)}
         ${renderField({ key: "enabled", label: "Enabled", type: "select", options: ["true", "false"] }, { ...draft, enabled: String(draft.enabled !== false) })}
@@ -1337,7 +1553,7 @@ function renderServicePrintSettingsEditor(draft) {
     <section class="kiosk-settings-panel">
       <div class="section-heading">
         <h2>Customer Print Options</h2>
-        <span>Unchecked options stay hidden for customers and kiosk admins</span>
+        <span>Unchecked options stay hidden for customers and clients</span>
       </div>
       <div class="kiosk-settings-checks">
         ${KIOSK_CUSTOMER_SETTING_FIELDS.map(([key, label]) => `
@@ -1636,6 +1852,16 @@ async function handleClick(event) {
     return;
   }
 
+  if (button.dataset.clientSelect) {
+    state.selectedClientId = button.dataset.clientSelect;
+    state.selectedProjectId = "";
+    state.editor = null;
+    state.search = "";
+    state.pagination = {};
+    render();
+    return;
+  }
+
   if ("projectServiceCreate" in button.dataset) {
     beginCreateServiceForProject();
     return;
@@ -1868,7 +2094,7 @@ async function deleteRelease(releaseId) {
 
 function beginCreate(collection) {
   if (collection === "projects" && !data("kioskAdmins").length) {
-    state.error = "Create a kiosk admin before creating a project.";
+    state.error = "Create a client before creating a project.";
     state.page = "kioskAdmins";
     render();
     return;
@@ -2174,6 +2400,9 @@ function editorPayload() {
   if (state.editor.collection === "services") {
     draft.icon = String(draft.icon || "SV").trim().toUpperCase().slice(0, 3);
     draft.id = slug(draft.id || draft.title, "service");
+    ["title", "titleHi", "titleMr", "description", "descriptionHi", "descriptionMr"].forEach((field) => {
+      draft[field] = String(draft[field] || "").trim();
+    });
     draft.projectIds = Array.isArray(draft.projectIds)
       ? draft.projectIds.map((item) => slug(item, "")).filter(Boolean)
       : String(draft.projectIds || "").split(",").map((item) => slug(item, "")).filter(Boolean);

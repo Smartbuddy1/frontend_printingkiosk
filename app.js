@@ -5,7 +5,8 @@ const currentPath = window.location.pathname.replace(/\/+$/, "");
 const runtimeDevice = runtimeConfig.get("device");
 const isKioskDeviceEntry = ["electron", "mini-pc"].includes(runtimeDevice);
 const isWebsiteRootEntry = (currentPage === "index.html" || currentPath === "") && !isKioskDeviceEntry;
-const isAdminEntry = isWebsiteRootEntry || currentPage === "admin.html" || currentPath.endsWith("/admin") || runtimeConfig.get("panel") === "admin";
+const isMobilePaymentEntry = runtimeConfig.has("mobilePayment");
+const isAdminEntry = !isMobilePaymentEntry && (isWebsiteRootEntry || currentPage === "admin.html" || currentPath.endsWith("/admin") || runtimeConfig.get("panel") === "admin");
 const DEFAULT_BACKEND_URL = /^https?:$/.test(window.location.protocol) ? window.location.origin : "http://localhost:5080";
 const LOCAL_AGENT_URL = runtimeConfig.get("localAgentUrl") || frontendConfig.localAgentUrl || "http://localhost:5077";
 const BACKEND_URL = (runtimeConfig.get("backendUrl") || frontendConfig.backendUrl || DEFAULT_BACKEND_URL).replace(/\/+$/, "");
@@ -177,7 +178,7 @@ const ADMIN_TRANSLATION_ROWS = [
   ["B/W per page", "प्रति पृष्ठ श्याम-श्वेत", "प्रति पान कृष्णधवल"],
   ["Color per page", "प्रति पृष्ठ रंगीन", "प्रति पान रंगीत"],
   ["Assigned Projects", "असाइन की गई परियोजनाएँ", "नेमून दिलेले प्रकल्प"],
-  ["Projects allocated to your kiosk admin account. Create and manage kiosks from the Kiosks page.", "आपके कियोस्क एडमिन खाते को आवंटित परियोजनाएँ। कियोस्क पृष्ठ से कियोस्क बनाएँ और प्रबंधित करें।", "आपल्या किऑस्क प्रशासक खात्याला दिलेले प्रकल्प. किऑस्क पृष्ठावरून किऑस्क तयार आणि व्यवस्थापित करा."],
+  ["Projects allocated to your client account. Create and manage kiosks from the Kiosks page.", "आपके क्लाइंट खाते को आवंटित परियोजनाएँ। कियोस्क पृष्ठ से कियोस्क बनाएँ और प्रबंधित करें।", "आपल्या क्लायंट खात्याला दिलेले प्रकल्प. किऑस्क पृष्ठावरून किऑस्क तयार आणि व्यवस्थापित करा."],
   ["Project Name", "परियोजना का नाम", "प्रकल्पाचे नाव"],
   ["No projects are assigned to this account.", "इस खाते को कोई परियोजना असाइन नहीं है।", "या खात्याला कोणतेही प्रकल्प नेमलेले नाहीत."],
   ["Assigned Kiosks", "असाइन किए गए कियोस्क", "नेमून दिलेले किऑस्क"],
@@ -247,7 +248,7 @@ const CUSTOMER_TRANSLATION_ROWS = [
   ["Payment", "भुगतान", "पेमेंट"],
   ["Receipt", "रसीद", "पावती"],
   ["Kiosk setup required", "कियोस्क सेटअप आवश्यक है", "किऑस्क सेटअप आवश्यक आहे"],
-  ["Ask the kiosk admin for this machine's kiosk ID and setup code.", "इस मशीन की कियोस्क आईडी और सेटअप कोड के लिए कियोस्क एडमिन से पूछें।", "या मशीनचा किऑस्क आयडी आणि सेटअप कोडसाठी किऑस्क प्रशासकाला विचारा."],
+  ["Ask the client for this machine's kiosk ID and setup code.", "इस मशीन की कियोस्क आईडी और सेटअप कोड के लिए क्लाइंट से पूछें।", "या मशीनचा किऑस्क आयडी आणि सेटअप कोडसाठी क्लायंटला विचारा."],
   ["Available service", "उपलब्ध सेवा", "उपलब्ध सेवा"],
   ["Choose service", "सेवा चुनें", "सेवा निवडा"],
   ["This service is available on this kiosk.", "यह सेवा इस कियोस्क पर उपलब्ध है।", "ही सेवा या किऑस्कवर उपलब्ध आहे."],
@@ -599,6 +600,18 @@ const state = {
   paymentError: "",
   paymentOrder: null,
   paymentBusy: false,
+  paymentPoller: null,
+  mobilePayment: {
+    paymentId: runtimeConfig.get("mobilePayment") || "",
+    loading: Boolean(runtimeConfig.get("mobilePayment")),
+    checkout: null,
+    payment: null,
+    job: null,
+    status: "Loading",
+    message: Boolean(runtimeConfig.get("mobilePayment")) ? "Loading payment details..." : "",
+    error: "",
+    completed: false
+  },
   printProgress: 0,
   printError: "",
   printStatusMessage: "",
@@ -725,12 +738,28 @@ function customerTranslateText(value) {
     [/^(Rs\. .+) Color per page$/, (match) => `${match[1]} ${translated("Color per page")}`]
   ];
 
+  patterns.push(
+    [/^New Service(?:\s+(\d+))?$/i, (match) => language === "hi"
+      ? `नई सेवा${match[1] ? ` ${match[1]}` : ""}`
+      : `नवीन सेवा${match[1] ? ` ${match[1]}` : ""}`],
+    [/^Existing document$/i, () => language === "hi" ? "मौजूदा दस्तावेज़" : "विद्यमान दस्तऐवज"],
+    [/^Customer service\.$/i, () => language === "hi" ? "ग्राहक सेवा।" : "ग्राहक सेवा."]
+  );
+
   for (const [pattern, formatter] of patterns) {
     const match = text.match(pattern);
     if (match) return formatter(match);
   }
 
   return text;
+}
+
+function localizedServiceText(service, field) {
+  const suffix = state.customerLanguage === "hi" ? "Hi" : state.customerLanguage === "mr" ? "Mr" : "";
+  const english = String(service?.[field] || "").trim();
+  if (!suffix) return english;
+
+  return String(service?.[`${field}${suffix}`] || "").trim() || customerTranslateText(english);
 }
 
 function applyCustomerTranslations(root) {
@@ -1154,7 +1183,11 @@ function normalizeServicesConfig(value) {
       id,
       icon: String(service?.icon || fallback.icon || title.slice(0, 2) || "SV").trim().toUpperCase().slice(0, 3),
       title,
+      titleHi: String(service?.titleHi || fallback.titleHi || "").trim(),
+      titleMr: String(service?.titleMr || fallback.titleMr || "").trim(),
       description: String(service?.description || fallback.description || "Customer service.").trim(),
+      descriptionHi: String(service?.descriptionHi || fallback.descriptionHi || "").trim(),
+      descriptionMr: String(service?.descriptionMr || fallback.descriptionMr || "").trim(),
       defaultPages: Math.max(1, Math.min(99, Number(service?.defaultPages || fallback.defaultPages || 1))),
       mode,
       imageUrl: String(service?.imageUrl || fallback.imageUrl || "").trim(),
@@ -2144,7 +2177,7 @@ async function loginWithLegacyAdminEndpoints(email, password) {
     .map((attempt) => attempt.value);
 
   if (matches.length > 1) {
-    throw new Error("These credentials match both admin roles. Use different super admin and kiosk admin credentials.");
+    throw new Error("These credentials match both admin roles. Use different super admin and client credentials.");
   }
 
   if (matches.length === 1) {
@@ -2168,7 +2201,11 @@ function serviceConfigSignature(nextServices, nextPricing) {
     services: normalizeServicesConfig(nextServices).map((service) => ({
       id: service.id,
       title: service.title,
+      titleHi: service.titleHi,
+      titleMr: service.titleMr,
       description: service.description,
+      descriptionHi: service.descriptionHi,
+      descriptionMr: service.descriptionMr,
       defaultPages: service.defaultPages,
       mode: service.mode,
       imageUrl: service.imageUrl,
@@ -2452,12 +2489,209 @@ async function createRazorpayOrder() {
   return payload;
 }
 
-async function verifyRazorpayPayment(response) {
+function buildMobilePaymentUrl(paymentUrl, paymentId) {
+  if (paymentUrl) return paymentUrl;
+
+  const baseUrl = (BACKEND_URL || window.location.origin || "").replace(/\/+$/, "");
+  const url = new URL("/index.html", `${baseUrl}/`);
+  url.searchParams.set("mobilePayment", paymentId);
+  url.searchParams.set("backendUrl", BACKEND_URL || baseUrl);
+  return url.toString();
+}
+
+async function fetchPaymentQr(paymentUrl) {
+  const response = await fetch(`${BACKEND_URL}/api/payment/qr?url=${encodeURIComponent(paymentUrl)}`);
+  const payload = await response.json().catch(() => ({}));
+
+  if (!response.ok) {
+    throw new Error(payload.error || "Unable to create payment QR.");
+  }
+
+  return payload.qrSvg || "";
+}
+
+function stopPaymentPolling() {
+  if (state.paymentPoller) {
+    clearInterval(state.paymentPoller);
+    state.paymentPoller = null;
+  }
+}
+
+async function checkKioskPaymentStatus({ rerender = true } = {}) {
+  if (!state.paymentOrder?.paymentId && !state.activeJobId) {
+    return false;
+  }
+
+  const response = await fetch(`${BACKEND_URL}/api/print/status/${encodeURIComponent(currentJobId())}`);
+  const payload = await response.json().catch(() => ({}));
+
+  if (!response.ok) {
+    throw new Error(payload.error || "Unable to check payment status.");
+  }
+
+  if (payload.paymentStatus === "Payment Success") {
+    stopPaymentPolling();
+    state.paymentStatus = "Success";
+    state.paymentStatusMessage = "Payment received on mobile. Starting print...";
+    state.paymentError = "";
+    state.paymentBusy = false;
+    state.step = 3;
+    state.printProgress = 0;
+    state.printError = "";
+    state.printStatusMessage = "";
+    state.printJob = null;
+    render();
+    startLocalPrintJob();
+    return true;
+  }
+
+  if (rerender && state.paymentStatus === "Waiting") {
+    render();
+  }
+
+  return false;
+}
+
+function startPaymentPolling() {
+  stopPaymentPolling();
+  state.paymentPoller = setInterval(() => {
+    checkKioskPaymentStatus({ rerender: false }).catch((error) => {
+      state.paymentError = error.message || "Unable to check payment status.";
+      render();
+    });
+  }, 3000);
+  checkKioskPaymentStatus({ rerender: false }).catch((error) => {
+    state.paymentError = error.message || "Unable to check payment status.";
+    render();
+  });
+}
+
+async function loadMobilePayment() {
+  const paymentId = state.mobilePayment.paymentId;
+  if (!isMobilePaymentEntry || !paymentId) return;
+
+  state.mobilePayment.loading = true;
+  state.mobilePayment.status = "Loading";
+  state.mobilePayment.message = "Loading payment details...";
+  state.mobilePayment.error = "";
+  render();
+
+  try {
+    const response = await fetch(`${BACKEND_URL}/api/payment/${encodeURIComponent(paymentId)}`);
+    const payload = await response.json().catch(() => ({}));
+
+    if (!response.ok) {
+      throw new Error(payload.error || "Unable to load payment.");
+    }
+
+    state.mobilePayment = {
+      ...state.mobilePayment,
+      loading: false,
+      status: payload.payment?.status === "Success" ? "Success" : "Ready",
+      checkout: payload.checkout,
+      payment: payload.payment,
+      job: payload.job,
+      completed: payload.payment?.status === "Success" || payload.job?.paymentStatus === "Payment Success",
+      message: payload.payment?.status === "Success"
+        ? "Payment is already complete."
+        : "Opening Razorpay Checkout...",
+      error: ""
+    };
+    render();
+
+    if (!state.mobilePayment.completed) {
+      startMobileRazorpayPayment();
+    }
+  } catch (error) {
+    state.mobilePayment.loading = false;
+    state.mobilePayment.status = "Failed";
+    state.mobilePayment.message = "";
+    state.mobilePayment.error = error.message || "Unable to load payment.";
+    render();
+  }
+}
+
+async function startMobileRazorpayPayment() {
+  const checkout = state.mobilePayment.checkout;
+  if (!checkout || state.mobilePayment.completed || state.mobilePayment.loading && state.mobilePayment.status === "Opening") return;
+
+  state.mobilePayment.loading = true;
+  state.mobilePayment.status = "Opening";
+  state.mobilePayment.message = "Opening Razorpay Checkout...";
+  state.mobilePayment.error = "";
+  render();
+
+  try {
+    await loadRazorpayCheckout();
+
+    const razorpay = new window.Razorpay({
+      key: checkout.key,
+      amount: checkout.amount,
+      currency: checkout.currency,
+      name: checkout.name,
+      description: checkout.description,
+      order_id: checkout.orderId,
+      prefill: checkout.prefill || {},
+      notes: checkout.notes || {},
+      theme: {
+        color: "#1f5fbf"
+      },
+      handler: async (response) => {
+        state.mobilePayment.status = "Verifying";
+        state.mobilePayment.message = "Verifying payment...";
+        render();
+
+        try {
+          await verifyRazorpayPayment(response, {
+            updateKiosk: false,
+            jobId: state.mobilePayment.job?.jobId || state.mobilePayment.payment?.jobId || state.mobilePayment.paymentId || ""
+          });
+          state.mobilePayment.completed = true;
+          state.mobilePayment.loading = false;
+          state.mobilePayment.status = "Success";
+          state.mobilePayment.message = "Payment verified. Return to the kiosk.";
+          state.mobilePayment.error = "";
+          render();
+        } catch (error) {
+          state.mobilePayment.loading = false;
+          state.mobilePayment.status = "Failed";
+          state.mobilePayment.error = error.message || "Payment verification failed.";
+          render();
+        }
+      },
+      modal: {
+        ondismiss: () => {
+          if (state.mobilePayment.completed) return;
+          state.mobilePayment.loading = false;
+          state.mobilePayment.status = "Ready";
+          state.mobilePayment.message = "Payment was not completed.";
+          render();
+        }
+      }
+    });
+
+    razorpay.on("payment.failed", (response) => {
+      state.mobilePayment.loading = false;
+      state.mobilePayment.status = "Failed";
+      state.mobilePayment.error = response.error?.description || response.error?.reason || "Razorpay payment failed.";
+      render();
+    });
+
+    razorpay.open();
+  } catch (error) {
+    state.mobilePayment.loading = false;
+    state.mobilePayment.status = "Failed";
+    state.mobilePayment.error = error.message || "Unable to start Razorpay payment.";
+    render();
+  }
+}
+
+async function verifyRazorpayPayment(response, { updateKiosk = true, jobId = currentJobId() } = {}) {
   const verifyResponse = await fetch(`${BACKEND_URL}/api/payment/verify`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({
-      jobId: currentJobId(),
+      jobId,
       razorpay_order_id: response.razorpay_order_id,
       razorpay_payment_id: response.razorpay_payment_id,
       razorpay_signature: response.razorpay_signature
@@ -2467,6 +2701,10 @@ async function verifyRazorpayPayment(response) {
 
   if (!verifyResponse.ok) {
     throw new Error(payload.error || "Razorpay payment verification failed.");
+  }
+
+  if (!updateKiosk) {
+    return payload;
   }
 
   state.paymentStatus = "Success";
@@ -2485,6 +2723,7 @@ async function verifyRazorpayPayment(response) {
   state.printJob = null;
   render();
   startLocalPrintJob();
+  return payload;
 }
 
 async function startRazorpayPayment() {
@@ -2512,79 +2751,49 @@ async function startRazorpayPayment() {
     state.paymentStatusMessage = "Creating Razorpay order...";
     render();
 
-    await loadRazorpayCheckout();
     const payload = await createRazorpayOrder();
     const checkout = payload.checkout;
-    const details = priceDetails();
+    const paymentUrl = buildMobilePaymentUrl(checkout?.paymentUrl || "", payload.payment?.paymentId || "");
 
-    if (!checkout?.key || !checkout?.orderId) {
+    if (!payload.payment?.paymentId || !checkout?.key || !checkout?.orderId) {
       throw new Error("Razorpay order response is missing checkout details.");
     }
 
+    if (state.step !== 3) {
+      state.paymentBusy = false;
+      return;
+    }
+
+    const qrSvg = await fetchPaymentQr(paymentUrl);
+
+    if (state.step !== 3) {
+      state.paymentBusy = false;
+      return;
+    }
+
     state.paymentOrder = {
+      paymentId: payload.payment.paymentId,
       orderId: checkout.orderId,
       amount: checkout.amount,
-      currency: checkout.currency
+      currency: checkout.currency,
+      paymentUrl,
+      qrSvg
     };
     state.paymentStatus = "Waiting";
-    state.paymentStatusMessage = "Waiting for Razorpay checkout...";
+    state.paymentStatusMessage = "Scan the QR code and complete payment on your mobile.";
+    state.paymentBusy = false;
     render();
-
-    const razorpay = new window.Razorpay({
-      key: checkout.key,
-      amount: checkout.amount,
-      currency: checkout.currency,
-      name: checkout.name,
-      description: checkout.description,
-      order_id: checkout.orderId,
-      prefill: checkout.prefill || {},
-      notes: {
-        jobId: currentJobId(),
-        fileName: jobFiles().length === 1 ? state.file?.name : `${jobFiles().length} documents`
-      },
-      theme: {
-        color: "#1f5fbf"
-      },
-      handler: async (response) => {
-        state.paymentStatus = "Verifying";
-        state.paymentStatusMessage = "Verifying Razorpay signature...";
-        render();
-
-        try {
-          await verifyRazorpayPayment(response);
-        } catch (error) {
-          state.paymentStatus = "Failed";
-          state.paymentError = error.message || "Razorpay payment verification failed.";
-          state.paymentBusy = false;
-          render();
-        }
-      },
-      modal: {
-        ondismiss: () => {
-          if (["Success", "Failed"].includes(state.paymentStatus)) return;
-          state.paymentStatus = "Pending";
-          state.paymentStatusMessage = "";
-          state.paymentError = "Payment window was closed before completion.";
-          state.paymentBusy = false;
-          render();
-        }
-      }
-    });
-
-    razorpay.on("payment.failed", (response) => {
-      state.paymentStatus = "Failed";
-      state.paymentError = response.error?.description || response.error?.reason || "Razorpay payment failed.";
-      state.paymentBusy = false;
-      render();
-    });
-
-    state.paymentStatusMessage = `Razorpay order ${checkout.orderId} ready for ${money(details.total)}.`;
-    render();
-    razorpay.open();
+    startPaymentPolling();
   } catch (error) {
+    if (state.step !== 3) {
+      state.paymentBusy = false;
+      return;
+    }
+
     state.paymentStatus = "Failed";
     state.paymentError = error.message || "Unable to start Razorpay payment.";
     state.paymentBusy = false;
+    state.paymentOrder = null;
     render();
   }
 }
@@ -2716,7 +2925,18 @@ function goToNextStep() {
   render();
 
   if (state.step === 3 && previousStep !== 3) {
+    stopPaymentPolling();
+    state.paymentStatus = "Pending";
+    state.paymentStatusMessage = "";
+    state.paymentError = "";
+    state.paymentOrder = null;
+    state.paymentBusy = false;
     refreshPrinterStatus();
+    setTimeout(() => {
+      if (state.step === 3 && !state.paymentBusy && !state.paymentOrder?.qrSvg) {
+        startRazorpayPayment();
+      }
+    }, 0);
   }
 }
 
@@ -2748,6 +2968,15 @@ function openCustomer(reset = false) {
 }
 
 function render() {
+  if (isMobilePaymentEntry) {
+    const app = qs("#app");
+    if (app) {
+      app.innerHTML = renderMobilePaymentShell();
+      bindEvents();
+    }
+    return;
+  }
+
   if (state.mode === "admin" && !state.adminAuthed) {
     syncAdminLoginDraftFromDom();
   }
@@ -2757,6 +2986,30 @@ function render() {
   applyCustomerTranslations(app);
   applyAdminTranslations(app);
   bindEvents();
+}
+
+function renderMobilePaymentShell() {
+  const payment = state.mobilePayment;
+  const amountValue = payment.checkout?.amount ? Number(payment.checkout.amount) / 100 : Number(payment.payment?.amount || 0);
+  const amountText = amountValue > 0 ? money(amountValue) : "";
+
+  return `
+    <main class="mobile-payment-page">
+      <section class="mobile-payment-card">
+        <img src="./assets/printhub-mark.png" alt="PrintHub" draggable="false" data-no-visual-search />
+        <h1>${payment.completed ? "Payment successful" : "PrintHub Payment"}</h1>
+        ${amountText ? `<strong class="mobile-payment-amount">${escapeHtml(amountText)}</strong>` : ""}
+        ${payment.job?.fileName ? `<p class="mobile-payment-job">${escapeHtml(payment.job.fileName)}</p>` : ""}
+        ${payment.message ? `<p class="helper-text">${escapeHtml(payment.message)}</p>` : ""}
+        ${payment.error ? `<div class="empty-note">${escapeHtml(payment.error)}</div>` : ""}
+        ${payment.completed ? `
+          <div class="badge good">Paid</div>
+          <p class="helper-text">You can return to the kiosk. Printing will continue there automatically.</p>
+        ` : ""}
+        ${payment.error ? `<button class="primary-button" data-action="mobile-pay">Retry payment</button>` : ""}
+      </section>
+    </main>
+  `;
 }
 
 function renderCustomerShell() {
@@ -2815,7 +3068,7 @@ function renderCustomerTopbar() {
 }
 
 function renderAdminTopbar() {
-  const adminLabel = state.adminAccount?.name || state.adminAccount?.email || "Kiosk Admin";
+  const adminLabel = state.adminAccount?.name || state.adminAccount?.email || "Client";
   const alertCount = liveJobs().filter((job) => /failed/i.test(job.printStatus || job.print || "")).length
     + state.adminData.refunds.filter((refund) => /pending/i.test(refund.status || "")).length
     + (state.printer.online ? 0 : 1);
@@ -2898,7 +3151,7 @@ function renderServicesStep() {
       <div class="stage service-stage is-empty">
         <div class="stage-header">
           <h1>Kiosk setup required</h1>
-          <p class="stage-intro">Ask the kiosk admin for this machine's kiosk ID and setup code.</p>
+          <p class="stage-intro">Ask the client for this machine's kiosk ID and setup code.</p>
         </div>
       </div>
     `;
@@ -2929,8 +3182,8 @@ function renderServicesStep() {
             <button class="service-card ${state.selectedService === service.id ? "selected" : ""}" data-service="${service.id}" ${printerReady ? "" : "disabled"}>
               ${serviceMediaMarkup(service)}
               <div>
-                <h2>${escapeHtml(service.title)}</h2>
-                <p>${escapeHtml(service.description)}</p>
+                <h2>${escapeHtml(localizedServiceText(service, "title"))}</h2>
+                <p>${escapeHtml(localizedServiceText(service, "description"))}</p>
               </div>
               <div class="service-rates">
                 ${customerServiceRateLabels(rates, service)}
@@ -2951,7 +3204,7 @@ function renderFormTemplateStep() {
     <div class="stage template-selection-stage">
       <div class="stage-header">
         <h1>Choose form template</h1>
-        <p class="stage-intro">${escapeHtml(service.title)} selected. Pick a form template to preview and print.</p>
+        <p class="stage-intro">${escapeHtml(localizedServiceText(service, "title"))} selected. Pick a form template to preview and print.</p>
       </div>
       <div class="template-grid">
         ${templates.map((template) => `
@@ -3271,44 +3524,57 @@ function renderHealthRow(label, value, tone) {
 function renderPaymentStep() {
   const details = priceDetails();
   ensureActiveJobId();
-  const busy = state.paymentBusy;
   const paymentComplete = state.paymentStatus === "Success";
-  const canPay = paymentReady() && !paymentComplete;
-  const blockMessage = paymentBlockMessage();
+  const qrReady = Boolean(state.paymentOrder?.qrSvg);
+  const isPrinting = paymentComplete && state.step === 3 && (state.printProgress > 0 || Boolean(state.printStatusMessage));
+  const printComplete = state.step === 4 || state.lastCompletedJob?.print === "Completed";
+  const trackingMessage = state.printError
+    || state.printStatusMessage
+    || state.paymentStatusMessage
+    || (qrReady ? "Waiting for payment from the customer phone." : "Preparing the secure payment QR.");
   const paymentDetailParts = [
     `${details.pages} page${details.pages === 1 ? "" : "s"}`,
     customerSettingEnabled("copies") ? `${details.copies} cop${details.copies === 1 ? "y" : "ies"}` : ""
   ].filter(Boolean).join(" · ");
   return `
-    <div class="stage">
+    <div class="stage payment-stage">
       <div class="stage-header">
-        <h1>Payment</h1>
-        <p class="stage-intro">Pay the confirmed total securely to start printing.</p>
+        <h1>${paymentComplete ? "Tracking" : "Scan to pay"}</h1>
+        <p class="stage-intro">The kiosk shows only the QR. Complete payment on the phone; live tracking stays on this screen.</p>
       </div>
-      <div class="payment-layout">
-        <div class="payment-total-card has-controlled-summary">
+      <div class="payment-kiosk-panel">
+        <div class="payment-qr-card module-card">
+        <div class="payment-summary">
           <span>Total payable</span>
           <strong>${money(details.total)}</strong>
           <small class="payment-total-detail">${escapeHtml(paymentDetailParts)}</small>
           <small>${details.pages} page${details.pages === 1 ? "" : "s"} · ${details.copies} cop${details.copies === 1 ? "y" : "ies"}</small>
         </div>
-        <div class="module-card">
-          <h2>${paymentComplete ? "Payment received" : "Pay with Razorpay"}</h2>
-          <div class="timeline">
-            ${renderTimelineRow(1, "Order created", Boolean(state.paymentOrder), state.paymentStatus === "Creating")}
-            ${renderTimelineRow(2, "Checkout opened", ["Waiting", "Verifying", "Success"].includes(state.paymentStatus), state.paymentStatus === "Waiting")}
-            ${renderTimelineRow(3, "Signature verified", state.paymentStatus === "Success", state.paymentStatus === "Verifying")}
-            ${renderTimelineRow(4, "Printing documents", state.printProgress >= 5, paymentComplete && state.printProgress < 5)}
+        ${paymentComplete ? `
+          <div class="payment-success-state">
+            <div class="badge good">Paid on phone</div>
+            <p class="helper-text">Payment is verified. Watch print tracking on the kiosk.</p>
           </div>
-          ${state.paymentStatusMessage ? `<p class="helper-text" style="margin-top: 14px;">${escapeHtml(state.paymentStatusMessage)}</p>` : ""}
-          ${paymentComplete && state.printStatusMessage ? `<p class="helper-text" style="margin-top: 14px;">${escapeHtml(state.printStatusMessage)}</p>` : ""}
-          ${!paymentComplete && blockMessage ? `<div class="empty-note" style="margin-top: 14px;">Printer is offline. Payment will be available when it is online.</div>` : ""}
-          ${state.paymentError ? `<div class="empty-note" style="margin-top: 14px;">${escapeHtml(state.paymentError)}</div>` : ""}
-          ${paymentComplete ? "" : `
-            <div class="flow-actions" style="margin-top: 20px;">
-              <button class="primary-button" data-action="pay-razorpay" ${busy || !canPay ? "disabled" : ""}>${busy ? "Processing..." : `Pay ${money(details.total)}`}</button>
-            </div>
-          `}
+        ` : qrReady ? `
+          <div class="payment-qr-code" aria-label="Scan this QR code to pay on your phone">${state.paymentOrder.qrSvg}</div>
+          <p class="helper-text">Scan with the phone camera or any UPI app to open Razorpay.</p>
+          <small class="payment-order-id">Order ${escapeHtml(state.paymentOrder.orderId || "")}</small>
+        ` : `
+          <div class="payment-loading-state">
+            <div class="qr-loading"></div>
+            <p class="helper-text">${escapeHtml(state.paymentStatusMessage || "Creating payment QR...")}</p>
+          </div>
+        `}
+        ${state.paymentError ? `<div class="empty-note" style="margin-top: 14px;">${escapeHtml(state.paymentError)}</div>` : ""}
+        </div>
+        <div class="payment-tracking-card module-card" aria-live="polite">
+          <h2>Live tracking</h2>
+          <div class="timeline">
+            ${renderTimelineRow(1, qrReady || paymentComplete ? "QR ready on kiosk" : "Creating payment QR", qrReady || paymentComplete, !qrReady && !paymentComplete)}
+            ${renderTimelineRow(2, paymentComplete ? "Payment received from phone" : "Waiting for phone payment", paymentComplete, qrReady && !paymentComplete)}
+            ${renderTimelineRow(3, printComplete ? "Print completed" : isPrinting ? "Printing on kiosk" : "Kiosk print tracking", printComplete, paymentComplete && !printComplete)}
+          </div>
+          <p class="helper-text">${escapeHtml(trackingMessage)}</p>
         </div>
       </div>
       <div class="flow-actions ${paymentComplete ? "is-hidden" : ""}">
@@ -3330,7 +3596,7 @@ function renderTimelineRow(index, text, done, active = false) {
 
 function renderPrintFailureStep() {
   return `
-    <div class="stage">
+    <div class="stage print-failure-stage">
       <div class="stage-header">
         <h1>Printing needs attention</h1>
         <p class="stage-intro">${escapeHtml(state.printError)} The paid job is saved in admin history and can be retried without charging again.</p>
@@ -3365,7 +3631,7 @@ function renderThankYouStep() {
   };
 
   return `
-    <div class="stage">
+    <div class="stage receipt-stage">
       <div class="stage-header">
         <h1>Receipt</h1>
         <p class="stage-intro">Printing completed successfully. Returning to the home page in ${state.receiptSecondsLeft} seconds.</p>
@@ -3391,7 +3657,7 @@ function renderSessionPanel() {
   const service = selectedService();
   const rates = serviceRates(service.id);
   const rows = [
-    `<div class="info-row"><span>Service</span><strong>${escapeHtml(service.title)}</strong></div>`,
+    `<div class="info-row"><span>Service</span><strong>${escapeHtml(localizedServiceText(service, "title"))}</strong></div>`,
     `<div class="info-row"><span>File</span><strong>${escapeHtml(state.file?.name || "Waiting")}</strong></div>`
   ];
 
@@ -3423,7 +3689,7 @@ function renderAdmin() {
   return `
     <div class="admin-layout">
       <button class="admin-nav-backdrop ${state.adminNavOpen ? "is-open" : ""}" data-action="admin-close-nav" aria-label="Close navigation"></button>
-      <nav id="kiosk-admin-navigation" class="admin-nav ${state.adminNavOpen ? "is-open" : ""}" aria-label="Kiosk Admin navigation">
+      <nav id="kiosk-admin-navigation" class="admin-nav ${state.adminNavOpen ? "is-open" : ""}" aria-label="Client navigation">
         <div class="admin-nav-drawer-head">
           <strong>Navigation</strong>
           <button data-action="admin-close-nav" aria-label="Close navigation">${uiIcon("close", 22)}</button>
@@ -4292,6 +4558,18 @@ function renderServiceEditorPage() {
         <label class="setting-field">Description
           <input value="${escapeHtml(service.description || "")}" data-service-draft-field="description" />
         </label>
+        <label class="setting-field">Service Name (Hindi)
+          <input value="${escapeHtml(service.titleHi || "")}" data-service-draft-field="titleHi" lang="hi" />
+        </label>
+        <label class="setting-field">Description (Hindi)
+          <input value="${escapeHtml(service.descriptionHi || "")}" data-service-draft-field="descriptionHi" lang="hi" />
+        </label>
+        <label class="setting-field">Service Name (Marathi)
+          <input value="${escapeHtml(service.titleMr || "")}" data-service-draft-field="titleMr" lang="mr" />
+        </label>
+        <label class="setting-field">Description (Marathi)
+          <input value="${escapeHtml(service.descriptionMr || "")}" data-service-draft-field="descriptionMr" lang="mr" />
+        </label>
         ${assignableProjects.length ? `<label class="setting-field">Project
           <select data-service-draft-field="projectIds">
             ${assignableProjects.map((project) => `<option value="${escapeHtml(project.projectId)}" ${(service.projectIds || []).includes(project.projectId) ? "selected" : ""}>${escapeHtml(project.name || project.projectId)}</option>`).join("")}
@@ -4484,7 +4762,11 @@ function defaultServiceDraft() {
     id,
     icon: "SV",
     title: "New Service",
+    titleHi: "",
+    titleMr: "",
     description: "Customer service.",
+    descriptionHi: "",
+    descriptionMr: "",
     defaultPages: 1,
     mode: "upload",
     imageUrl: "",
@@ -4574,7 +4856,7 @@ function updateServiceDraftField(field, value) {
     draft.icon = String(value || "SV").trim().toUpperCase().slice(0, 3);
   } else if (field === "id") {
     draft.id = slug(value, "service");
-  } else if (["title", "description", "imageUrl"].includes(field)) {
+  } else if (["title", "titleHi", "titleMr", "description", "descriptionHi", "descriptionMr", "imageUrl"].includes(field)) {
     draft[field] = String(value || "").trimStart();
   }
 }
@@ -4854,7 +5136,11 @@ function addService() {
     id,
     icon: "SV",
     title: "New Service",
+    titleHi: "",
+    titleMr: "",
     description: "Customer service.",
+    descriptionHi: "",
+    descriptionMr: "",
     defaultPages: 1,
     mode: "upload",
     imageUrl: "",
@@ -4964,7 +5250,7 @@ function renderProjects() {
   ]);
 
   return `
-    ${renderAdminHeader("Assigned Projects", "Projects allocated to your kiosk admin account. Create and manage kiosks from the Kiosks page.")}
+    ${renderAdminHeader("Assigned Projects", "Projects allocated to your client account. Create and manage kiosks from the Kiosks page.")}
     ${adminNotice()}
     ${renderPaginatedTable("projects", ["Project Name", "Status", "Kiosks", "Description"], rows, "No projects are assigned to this account.")}
   `;
@@ -5418,6 +5704,9 @@ async function handleClick(event) {
       refreshPrinterStatus();
       break;
     case "prev-step":
+      if (state.step >= 3) {
+        stopPaymentPolling();
+      }
       if (state.step <= 1) {
         stopUploadPolling();
         state.step = 0;
@@ -5472,6 +5761,9 @@ async function handleClick(event) {
       break;
     case "pay-razorpay":
       startRazorpayPayment();
+      break;
+    case "mobile-pay":
+      startMobileRazorpayPayment();
       break;
     case "retry-print":
       state.printError = "";
@@ -5890,6 +6182,7 @@ function addJob(printStatus) {
 
 function resetCustomer() {
   stopUploadPolling();
+  stopPaymentPolling();
   stopReceiptRedirect();
   state.mode = "customer";
   state.step = 0;
@@ -5940,7 +6233,7 @@ if (TEST_HOOKS_ENABLED) {
   window.kioskTestOpenAdmin = function kioskTestOpenAdmin(page = "dashboard") {
     state.adminAuthed = true;
     state.adminToken = "ui-test-session";
-    state.adminAccount = { name: "Kiosk Admin" };
+    state.adminAccount = { name: "Client" };
     openAdmin(page);
     return state.adminPage;
   };
@@ -6054,11 +6347,15 @@ if (TEST_HOOKS_ENABLED) {
 hydrateAdminSession();
 render();
 loadPricingSettings();
-startConfigPolling();
-if (state.mode === "customer") {
+if (isMobilePaymentEntry) {
+  loadMobilePayment();
+} else {
+  startConfigPolling();
+}
+if (!isMobilePaymentEntry && state.mode === "customer") {
   refreshPrinterStatus();
 }
-if (state.adminAuthed) {
+if (!isMobilePaymentEntry && state.adminAuthed) {
   loadAdminData();
   startAdminPolling();
 }
