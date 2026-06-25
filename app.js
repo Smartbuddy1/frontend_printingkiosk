@@ -3666,32 +3666,6 @@ function renderPreviewControlPanel(details, files) {
             </div>
           </div>
         ` : ""}
-        ${customerSettingEnabled("paperSize") ? `
-          <label class="preview-essential-setting">
-            <span>Paper Size</span>
-            <select data-input="paperSize">
-              ${PRINT_PAPER_SIZES.map((size) => `<option value="${escapeHtml(size)}" ${state.settings.paperSize === size ? "selected" : ""}>${escapeHtml(size)}</option>`).join("")}
-            </select>
-          </label>
-        ` : ""}
-        ${customerSettingEnabled("sides") ? `
-          <label class="preview-essential-setting">
-            <span>Sides</span>
-            <select data-input="sides">
-              <option value="single" ${state.settings.sides === "single" ? "selected" : ""}>Single side</option>
-              <option value="duplex" ${state.settings.sides === "duplex" ? "selected" : ""} ${state.printer.supportsDuplex === false ? "disabled" : ""}>Both sides</option>
-            </select>
-          </label>
-        ` : ""}
-        ${customerSettingEnabled("orientation") ? `
-          <label class="preview-essential-setting">
-            <span>Orientation</span>
-            <select data-input="orientation">
-              <option value="portrait" ${state.settings.orientation === "portrait" ? "selected" : ""}>Portrait</option>
-              <option value="landscape" ${state.settings.orientation === "landscape" ? "selected" : ""}>Landscape</option>
-            </select>
-          </label>
-        ` : ""}
         ${customerSettingEnabled("pageRange") ? `
           <label class="preview-essential-setting">
             <span>Page Range</span>

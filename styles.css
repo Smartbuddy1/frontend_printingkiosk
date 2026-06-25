@@ -1555,8 +1555,12 @@ button:disabled:hover {
 
 .printable-field-row span,
 .printable-sign-row span {
+  background: transparent;
+  border-radius: 0;
   color: var(--text);
+  display: block;
   font-weight: var(--weight-medium);
+  height: auto;
 }
 
 .printable-field-row i,
@@ -8371,5 +8375,424 @@ tbody tr:hover {
   .customer-shell .timeline-row {
     min-height: 48px;
     padding: 8px 10px;
+  }
+}
+
+/* Phone customer flow: allow natural page scrolling and collapse kiosk panels. */
+@media (max-width: 640px) {
+  html:has(.customer-shell),
+  body:has(.customer-shell),
+  .customer-shell {
+    height: auto;
+    min-height: 100dvh;
+    overflow-x: hidden;
+    overflow-y: auto;
+  }
+
+  .customer-shell.app-shell {
+    grid-template-rows: auto minmax(0, 1fr);
+    min-height: 100dvh;
+  }
+
+  .customer-shell:has(.service-stage),
+  .customer-shell:has(.template-selection-stage),
+  .customer-shell:has(.qr-only-upload-stage),
+  .customer-shell:has(.preview-stage),
+  .customer-shell:has(.payment-stage),
+  .customer-shell:has(.receipt-stage) {
+    height: auto;
+    min-height: 100dvh;
+    overflow-x: hidden;
+    overflow-y: auto;
+  }
+
+  .customer-shell > .main,
+  .customer-shell .customer-layout,
+  .customer-shell .content,
+  .customer-shell:has(.service-stage) > .main,
+  .customer-shell:has(.template-selection-stage) > .main,
+  .customer-shell:has(.qr-only-upload-stage) > .main,
+  .customer-shell:has(.preview-stage) > .main,
+  .customer-shell:has(.payment-stage) > .main,
+  .customer-shell:has(.receipt-stage) > .main,
+  .customer-shell:has(.service-stage) .customer-layout,
+  .customer-shell:has(.template-selection-stage) .customer-layout,
+  .customer-shell:has(.qr-only-upload-stage) .customer-layout,
+  .customer-shell:has(.preview-stage) .customer-layout,
+  .customer-shell:has(.payment-stage) .customer-layout,
+  .customer-shell:has(.receipt-stage) .customer-layout,
+  .customer-shell:has(.service-stage) .content,
+  .customer-shell:has(.template-selection-stage) .content,
+  .customer-shell:has(.qr-only-upload-stage) .content,
+  .customer-shell:has(.preview-stage) .content,
+  .customer-shell:has(.payment-stage) .content,
+  .customer-shell:has(.receipt-stage) .content {
+    height: auto;
+    min-height: 0;
+    overflow: visible;
+  }
+
+  .customer-shell .topbar {
+    gap: 8px;
+    padding: 10px 12px;
+  }
+
+  .customer-shell .brand {
+    align-items: center;
+    min-width: 0;
+  }
+
+  .customer-shell .brand-mark {
+    height: 42px;
+    width: 42px;
+  }
+
+  .customer-shell .brand-title {
+    font-size: 18px;
+  }
+
+  .customer-shell .brand-subtitle {
+    display: none;
+  }
+
+  .customer-shell .topbar-actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+  }
+
+  .customer-shell .customer-language-control {
+    flex: 1 1 128px;
+    min-height: 40px;
+  }
+
+  .customer-shell .customer-language-control select {
+    height: 40px;
+  }
+
+  .customer-shell .status-pill {
+    flex: 0 0 auto;
+    min-height: 40px;
+    padding: 0 12px;
+    width: auto;
+  }
+
+  .customer-shell .topbar-actions [data-action="reset-session"] {
+    display: none;
+  }
+
+  .customer-shell .content,
+  .customer-shell:has(.service-stage) .content,
+  .customer-shell:has(.template-selection-stage) .content,
+  .customer-shell:has(.qr-only-upload-stage) .content,
+  .customer-shell:has(.preview-stage) .content,
+  .customer-shell:has(.payment-stage) .content,
+  .customer-shell:has(.receipt-stage) .content {
+    padding: 12px;
+  }
+
+  .customer-shell .stage,
+  .customer-shell .service-stage,
+  .customer-shell .template-selection-stage,
+  .customer-shell .qr-only-upload-stage,
+  .customer-shell .preview-stage,
+  .customer-shell .payment-stage,
+  .customer-shell .receipt-stage {
+    gap: 12px;
+    height: auto;
+    max-height: none;
+    max-width: 100%;
+    min-height: 0;
+    overflow: visible;
+    width: 100%;
+  }
+
+  .customer-shell .stage-header {
+    padding-bottom: 8px;
+    text-align: left;
+  }
+
+  .customer-shell .stage-header h1,
+  .customer-shell .service-stage .stage-header h1,
+  .customer-shell .payment-stage .stage-header h1 {
+    font-size: 24px;
+    line-height: 1.12;
+  }
+
+  .customer-shell .stage-intro {
+    font-size: 15px;
+  }
+
+  .customer-shell .service-grid,
+  .customer-shell .service-stage.is-single .service-grid,
+  .customer-shell .service-stage.is-pair .service-grid,
+  .customer-shell .service-stage.is-catalog .service-grid,
+  .customer-shell .template-selection-stage .template-grid,
+  .customer-shell .payment-kiosk-panel {
+    grid-template-columns: minmax(0, 1fr);
+    height: auto;
+    max-height: none;
+    max-width: 100%;
+    overflow: visible;
+    width: 100%;
+  }
+
+  .customer-shell .service-card,
+  .customer-shell .service-stage.is-single .service-card,
+  .customer-shell .service-stage.is-pair .service-card,
+  .customer-shell .service-stage.is-catalog .service-card {
+    gap: 12px;
+    grid-template-rows: auto;
+    height: auto;
+    min-height: 0;
+    overflow: visible;
+    padding: 16px;
+  }
+
+  .customer-shell .service-card h2,
+  .customer-shell .service-stage.is-catalog .service-card h2 {
+    font-size: 19px;
+  }
+
+  .customer-shell .service-card p,
+  .customer-shell .service-stage.is-catalog .service-card p {
+    -webkit-line-clamp: unset;
+    display: block;
+    line-height: 1.35;
+    overflow: visible;
+  }
+
+  .customer-shell .service-rates {
+    font-size: 14px;
+  }
+
+  .customer-shell .template-card {
+    grid-template-columns: 48px minmax(0, 1fr);
+    min-height: 0;
+    padding: 14px;
+  }
+
+  .customer-shell .template-meta {
+    align-items: flex-start;
+    display: grid;
+    gap: 8px;
+    grid-column: 1 / -1;
+    justify-items: stretch;
+    text-align: left;
+  }
+
+  .customer-shell .template-meta span,
+  .customer-shell .template-meta strong {
+    white-space: normal;
+  }
+
+  .customer-shell .qr-only-upload-panel {
+    min-height: 0;
+  }
+
+  .customer-shell .qr-only-upload-card {
+    height: auto;
+    max-height: none;
+    min-height: 0;
+    padding: 18px;
+  }
+
+  .customer-shell .qr-only-upload-card .qr-code-box,
+  .customer-shell .payment-qr-code {
+    height: min(232px, 62vw);
+    padding: 10px;
+    width: min(232px, 62vw);
+  }
+
+  .customer-shell .qr-only-upload-card .qr-code-box svg,
+  .customer-shell .qr-only-upload-card .qr-code-box img,
+  .customer-shell .payment-qr-code svg,
+  .customer-shell .payment-qr-code img {
+    height: 100%;
+    width: 100%;
+  }
+
+  .customer-shell .preview-stage .preview-grid {
+    gap: 12px;
+    grid-template-columns: minmax(0, 1fr);
+    grid-template-rows: auto;
+    height: auto;
+  }
+
+  .customer-shell .preview-stage .preview-workspace {
+    height: auto;
+    overflow: visible;
+  }
+
+  .customer-shell .preview-stage .document-preview,
+  .customer-shell .preview-stage .document-preview.preview-live,
+  .customer-shell .preview-stage .document-preview.preview-document-mode,
+  .customer-shell .preview-stage .document-preview:has(.uploaded-image-paper) {
+    height: min(430px, 54dvh);
+    min-height: 280px;
+    overflow: auto;
+  }
+
+  .customer-shell .preview-stage .document-preview:has(.html-template-preview) {
+    height: auto;
+    max-height: none;
+    min-height: 0;
+    overflow: visible;
+    padding: 10px;
+  }
+
+  .customer-shell .preview-stage .document-preview:has(.html-template-preview) .preview-zoom-layer,
+  .customer-shell .preview-stage .html-template-preview,
+  .customer-shell .preview-stage .form-preview-pages {
+    height: auto;
+    min-height: 0;
+    overflow: visible;
+    width: 100%;
+  }
+
+  .customer-shell .preview-stage .html-template-preview,
+  .customer-shell .preview-stage .form-preview-pages {
+    justify-items: stretch;
+  }
+
+  .customer-shell .preview-stage .form-preview-pages {
+    gap: 10px;
+  }
+
+  .customer-shell .preview-stage .form-preview-page.printable-form-template {
+    aspect-ratio: auto;
+    min-height: 0;
+    padding: 16px;
+    width: 100%;
+  }
+
+  .customer-shell .preview-stage .form-preview-page-header {
+    gap: 10px;
+    margin-bottom: 10px;
+  }
+
+  .customer-shell .preview-stage .form-preview-page-header strong {
+    font-size: 15px;
+  }
+
+  .customer-shell .preview-stage .form-preview-page-header span {
+    font-size: 11px;
+    white-space: nowrap;
+  }
+
+  .customer-shell .preview-stage .document-preview-lines {
+    gap: 8px;
+  }
+
+  .customer-shell .preview-stage .document-preview-lines h3 {
+    font-size: 20px;
+  }
+
+  .customer-shell .preview-stage .document-preview-lines p {
+    margin-bottom: 4px;
+  }
+
+  .customer-shell .preview-stage .printable-field-row,
+  .customer-shell .preview-stage .printable-sign-row {
+    gap: 3px;
+    grid-template-columns: minmax(0, 1fr);
+    margin-top: 8px;
+  }
+
+  .customer-shell .preview-stage .printable-sign-row {
+    margin-top: 12px;
+  }
+
+  .customer-shell .preview-stage .printable-field-row i,
+  .customer-shell .preview-stage .printable-sign-row i {
+    height: 16px;
+  }
+
+  .customer-shell .preview-stage .preview-frame {
+    height: 100%;
+  }
+
+  .customer-shell .preview-control-panel {
+    display: grid;
+    gap: 10px;
+    grid-template-columns: minmax(0, 1fr);
+    height: auto;
+    overflow: visible;
+    padding: 14px;
+  }
+
+  .customer-shell .preview-essential-settings {
+    grid-template-columns: minmax(0, 1fr);
+    overflow: visible;
+  }
+
+  .customer-shell .preview-order-summary {
+    gap: 8px;
+    padding: 10px;
+  }
+
+  .customer-shell .preview-control-actions {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .customer-shell .preview-control-actions [data-action="delete-file"],
+  .customer-shell .preview-control-actions [data-action="prev-step"],
+  .customer-shell .payment-stage > .flow-actions [data-action="prev-step"] {
+    display: none;
+  }
+
+  .customer-shell .payment-stage > .flow-actions:not(:has(.primary-button)) {
+    display: none;
+  }
+
+  .customer-shell .payment-stage {
+    grid-template-rows: auto;
+  }
+
+  .customer-shell .payment-kiosk-panel {
+    gap: 12px;
+  }
+
+  .customer-shell .payment-qr-card,
+  .customer-shell .payment-tracking-card,
+  .customer-shell .receipt-card {
+    padding: 16px;
+  }
+
+  .customer-shell .payment-summary strong {
+    font-size: 30px;
+  }
+
+  .customer-shell .timeline-row {
+    grid-template-columns: 32px minmax(0, 1fr);
+  }
+
+  .customer-shell .timeline-row .badge {
+    grid-column: 2;
+    justify-self: start;
+  }
+
+  .customer-shell .receipt-stage {
+    grid-template-rows: auto;
+  }
+
+  .customer-shell .receipt-row {
+    align-items: flex-start;
+    flex-direction: column;
+    gap: 4px;
+    padding: 10px 0;
+  }
+
+  .customer-shell .receipt-row strong {
+    text-align: left;
+    overflow-wrap: anywhere;
+  }
+
+  .customer-shell .flow-actions {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .customer-shell .flow-actions button {
+    width: 100%;
   }
 }
