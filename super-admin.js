@@ -7,12 +7,20 @@ const UNASSIGNED_KIOSK_ID = "UNASSIGNED-KIOSK";
 const DEFAULT_KIOSK_CUSTOMER_SETTINGS = Object.freeze({
   bw: true,
   color: true,
-  copies: true
+  copies: true,
+  paperSize: true,
+  sides: true,
+  orientation: true,
+  pageRange: true
 });
 const KIOSK_CUSTOMER_SETTING_FIELDS = [
   ["bw", "B/W printing"],
   ["color", "Color printing"],
-  ["copies", "Copies"]
+  ["copies", "Copies"],
+  ["paperSize", "Paper size"],
+  ["sides", "Single / both sides"],
+  ["orientation", "Orientation"],
+  ["pageRange", "Page range"]
 ];
 const DEFAULT_SERVICE_PRINT_DEFAULTS = Object.freeze({
   colorMode: "bw",
@@ -37,6 +45,14 @@ const state = {
     password: ""
   },
   search: "",
+  transactionFilters: {
+    search: "",
+    status: "all",
+    client: "all",
+    kiosk: "all",
+    from: "",
+    to: ""
+  },
   pagination: {},
   selectedClientId: "",
   selectedProjectId: "",
@@ -66,8 +82,8 @@ const pageGroups = [
       { id: "kioskAdmins", label: "Clients", icon: "users" },
       { id: "projects", label: "Projects", icon: "hierarchy" },
       { id: "kiosks", label: "Kiosks", icon: "kiosks" },
-      { id: "services", label: "Services", icon: "services" },
-      { id: "pricing", label: "Pricing", icon: "pricing" }
+      { id: "pricing", label: "Pricing", icon: "pricing" },
+      { id: "revenue", label: "Revenue", icon: "payments" }
     ]
   }
 ];
@@ -413,6 +429,40 @@ function normalizeServicePrintDefaults(defaults = {}) {
   };
 }
 
+function templateDocumentKind(value = "") {
+  const source = String(value || "").toLowerCase();
+  if (source === "pdf" || source.startsWith("data:application/pdf") || /\.pdf(?:$|[?#])/i.test(source)) return "pdf";
+  return "image";
+}
+
+function uploadedTemplateTitle(file, fallback = "Template Document") {
+  const name = String(file?.name || "").replace(/\.[^.]+$/, "").replace(/[_-]+/g, " ").trim();
+  return name ? name.replace(/\s+/g, " ").replace(/\b\w/g, (letter) => letter.toUpperCase()) : fallback;
+}
+
+function readFileAsText(file) {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(String(reader.result || ""));
+    reader.onerror = () => reject(new Error("Could not inspect selected file."));
+    reader.readAsText(file);
+  });
+}
+
+async function detectTemplatePageCount(file) {
+  if (!file) return 1;
+  const isPdf = file.type === "application/pdf" || /\.pdf$/i.test(file.name || "");
+  if (!isPdf) return 1;
+
+  try {
+    const text = await readFileAsText(file);
+    const matches = text.match(/\/Type\s*\/Page\b/g);
+    return Math.max(1, Math.min(200, matches?.length || 1));
+  } catch {
+    return 1;
+  }
+}
+
 function numeric(value, fallback = 0) {
   const number = Number(value);
   return Number.isFinite(number) && number >= 0 ? number : fallback;
@@ -526,8 +576,13 @@ function data(collection) {
 }
 
 function serviceAssignableProjects() {
-  const projectIdsWithKiosks = new Set(data("kiosks").map((kiosk) => kiosk.projectId).filter(Boolean));
-  return data("projects").filter((project) => projectIdsWithKiosks.has(project.projectId));
+  const assignedProjectIds = new Set(
+    data("kioskAdmins")
+      .flatMap((client) => Array.isArray(client.projectIds) ? client.projectIds : [])
+      .filter(Boolean)
+  );
+
+  return data("projects").filter((project) => project.adminId || assignedProjectIds.has(project.projectId));
 }
 
 function serviceAssignableProjectIds() {
@@ -667,7 +722,7 @@ function renderTopbar() {
         <div class="brand-mark"><img src="./assets/printhub-mark.png" alt="PrintHub" /></div>
         <div>
           <div class="brand-title">PrintHub Super Admin</div>
-          <div class="brand-subtitle">Kiosks, services, jobs, payments, refunds</div>
+          <div class="brand-subtitle">Kiosks, projects, jobs, payments, refunds</div>
         </div>
       </div>
       <div class="topbar-actions">
@@ -707,7 +762,7 @@ function renderNav() {
       `).join("")}
       <div class="admin-nav-help">
         <span class="admin-nav-help-icon">${uiIcon("support", 22)}</span>
-        <div><strong>Control Center</strong><p>Review kiosks, services, and operational records.</p></div>
+        <div><strong>Control Center</strong><p>Review kiosks, pricing, and operational records.</p></div>
         <button data-page="kiosks">Open Kiosks</button>
       </div>
     </nav>
@@ -728,8 +783,9 @@ function renderCurrentPage() {
 
   if (state.page === "dashboard") return renderDashboard();
   if (state.page === "pricing") return renderPricing();
-  if (state.page === "services") return renderKioskServices();
-  if (collections[state.page]) return renderCollection(state.page);
+  if (state.page === "services") return renderDashboard();
+  if (state.page === "revenue") return renderRevenue();
+  if (collections[state.page] && state.page !== "services") return renderCollection(state.page);
   return renderDashboard();
 }
 
@@ -773,7 +829,7 @@ function renderDashboard() {
     <div class="metrics-grid dashboard-metrics">
       ${[
         ["Kiosks", summary.kiosks || 0, `${summary.activeKiosks || 0} online`, "kiosks", "purple"],
-        ["Services", summary.services || 0, `${summary.templates || 0} templates`, "services", "blue"],
+        ["Projects", summary.projects || data("projects").length, `${summary.kioskAdmins || data("kioskAdmins").length} clients`, "hierarchy", "blue"],
         ["Jobs", summary.jobs || 0, `${summary.failedJobs || 0} failed`, "history", summary.failedJobs ? "red" : "cyan"],
         ["Payments", summary.payments || 0, money(summary.gross || 0), "payments", "green"],
         ["Refunds", summary.refunds || 0, `${pendingRefunds.length} pending`, "refunds", pendingRefunds.length ? "red" : "green"],
@@ -886,6 +942,275 @@ function renderDashboardRevenuePanel(summary = {}) {
         <span><strong>${money(peak)}</strong>highest day</span>
       </div>
     </section>
+  `;
+}
+
+function paymentAmount(payment = {}, job = {}) {
+  const amount = Number(payment.amount);
+  if (Number.isFinite(amount) && amount > 0) return amount;
+
+  const amountInPaise = Number(payment.amountInPaise);
+  if (Number.isFinite(amountInPaise) && amountInPaise > 0) return amountInPaise / 100;
+
+  return Number(job.amount || 0) || 0;
+}
+
+function paymentDateValue(payment = {}, job = {}) {
+  return payment.paidAt || payment.createdAt || payment.failedAt || job.completedAt || job.createdAt || job.date || "";
+}
+
+function transactionTimestamp(value) {
+  const date = value ? new Date(value) : null;
+  return date && !Number.isNaN(date.getTime()) ? date.getTime() : 0;
+}
+
+function transactionGatewayReference(payment = {}) {
+  return payment.razorpayPaymentId || payment.gatewayTransactionId || payment.razorpayOrderId || payment.upiReferenceId || "";
+}
+
+function serviceTitle(serviceId) {
+  return data("services").find((service) => service.id === serviceId)?.title || serviceId || "Print Document";
+}
+
+function transactionProjectForKiosk(kioskId = "") {
+  const kiosk = data("kiosks").find((item) => String(item.kioskId || "").toUpperCase() === String(kioskId || "").toUpperCase());
+  return data("projects").find((project) => project.projectId === kiosk?.projectId) || null;
+}
+
+function transactionClientForProject(project = {}) {
+  return data("kioskAdmins").find((client) => (
+    client.adminId === project?.adminId ||
+    (client.projectIds || []).includes(project?.projectId)
+  )) || null;
+}
+
+function superAdminTransactionRecords() {
+  const jobs = data("jobs");
+  const jobById = new Map(jobs.map((job) => [String(job.jobId || ""), job]));
+  const paymentJobIds = new Set();
+
+  const paymentRecords = data("payments").map((payment) => {
+    const jobId = String(payment.jobId || "");
+    const job = jobById.get(jobId) || {};
+    if (jobId) paymentJobIds.add(jobId);
+
+    const kioskId = job.kioskId || payment.kioskId || UNASSIGNED_KIOSK_ID;
+    const project = transactionProjectForKiosk(kioskId);
+    const client = transactionClientForProject(project);
+    const dateValue = paymentDateValue(payment, job);
+
+    return {
+      paymentId: payment.paymentId || payment.razorpayPaymentId || "",
+      jobId,
+      dateValue,
+      date: formatDateTime(dateValue),
+      clientId: client?.adminId || "",
+      client: client?.name || client?.email || "Unallocated",
+      projectId: project?.projectId || "",
+      project: project?.name || "Unassigned",
+      kiosk: kioskId,
+      service: serviceTitle(job.service),
+      amount: paymentAmount(payment, job),
+      method: payment.paymentMethod || payment.gateway || "Payment",
+      gateway: payment.gateway || "",
+      reference: transactionGatewayReference(payment),
+      status: payment.status || job.paymentStatus || "Draft",
+      print: job.printStatus || ""
+    };
+  });
+
+  const jobRecords = jobs
+    .filter((job) => {
+      const jobId = String(job.jobId || "");
+      return jobId && !paymentJobIds.has(jobId) && Number(job.amount || 0) > 0;
+    })
+    .map((job) => {
+      const kioskId = job.kioskId || UNASSIGNED_KIOSK_ID;
+      const project = transactionProjectForKiosk(kioskId);
+      const client = transactionClientForProject(project);
+      const dateValue = paymentDateValue({}, job);
+
+      return {
+        paymentId: "",
+        jobId: String(job.jobId || ""),
+        dateValue,
+        date: formatDateTime(dateValue),
+        clientId: client?.adminId || "",
+        client: client?.name || client?.email || "Unallocated",
+        projectId: project?.projectId || "",
+        project: project?.name || "Unassigned",
+        kiosk: kioskId,
+        service: serviceTitle(job.service),
+        amount: Number(job.amount || 0),
+        method: "Job payment",
+        gateway: "",
+        reference: "",
+        status: job.paymentStatus || "Draft",
+        print: job.printStatus || ""
+      };
+    });
+
+  return [...paymentRecords, ...jobRecords]
+    .sort((left, right) => transactionTimestamp(right.dateValue) - transactionTimestamp(left.dateValue));
+}
+
+function transactionMatchesStatus(record, status) {
+  if (status === "all") return true;
+  const paymentText = String(record.status || "").toLowerCase();
+  const combinedText = `${record.status || ""} ${record.print || ""}`.toLowerCase();
+  if (status === "success") return /success|paid|captured|completed/.test(paymentText);
+  if (status === "pending") return /pending|created|queue/.test(paymentText);
+  if (status === "failed") return /failed|error|declined|cancel/.test(combinedText);
+  if (status === "refund") return /refund/.test(combinedText);
+  return true;
+}
+
+function transactionMatchesDateRange(record, from, to) {
+  const timestamp = transactionTimestamp(record.dateValue);
+  if (!timestamp) return !from && !to;
+
+  if (from) {
+    const fromTime = new Date(`${from}T00:00:00`).getTime();
+    if (!Number.isNaN(fromTime) && timestamp < fromTime) return false;
+  }
+
+  if (to) {
+    const toTime = new Date(`${to}T23:59:59.999`).getTime();
+    if (!Number.isNaN(toTime) && timestamp > toTime) return false;
+  }
+
+  return true;
+}
+
+function filteredSuperAdminTransactions() {
+  const filters = state.transactionFilters;
+  const search = filters.search.trim().toLowerCase();
+
+  return superAdminTransactionRecords()
+    .filter((record) => filters.client === "all" || record.clientId === filters.client)
+    .filter((record) => filters.kiosk === "all" || record.kiosk === filters.kiosk)
+    .filter((record) => transactionMatchesStatus(record, filters.status))
+    .filter((record) => transactionMatchesDateRange(record, filters.from, filters.to))
+    .filter((record) => !search || JSON.stringify(record).toLowerCase().includes(search));
+}
+
+function uniqueTransactionOptions(records, key, labelKey) {
+  const seen = new Map();
+  records.forEach((record) => {
+    const value = record[key];
+    if (!value || seen.has(value)) return;
+    seen.set(value, record[labelKey] || value);
+  });
+  return [...seen.entries()].map(([value, label]) => ({ value, label }));
+}
+
+function renderTransactionFilters(records) {
+  const filters = state.transactionFilters;
+  const clients = uniqueTransactionOptions(records, "clientId", "client");
+  const kiosks = uniqueTransactionOptions(records, "kiosk", "kiosk");
+
+  return `
+    <div class="filters transaction-filters">
+      <input placeholder="Search payment, job, client, kiosk" value="${escapeHtml(filters.search)}" data-transaction-filter="search" />
+      <select data-transaction-filter="status" aria-label="Transaction status">
+        <option value="all" ${filters.status === "all" ? "selected" : ""}>All statuses</option>
+        <option value="success" ${filters.status === "success" ? "selected" : ""}>Success</option>
+        <option value="pending" ${filters.status === "pending" ? "selected" : ""}>Pending</option>
+        <option value="failed" ${filters.status === "failed" ? "selected" : ""}>Failed</option>
+        <option value="refund" ${filters.status === "refund" ? "selected" : ""}>Refund</option>
+      </select>
+      <select data-transaction-filter="client" aria-label="Client">
+        <option value="all" ${filters.client === "all" ? "selected" : ""}>All clients</option>
+        ${clients.map((client) => `<option value="${escapeHtml(client.value)}" ${filters.client === client.value ? "selected" : ""}>${escapeHtml(client.label)}</option>`).join("")}
+      </select>
+      <select data-transaction-filter="kiosk" aria-label="Kiosk">
+        <option value="all" ${filters.kiosk === "all" ? "selected" : ""}>All kiosks</option>
+        ${kiosks.map((kiosk) => `<option value="${escapeHtml(kiosk.value)}" ${filters.kiosk === kiosk.value ? "selected" : ""}>${escapeHtml(kiosk.label)}</option>`).join("")}
+      </select>
+      <input type="date" value="${escapeHtml(filters.from)}" data-transaction-filter="from" aria-label="From date" />
+      <input type="date" value="${escapeHtml(filters.to)}" data-transaction-filter="to" aria-label="To date" />
+    </div>
+  `;
+}
+
+function renderTransactionLog() {
+  const allRecords = superAdminTransactionRecords();
+  const records = filteredSuperAdminTransactions();
+  const page = paginated(records, "revenue-transactions");
+
+  return `
+    <section class="module-card transaction-log-card">
+      <div class="module-card-title">
+        <span>${uiIcon("payments", 20)}</span>
+        <h2>Transaction Logs</h2>
+        <strong>${escapeHtml(String(records.length))} record${records.length === 1 ? "" : "s"}</strong>
+      </div>
+      ${renderTransactionFilters(allRecords)}
+      <div class="table-wrap">
+        <table>
+          <thead>
+            <tr>
+              ${["Date", "Payment ID", "Job ID", "Client", "Project", "Kiosk", "Service", "Amount", "Status", "Gateway Ref"].map((header) => `<th>${escapeHtml(header)}</th>`).join("")}
+            </tr>
+          </thead>
+          <tbody>
+            ${page.items.length ? page.items.map((record) => `
+              <tr>
+                <td>${escapeHtml(record.date)}</td>
+                <td>${escapeHtml(record.paymentId || "-")}</td>
+                <td>${escapeHtml(record.jobId || "-")}</td>
+                <td>${escapeHtml(record.client)}</td>
+                <td>${escapeHtml(record.project)}</td>
+                <td>${escapeHtml(record.kiosk)}</td>
+                <td>${escapeHtml(record.service)}</td>
+                <td>${escapeHtml(money(record.amount))}</td>
+                <td>${escapeHtml(record.status || "-")}</td>
+                <td>${escapeHtml(record.reference || record.method || "-")}</td>
+              </tr>
+            `).join("") : `
+              <tr><td colspan="10">No matching transaction records.</td></tr>
+            `}
+          </tbody>
+        </table>
+      </div>
+      ${renderPagination("revenue-transactions", page)}
+    </section>
+  `;
+}
+
+function renderRevenue() {
+  const summary = state.snapshot?.summary || {};
+  const records = filteredSuperAdminTransactions();
+  const filteredTotal = records.reduce((sum, record) => sum + Number(record.amount || 0), 0);
+  const successCount = records.filter((record) => transactionMatchesStatus(record, "success")).length;
+  const pendingCount = records.filter((record) => transactionMatchesStatus(record, "pending")).length;
+
+  return `
+    ${renderHeader("Revenue", "Transaction logs, filters, and payment reconciliation across every client.", `<button class="secondary-button" data-action="refresh">${uiIcon("refresh", 18)} Refresh</button>`)}
+    ${renderNotice()}
+    <div class="metrics-grid dashboard-metrics revenue-metrics">
+      ${[
+        ["Gross Revenue", money(summary.gross || 0), `${summary.payments || 0} payment record(s)`, "payments", "green"],
+        ["Refunds", money((summary.gross || 0) - (summary.net || 0)), `${summary.refunds || 0} refund record(s)`, "refunds", summary.refunds ? "red" : "green"],
+        ["Net Revenue", money(summary.net || 0), "After refunds", "pricing", "green"],
+        ["Filtered Total", money(filteredTotal), `${records.length} matching transaction(s)`, "activity", "blue"],
+        ["Successful", String(successCount), "Matching paid/captured records", "history", "cyan"],
+        ["Pending", String(pendingCount), "Matching pending records", "alert", pendingCount ? "amber" : "green"]
+      ].map(([label, value, detail, icon, tone]) => `
+        <div class="metric-card has-icon tone-${tone}">
+          <span class="metric-icon">${uiIcon(icon, 25)}</span>
+          <div class="metric-copy">
+            <span>${escapeHtml(label)}</span>
+            <strong>${escapeHtml(value)}</strong>
+            <small>${escapeHtml(detail)}</small>
+          </div>
+        </div>
+      `).join("")}
+    </div>
+    <div class="revenue-page-grid">
+      ${renderDashboardRevenuePanel(summary)}
+    </div>
+    ${renderTransactionLog()}
   `;
 }
 
@@ -1046,7 +1371,6 @@ function renderServiceNode(kiosk, service) {
           <strong>${escapeHtml(service.title)}</strong>
           <span>${escapeHtml(service.id)} | ${escapeHtml(service.mode)} | ${service.enabled === false ? "disabled" : "enabled"}</span>
         </div>
-        <button class="ghost-button" data-record-edit="services" data-record-id="${escapeHtml(service.id)}">Edit</button>
       </div>
       <div class="hierarchy-stats compact">
         ${renderMiniStat("B/W", money(rates.bw || 0))}
@@ -1155,11 +1479,11 @@ function renderKioskServices() {
       selectedClient
         ? `${selectedClient.name || selectedClient.email || selectedClient.adminId} | ${projects.length} project${projects.length === 1 ? "" : "s"} | ${clientKiosks.length} kiosk${clientKiosks.length === 1 ? "" : "s"}`
         : "Create a client project with kiosks before assigning services.",
-      `<button class="primary-button" data-project-service-create ${projectId ? "" : "disabled"}>Add Service</button><button class="secondary-button" data-action="refresh">Refresh</button>`
+      `<button class="secondary-button" data-action="refresh">Refresh</button>`
     )}
     ${renderNotice()}
     ${!clients.length ? `
-      <div class="empty-note">No clients with kiosk projects found. Create a client, allocate a project, then add a kiosk before adding services.</div>
+      <div class="empty-note">No clients with assigned projects found. Create a client and allocate a project before adding services.</div>
     ` : `
       <div class="kiosk-service-layout">
         <aside class="kiosk-picker project-picker">
@@ -1198,7 +1522,7 @@ function renderKioskServices() {
           </div>
           <div class="project-kiosk-summary">
             <strong>Kiosks receiving these services</strong>
-            <span>${projectKiosks.map((kiosk) => escapeHtml(kiosk.kioskId)).join(", ")}</span>
+            <span>${projectKiosks.length ? projectKiosks.map((kiosk) => escapeHtml(kiosk.kioskId)).join(", ") : "No kiosks assigned yet"}</span>
           </div>
           <div class="kiosk-service-grid">
             ${servicePage.items.length ? servicePage.items.map((service) => renderKioskServiceCard(service, projectId)).join("") : `
@@ -1229,7 +1553,7 @@ function renderKioskServiceCard(service, projectId) {
         <span class="badge ${serviceScopeTone(service)}">${escapeHtml(serviceProjectLabel(projectId))}</span>
       </div>
       <p class="helper-text">${escapeHtml(service.description || "Customer service.")}</p>
-      <p class="helper-text">Applied to all ${kioskCount} kiosk${kioskCount === 1 ? "" : "s"} in this project.</p>
+      <p class="helper-text">${kioskCount ? `Applied to all ${kioskCount} kiosk${kioskCount === 1 ? "" : "s"} in this project.` : "No kiosks are assigned to this project yet."}</p>
       <div class="kiosk-service-stats">
         ${renderMiniStat("B/W", money(rates.bw || 0))}
         ${renderMiniStat("Color", money(rates.color || 0))}
@@ -1241,10 +1565,6 @@ function renderKioskServiceCard(service, projectId) {
           ${templates.map((template) => `<span class="template-chip">${escapeHtml(template.title)}</span>`).join("")}
         </div>
       ` : ""}
-      <div class="table-actions">
-        <button class="secondary-button small-button" data-kiosk-service-edit="${escapeHtml(service.id)}">Edit</button>
-        <button class="danger-button small-button" data-project-service-delete="${escapeHtml(service.id)}">Remove from Project</button>
-      </div>
     </article>
   `;
 }
@@ -1367,9 +1687,9 @@ function renderEditorPanel() {
   const title = state.editor.mode === "create" ? `Create ${collection.slice(0, -1) || collection}` : `Edit ${collection.slice(0, -1) || collection}`;
 
   return `
-    <div class="editor-modal-shell" role="dialog" aria-modal="true" aria-label="${escapeHtml(title)}">
+    <div class="editor-modal-shell editor-modal-${escapeHtml(collection)}" role="dialog" aria-modal="true" aria-label="${escapeHtml(title)}">
       <button class="editor-modal-backdrop" data-editor-cancel aria-label="Close editor"></button>
-      <div class="editor-modal-content">
+      <div class="editor-modal-content editor-modal-content-${escapeHtml(collection)}">
         ${content}
       </div>
     </div>
@@ -1412,8 +1732,8 @@ function renderKioskCustomerSettingsEditor(draft) {
   return `
     <section class="kiosk-settings-panel">
       <div class="section-heading">
-        <h2>Customer Screen Settings</h2>
-        <span>Unchecked options stay hidden on this kiosk</span>
+        <h2>Kiosk Customer Print Options</h2>
+        <span>Unchecked options stay hidden from customers on this kiosk</span>
       </div>
       <div class="kiosk-settings-checks">
         ${KIOSK_CUSTOMER_SETTING_FIELDS.map(([key, label]) => `
@@ -1477,44 +1797,57 @@ function renderServiceEditor() {
   const rates = draft.pricing || { bw: 0, color: 0 };
 
   return `
-    <div class="module-card editor-panel">
+    <div class="module-card editor-panel service-editor-popup">
       <div class="editor-head">
         <div>
           <h2>${editing ? "Edit Service" : "Create Service"}</h2>
-          <p class="helper-text">Configure this service for the selected project and its kiosks.</p>
+          <p class="helper-text">Configure this service for the selected project.</p>
         </div>
         <button class="ghost-button" data-editor-cancel>Close</button>
       </div>
-      <div class="settings-grid service-editor-grid">
-        ${renderField({ key: "icon", label: "Icon" }, draft)}
-        ${renderField({ key: "title", label: "Service Name" }, draft)}
-        ${renderField({ key: "description", label: "Description" }, draft)}
-        ${renderField({ key: "titleHi", label: "Service Name (Hindi)" }, draft)}
-        ${renderField({ key: "descriptionHi", label: "Description (Hindi)" }, draft)}
-        ${renderField({ key: "titleMr", label: "Service Name (Marathi)" }, draft)}
-        ${renderField({ key: "descriptionMr", label: "Description (Marathi)" }, draft)}
-        ${renderField({ key: "defaultPages", label: "Default Pages", type: "number" }, draft)}
-        ${renderField({ key: "mode", label: "Mode", type: "select", options: ["upload", "template"] }, draft)}
-        ${renderField({ key: "enabled", label: "Enabled", type: "select", options: ["true", "false"] }, { ...draft, enabled: String(draft.enabled !== false) })}
-        ${renderField({ key: "bw", label: "B/W Rate", type: "number" }, { bw: rates.bw || 0 })}
-        ${renderField({ key: "color", label: "Color Rate", type: "number" }, { color: rates.color || 0 })}
+      <div class="service-editor-scroll">
+        <section class="service-editor-section">
+          <div class="section-heading">
+            <h2>Service Details</h2>
+            <span>Only the basic customer-facing information</span>
+          </div>
+          <div class="settings-grid service-editor-grid compact-service-editor-grid">
+            ${renderField({ key: "title", label: "Service Name" }, draft)}
+            ${renderField({ key: "description", label: "Description" }, draft)}
+          </div>
+        </section>
+        <section class="service-editor-section">
+          <div class="section-heading">
+            <h2>Pricing and Mode</h2>
+            <span>Default settings for this service</span>
+          </div>
+          <div class="settings-grid service-editor-grid">
+            ${renderField({ key: "defaultPages", label: "Default Pages", type: "number" }, draft)}
+            ${renderField({ key: "mode", label: "Mode", type: "select", options: ["upload", "template"] }, draft)}
+            ${renderField({ key: "enabled", label: "Enabled", type: "select", options: ["true", "false"] }, { ...draft, enabled: String(draft.enabled !== false) })}
+            ${renderField({ key: "bw", label: "B/W Rate", type: "number" }, { bw: rates.bw || 0 })}
+            ${renderField({ key: "color", label: "Color Rate", type: "number" }, { color: rates.color || 0 })}
+          </div>
+        </section>
+        ${renderServiceProjectSelector(draft)}
+        ${draft.mode === "template" ? `<div class="template-editor-section compact-template-section">
+          <div class="template-editor-header">
+            <div>
+              <h3>Forms under ${escapeHtml(draft.title || "this service")}</h3>
+              <p class="helper-text">Each form can be an image or PDF shown directly on the kiosk.</p>
+            </div>
+            <button class="secondary-button" data-draft-template-add>Add Document</button>
+          </div>
+          <div class="template-editor-list compact-template-list">
+            ${(draft.templates || []).length ? draft.templates.map(renderDraftTemplate).join("") : `<div class="empty-note">No template documents yet. Add a document, then upload an image or PDF.</div>`}
+          </div>
+        </div>` : `<div class="template-editor-section">
+          <div class="template-editor-header">
+            <h3>Upload Service</h3>
+            <p class="helper-text">This service will show QR upload to customers. Change mode to Form templates if it should contain forms.</p>
+          </div>
+        </div>`}
       </div>
-      ${renderServiceProjectSelector(draft)}
-      ${renderServicePrintSettingsEditor(draft)}
-      ${draft.mode === "template" ? `<div class="template-editor-section">
-        <div class="template-editor-header">
-          <h3>Templates</h3>
-          <button class="secondary-button" data-draft-template-add>Add Template</button>
-        </div>
-        <div class="template-editor-list">
-          ${(draft.templates || []).length ? draft.templates.map(renderDraftTemplate).join("") : `<div class="empty-note">No templates in this service.</div>`}
-        </div>
-      </div>` : `<div class="template-editor-section">
-        <div class="template-editor-header">
-          <h3>Upload Service</h3>
-          <p class="helper-text">This service will show QR upload to customers. Change mode to Form templates if it should contain forms.</p>
-        </div>
-      </div>`}
       <div class="flow-actions">
         <button class="primary-button" data-editor-save>Save Service</button>
         <button class="ghost-button" data-editor-cancel>Cancel</button>
@@ -1539,40 +1872,7 @@ function renderServiceProjectSelector(draft) {
             <input type="checkbox" data-service-project-id="${escapeHtml(project.projectId)}" ${selected.has(project.projectId) ? "checked" : ""} />
             <span>${escapeHtml(project.name || project.projectId)}</span>
           </label>
-        `).join("") : `<div class="empty-note">Create a kiosk under a project before assigning services.</div>`}
-      </div>
-    </section>
-  `;
-}
-
-function renderServicePrintSettingsEditor(draft) {
-  const settings = normalizeKioskCustomerSettings(draft.customerSettings);
-  const defaults = normalizeServicePrintDefaults(draft.printDefaults);
-
-  return `
-    <section class="kiosk-settings-panel">
-      <div class="section-heading">
-        <h2>Customer Print Options</h2>
-        <span>Unchecked options stay hidden for customers and clients</span>
-      </div>
-      <div class="kiosk-settings-checks">
-        ${KIOSK_CUSTOMER_SETTING_FIELDS.map(([key, label]) => `
-          <label class="kiosk-setting-check">
-            <input type="checkbox" data-service-customer-setting="${escapeHtml(key)}" ${settings[key] ? "checked" : ""} />
-            <span>${escapeHtml(label)}</span>
-          </label>
-        `).join("")}
-      </div>
-      <div class="settings-grid service-editor-grid">
-        <label class="setting-field">Default Color
-          <select data-service-print-default="colorMode">
-            <option value="bw" ${defaults.colorMode === "bw" ? "selected" : ""}>B/W</option>
-            <option value="color" ${defaults.colorMode === "color" ? "selected" : ""}>Color</option>
-          </select>
-        </label>
-        <label class="setting-field">Default Copies
-          <input type="number" min="1" max="99" value="${defaults.copies}" data-service-print-default="copies" />
-        </label>
+        `).join("") : `<div class="empty-note">Create and allocate a project before assigning services.</div>`}
       </div>
     </section>
   `;
@@ -1580,6 +1880,10 @@ function renderServicePrintSettingsEditor(draft) {
 
 function renderEditorImagePreview(imageUrl = "", fallback = "TM") {
   const label = String(fallback || "TM").trim().toUpperCase().slice(0, 2) || "TM";
+
+  if (templateDocumentKind(imageUrl) === "pdf") {
+    return `<span class="admin-image-preview">PDF</span>`;
+  }
 
   if (imageUrl) {
     return `<span class="admin-image-preview service-image"><img alt="" src="${escapeHtml(imageUrl)}" draggable="false" data-no-visual-search /></span>`;
@@ -1590,38 +1894,20 @@ function renderEditorImagePreview(imageUrl = "", fallback = "TM") {
 
 function renderDraftTemplate(template, index) {
   return `
-    <div class="template-editor-card">
-      <div class="template-editor-top">
+    <div class="template-editor-card compact-template-card">
+      <div class="template-editor-top compact-template-top">
+        <span class="template-row-index">${index + 1}</span>
         ${renderEditorImagePreview(template.imageUrl, template.title || `T${index + 1}`)}
-        <div>
+        <div class="template-row-copy">
           <h4>${escapeHtml(template.title || `Template ${index + 1}`)}</h4>
-          <p class="helper-text">${escapeHtml(template.id || "")} | ${escapeHtml(template.imageUrl ? "Image ready" : "No image selected")}</p>
+          <p class="helper-text">${escapeHtml(templateDocumentKind(template.documentType || template.imageUrl).toUpperCase())} | ${Number(template.pages || 1)} page${Number(template.pages || 1) === 1 ? "" : "s"} | ${escapeHtml(template.imageUrl ? "Ready for kiosk" : "Upload needed")}</p>
         </div>
-        <button class="danger-button" data-draft-template-delete="${index}">Remove</button>
+        <button class="danger-button small-button" data-draft-template-delete="${index}">Remove</button>
       </div>
-      <div class="settings-grid service-editor-grid">
-        <label class="setting-field">Template ID
-          <input value="${escapeHtml(template.id || "")}" data-template-index="${index}" data-template-field="id" />
-        </label>
-        <label class="setting-field">Name
-          <input value="${escapeHtml(template.title || "")}" data-template-index="${index}" data-template-field="title" />
-        </label>
-        <label class="setting-field">Pages
-          <input type="number" min="1" value="${Number(template.pages || 1)}" data-template-index="${index}" data-template-field="pages" />
-        </label>
-        <label class="setting-field">Description
-          <input value="${escapeHtml(template.description || "")}" data-template-index="${index}" data-template-field="description" />
-        </label>
-        <label class="setting-field">Fields
-          <input value="${escapeHtml((template.fields || []).join(", "))}" data-template-index="${index}" data-template-field="fields" />
-        </label>
-        <label class="setting-field">Image URL
-          <input value="${escapeHtml(template.imageUrl || "")}" data-template-index="${index}" data-template-field="imageUrl" />
-        </label>
-        <label class="setting-field">Update Template Image
-          <input type="file" accept="image/*" data-template-image-upload data-template-index="${index}" />
-        </label>
-      </div>
+      <label class="template-upload-row compact-template-upload">
+        <span>Replace file</span>
+        <input type="file" accept="image/*,application/pdf,.pdf" data-template-image-upload data-template-index="${index}" />
+      </label>
     </div>
   `;
 }
@@ -1960,6 +2246,13 @@ async function handleInput(event) {
     return;
   }
 
+  if (target.dataset.transactionFilter) {
+    state.transactionFilters[target.dataset.transactionFilter] = target.value;
+    state.pagination["revenue-transactions"] = 1;
+    render();
+    return;
+  }
+
   if (target.dataset.templateImageUpload !== undefined && target.files?.length) {
     await uploadSuperAdminTemplateImage(target.files[0], Number(target.dataset.templateIndex || 0));
     target.value = "";
@@ -1978,16 +2271,6 @@ async function handleInput(event) {
 
   if (target.dataset.serviceProjectId) {
     updateServiceProjectSelection(target.dataset.serviceProjectId, target.checked);
-    return;
-  }
-
-  if (target.dataset.serviceCustomerSetting) {
-    updateServiceCustomerSetting(target.dataset.serviceCustomerSetting, target.checked);
-    return;
-  }
-
-  if (target.dataset.servicePrintDefault) {
-    updateServicePrintDefault(target.dataset.servicePrintDefault, target.value);
     return;
   }
 
@@ -2093,6 +2376,14 @@ async function deleteRelease(releaseId) {
 }
 
 function beginCreate(collection) {
+  if (collection === "services") {
+    state.error = "Service management is available in kiosk admin.";
+    state.page = "dashboard";
+    state.editor = null;
+    render();
+    return;
+  }
+
   if (collection === "projects" && !data("kioskAdmins").length) {
     state.error = "Create a client before creating a project.";
     state.page = "kioskAdmins";
@@ -2103,12 +2394,6 @@ function beginCreate(collection) {
   if (collection === "kiosks" && !data("projects").length) {
     state.error = "Create and allocate a project before creating a kiosk.";
     state.page = "projects";
-    render();
-    return;
-  }
-
-  if (collection === "services" && !serviceAssignableProjects().length) {
-    state.error = "Create a kiosk under a project before creating services.";
     render();
     return;
   }
@@ -2124,6 +2409,12 @@ function beginCreate(collection) {
 }
 
 function beginCreateServiceForProject() {
+  state.error = "Service management is available in kiosk admin.";
+  state.page = "dashboard";
+  state.editor = null;
+  render();
+  return;
+
   const projectId = selectedServiceProjectId();
   const draft = clone(collections.services.defaults());
 
@@ -2141,6 +2432,14 @@ function beginCreateServiceForProject() {
 }
 
 function beginEdit(collection, id) {
+  if (collection === "services") {
+    state.error = "Service management is available in kiosk admin.";
+    state.page = "dashboard";
+    state.editor = null;
+    render();
+    return;
+  }
+
   const meta = collections[collection];
   const record = data(collection).find((item) => String(item[meta.key]) === String(id));
   if (!record) return;
@@ -2171,6 +2470,12 @@ function beginEdit(collection, id) {
 }
 
 async function deleteProjectService(serviceId) {
+  state.error = "Service management is available in kiosk admin.";
+  state.page = "dashboard";
+  state.editor = null;
+  render();
+  return;
+
   const projectId = selectedServiceProjectId();
   const project = data("projects").find((item) => item.projectId === projectId);
   const service = data("services").find((item) => item.id === serviceId);
@@ -2277,27 +2582,6 @@ function updateServiceProjectSelection(projectId, checked) {
   state.editor.draft.projectIds = [...selected].filter(Boolean);
 }
 
-function updateServiceCustomerSetting(key, checked) {
-  if (!state.editor || state.editor.collection !== "services") return;
-  const draft = state.editor.draft;
-  draft.customerSettings = {
-    ...normalizeKioskCustomerSettings(draft.customerSettings),
-    [key]: Boolean(checked)
-  };
-  if (!draft.customerSettings.bw && !draft.customerSettings.color) {
-    draft.customerSettings.bw = true;
-  }
-}
-
-function updateServicePrintDefault(key, value) {
-  if (!state.editor || state.editor.collection !== "services") return;
-  const draft = state.editor.draft;
-  draft.printDefaults = normalizeServicePrintDefaults({
-    ...(draft.printDefaults || {}),
-    [key]: key === "copies" ? numeric(value, 1) : value
-  });
-}
-
 function updateKioskCustomerSetting(key, checked) {
   if (!state.editor || state.editor.collection !== "kiosks") return;
 
@@ -2322,6 +2606,11 @@ function updateDraftTemplate(index, field, value) {
     template.fields = String(value || "").split(",").map((item) => item.trim()).filter(Boolean);
   } else if (field === "pages") {
     template.pages = Math.max(1, Number(value) || 1);
+  } else if (field === "imageUrl") {
+    template.imageUrl = String(value || "").trim();
+    template.documentType = templateDocumentKind(value);
+  } else if (field === "documentType") {
+    template.documentType = templateDocumentKind(value);
   } else {
     template[field] = value;
     if (field === "title" && !template.id) template.id = slug(value, `template-${index + 1}`);
@@ -2335,10 +2624,11 @@ function addDraftTemplate() {
   templates.push({
     id: slug(title, `template-${templates.length + 1}`),
     title,
-    description: "Blank printable template.",
+    description: "Uploaded template document.",
     pages: 1,
-    fields: ["Applicant", "Address", "Mobile", "Purpose", "Signature"],
-    imageUrl: ""
+    fields: [],
+    imageUrl: "",
+    documentType: "image"
   });
   state.editor.draft.templates = templates;
   state.editor.draft.mode = "template";
@@ -2352,12 +2642,14 @@ function deleteDraftTemplate(index) {
 }
 
 function validateEditorImageFile(file) {
-  if (!file) return "Choose an image file.";
-  if (!file.type.startsWith("image/") && !/\.(png|jpe?g|gif|webp)$/i.test(file.name)) {
-    return "Choose a PNG, JPG, GIF, or WebP image.";
+  if (!file) return "Choose an image or PDF file.";
+  const isImage = file.type.startsWith("image/") || /\.(png|jpe?g|gif|webp)$/i.test(file.name);
+  const isPdf = file.type === "application/pdf" || /\.pdf$/i.test(file.name);
+  if (!isImage && !isPdf) {
+    return "Choose a PNG, JPG, GIF, WebP, or PDF file.";
   }
-  if (file.size > 3 * 1024 * 1024) {
-    return "Image must be 3 MB or smaller.";
+  if (file.size > 8 * 1024 * 1024) {
+    return "Template document must be 8 MB or smaller.";
   }
   return "";
 }
@@ -2372,11 +2664,14 @@ async function uploadSuperAdminTemplateImage(file, templateIndex) {
     return;
   }
 
-  state.notice = "Uploading template image...";
+  state.notice = "Uploading template document...";
   state.error = "";
   render();
 
   try {
+    const documentType = templateDocumentKind(file.type === "application/pdf" || /\.pdf$/i.test(file.name || "") ? "file.pdf" : file.name);
+    const pages = await detectTemplatePageCount(file);
+    const title = uploadedTemplateTitle(file, `Template ${templateIndex + 1}`);
     const formData = new FormData();
     formData.append("templateImage", file, file.name);
     const payload = await fetchJson("/api/super-admin/service-image", {
@@ -2385,9 +2680,13 @@ async function uploadSuperAdminTemplateImage(file, templateIndex) {
     });
 
     updateDraftTemplate(templateIndex, "imageUrl", payload.imageUrl || "");
-    state.notice = "Template image updated. Save Service to publish it.";
+    updateDraftTemplate(templateIndex, "documentType", payload.documentType || documentType);
+    updateDraftTemplate(templateIndex, "pages", pages);
+    updateDraftTemplate(templateIndex, "title", title);
+    updateDraftTemplate(templateIndex, "description", `${documentType.toUpperCase()} template document.`);
+    state.notice = "Template document uploaded. Save Service to publish it.";
   } catch (error) {
-    state.error = error.message || "Template image upload failed.";
+    state.error = error.message || "Template document upload failed.";
   }
 
   render();
@@ -2418,10 +2717,11 @@ function editorPayload() {
     draft.templates = (draft.templates || []).map((template, index) => ({
       id: slug(template.id || template.title, `template-${index + 1}`),
       title: String(template.title || `Template ${index + 1}`).trim(),
-      description: String(template.description || "Blank printable template.").trim(),
+      description: String(template.description || "Uploaded template document.").trim(),
       pages: Math.max(1, Number(template.pages || 1)),
       fields: Array.isArray(template.fields) ? template.fields : String(template.fields || "").split(",").map((item) => item.trim()).filter(Boolean),
-      imageUrl: String(template.imageUrl || "").trim()
+      imageUrl: String(template.imageUrl || "").trim(),
+      documentType: templateDocumentKind(template.documentType || template.imageUrl || "")
     })).filter((template) => template.title);
   }
 
@@ -2463,12 +2763,6 @@ function syncEditorDraftFromDom() {
   document.querySelectorAll("[data-service-project-id]").forEach((input) => {
     updateServiceProjectSelection(input.dataset.serviceProjectId, input.checked);
   });
-  document.querySelectorAll("[data-service-customer-setting]").forEach((input) => {
-    updateServiceCustomerSetting(input.dataset.serviceCustomerSetting, input.checked);
-  });
-  document.querySelectorAll("[data-service-print-default]").forEach((input) => {
-    updateServicePrintDefault(input.dataset.servicePrintDefault, input.value);
-  });
   document.querySelectorAll("[data-kiosk-customer-setting]").forEach((input) => {
     updateKioskCustomerSetting(input.dataset.kioskCustomerSetting, input.checked);
   });
@@ -2477,9 +2771,16 @@ function syncEditorDraftFromDom() {
 async function saveEditor() {
   if (!state.editor) return;
   const { collection, mode, id } = state.editor;
+  if (collection === "services") {
+    state.error = "Service management is available in kiosk admin.";
+    state.editor = null;
+    state.page = "dashboard";
+    render();
+    return;
+  }
   const payload = editorPayload();
   if (collection === "services" && !payload.projectIds.length) {
-    state.error = "Create a kiosk under a project, then select that project for this service.";
+    state.error = "Select at least one assigned project for this service.";
     render();
     return;
   }
@@ -2507,6 +2808,14 @@ async function saveEditor() {
 }
 
 async function deleteRecord(collection, id) {
+  if (collection === "services") {
+    state.error = "Service management is available in kiosk admin.";
+    state.page = "dashboard";
+    state.editor = null;
+    render();
+    return;
+  }
+
   const meta = collections[collection];
   const confirmed = window.confirm(`Delete ${collection.slice(0, -1)} ${id}?`);
   if (!confirmed) return;

@@ -11,11 +11,12 @@ const DEFAULT_PORT = Number(process.env.PORT || 5173);
 const BACKEND_URL = (
   process.env.FRONTEND_BACKEND_URL ||
   process.env.BACKEND_URL ||
-  "https://api.theaaryatechnologies.com"
+  "http://localhost:5080"
 ).replace(/\/+$/, "");
 
 const CLEAN_ROUTES = new Map([
   ["/admin", "/admin.html"],
+  ["/admin/super-admin", "/super-admin.html"],
   ["/super-admin", "/super-admin.html"]
 ]);
 

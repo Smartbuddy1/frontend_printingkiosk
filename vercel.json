@@ -1,8 +1,16 @@
 {
   "outputDirectory": "dist",
-  "cleanUrls": true,
+  "cleanUrls": false,
   "trailingSlash": false,
   "rewrites": [
+    {
+      "source": "/admin/super-admin",
+      "destination": "/super-admin.html"
+    },
+    {
+      "source": "/admin/super-admin/:path*",
+      "destination": "/super-admin.html"
+    },
     {
       "source": "/admin",
       "destination": "/admin.html"
