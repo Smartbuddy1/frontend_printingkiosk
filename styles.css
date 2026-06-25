@@ -4210,7 +4210,7 @@ td {
   }
 }
 
-/* PrintHub brand theme */
+/* Print Kiosk brand theme */
 :root {
   --bg: #f5f8ff;
   --surface: #ffffff;
@@ -4684,7 +4684,7 @@ tbody tr:hover {
   }
 }
 
-/* PrintHub reference UI system */
+/* Print Kiosk reference UI system */
 :root {
   --font-main: Cambria, "Nirmala UI", "Mangal", Georgia, "Times New Roman", serif;
   --weight-regular: 400;
@@ -5986,7 +5986,7 @@ tbody tr:hover {
   }
 }
 
-/* PrintHub reference UI */
+/* Print Kiosk reference UI */
 :root {
   --font-main: Cambria, "Nirmala UI", "Mangal", Georgia, "Times New Roman", serif;
   --weight-regular: 400;
@@ -8283,5 +8283,93 @@ tbody tr:hover {
   .customer-shell .receipt-stage .receipt-card {
     align-self: start;
     max-height: 100%;
+  }
+}
+
+/* Tablet demo refinements: keep the final receipt action visible. */
+.customer-shell .receipt-stage {
+  gap: clamp(10px, 1.4vh, 16px);
+}
+
+.customer-shell .receipt-stage .stage-header {
+  padding-bottom: clamp(8px, 1.1vh, 12px);
+}
+
+.customer-shell .receipt-stage .receipt-card {
+  gap: clamp(7px, 1vh, 10px);
+  max-width: min(560px, 100%);
+  padding: clamp(14px, 1.8vh, 22px);
+}
+
+.customer-shell .receipt-stage .receipt-card h2 {
+  font-size: clamp(20px, 2.1vw, 24px);
+  margin: 0;
+}
+
+.customer-shell .receipt-stage .receipt-row {
+  min-height: 32px;
+}
+
+.customer-shell .receipt-stage .flow-actions {
+  margin-top: 4px;
+}
+
+/* Tablet demo refinements: keep payment controls visible in iPad portrait. */
+@media (min-width: 641px) and (max-width: 1180px) {
+  .customer-shell:has(.payment-stage) .content {
+    padding: clamp(14px, 2vh, 22px) clamp(18px, 2.8vw, 30px);
+  }
+
+  .customer-shell .payment-stage {
+    gap: clamp(10px, 1.3vh, 16px);
+    grid-template-rows: auto minmax(0, 1fr) auto;
+  }
+
+  .customer-shell .payment-stage .stage-header {
+    padding-bottom: 8px;
+  }
+
+  .customer-shell .payment-stage .stage-header h1 {
+    font-size: clamp(28px, 4vw, 34px);
+  }
+
+  .customer-shell .payment-stage .payment-kiosk-panel {
+    gap: 12px;
+    grid-template-columns: minmax(0, 0.92fr) minmax(0, 1.08fr);
+    height: 100%;
+    max-width: 100%;
+  }
+
+  .customer-shell .payment-qr-card,
+  .customer-shell .payment-tracking-card {
+    gap: 10px;
+    padding: clamp(13px, 1.7vh, 18px);
+  }
+
+  .customer-shell .payment-summary strong {
+    font-size: clamp(26px, 4vw, 34px);
+  }
+
+  .customer-shell .payment-qr-code {
+    padding: 10px;
+  }
+
+  .customer-shell .payment-qr-code svg,
+  .customer-shell .payment-qr-code img {
+    height: min(24vw, 190px);
+    width: min(24vw, 190px);
+  }
+
+  .customer-shell .payment-tracking-card h2 {
+    font-size: 20px;
+  }
+
+  .customer-shell .timeline {
+    gap: 8px;
+  }
+
+  .customer-shell .timeline-row {
+    min-height: 48px;
+    padding: 8px 10px;
   }
 }

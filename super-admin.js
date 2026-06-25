@@ -273,7 +273,7 @@ function qs(selector) {
 }
 
 function uiIcon(name, size = 20) {
-  return window.PrintHubUI?.icon(name, size) || "";
+  return window.PrintKioskUI?.icon(name, size) || "";
 }
 
 function escapeHtml(value) {
@@ -668,9 +668,9 @@ function renderLogin() {
     <div class="app-shell admin-shell">
       <header class="topbar admin-topbar">
         <div class="brand">
-          <div class="brand-mark"><img src="./assets/printhub-mark.png" alt="PrintHub" /></div>
+          <div class="brand-mark"><img src="./assets/printhub-mark.png" alt="Print Kiosk" /></div>
           <div>
-            <div class="brand-title">PrintHub Admin Login</div>
+            <div class="brand-title">Print Kiosk Admin Login</div>
             <div class="brand-subtitle">One sign-in for client and super admin</div>
           </div>
         </div>
@@ -678,7 +678,7 @@ function renderLogin() {
       <main class="main admin-screen">
         <div class="login-view">
           <div class="login-panel">
-            <h1>PrintHub Admin Login</h1>
+            <h1>Print Kiosk Admin Login</h1>
             <p class="helper-text">Use your admin credentials. The system opens the right dashboard automatically.</p>
             ${state.loginError ? `<div class="empty-note">${escapeHtml(state.loginError)}</div>` : ""}
             <label>Email or mobile
@@ -719,9 +719,9 @@ function renderTopbar() {
   return `
     <header class="topbar admin-topbar">
       <div class="brand">
-        <div class="brand-mark"><img src="./assets/printhub-mark.png" alt="PrintHub" /></div>
+        <div class="brand-mark"><img src="./assets/printhub-mark.png" alt="Print Kiosk" /></div>
         <div>
-          <div class="brand-title">PrintHub Super Admin</div>
+          <div class="brand-title">Print Kiosk Super Admin</div>
           <div class="brand-subtitle">Kiosks, projects, jobs, payments, refunds</div>
         </div>
       </div>

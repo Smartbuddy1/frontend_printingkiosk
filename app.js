@@ -39,7 +39,7 @@ const ADMIN_TRANSLATION_ROWS = [
   ["English", "अंग्रेज़ी", "इंग्रजी"],
   ["Hindi", "हिंदी", "हिंदी"],
   ["Marathi", "मराठी", "मराठी"],
-  ["PrintHub Admin Console", "PrintHub एडमिन कंसोल", "PrintHub प्रशासक कन्सोल"],
+  ["Print Kiosk Admin Console", "Print Kiosk एडमिन कंसोल", "Print Kiosk प्रशासक कन्सोल"],
   ["assigned project management", "असाइन की गई परियोजना प्रबंधन", "नेमून दिलेल्या प्रकल्पांचे व्यवस्थापन"],
   ["Logout", "लॉग आउट", "लॉग आउट"],
   ["Open alerts", "अलर्ट खोलें", "सूचना उघडा"],
@@ -63,7 +63,7 @@ const ADMIN_TRANSLATION_ROWS = [
   ["Need Help?", "सहायता चाहिए?", "मदत हवी आहे?"],
   ["Check kiosk devices and connection status.", "कियोस्क डिवाइस और कनेक्शन की स्थिति जाँचें।", "किऑस्क उपकरणे आणि जोडणीची स्थिती तपासा."],
   ["Open System Status", "सिस्टम स्थिति खोलें", "प्रणाली स्थिती उघडा"],
-  ["PrintHub Admin Login", "PrintHub एडमिन लॉगिन", "PrintHub प्रशासक लॉगिन"],
+  ["Print Kiosk Admin Login", "Print Kiosk एडमिन लॉगिन", "Print Kiosk प्रशासक लॉगिन"],
   ["Use your admin credentials. The system opens the right dashboard automatically.", "अपने एडमिन क्रेडेंशियल का उपयोग करें। सिस्टम सही डैशबोर्ड अपने आप खोलेगा।", "आपली प्रशासक लॉगिन माहिती वापरा. प्रणाली योग्य डॅशबोर्ड आपोआप उघडेल."],
   ["Email or mobile", "ईमेल या मोबाइल", "ईमेल किंवा मोबाइल"],
   ["Password", "पासवर्ड", "पासवर्ड"],
@@ -244,7 +244,7 @@ const CUSTOMER_TRANSLATION_ROWS = [
   ["English", "अंग्रेज़ी", "इंग्रजी"],
   ["Hindi", "हिंदी", "हिंदी"],
   ["Marathi", "मराठी", "मराठी"],
-  ["PrintHub Kiosk", "प्रिंटहब कियोस्क", "प्रिंटहब किऑस्क"],
+  ["Print Kiosk", "प्रिंट कियोस्क", "प्रिंट किऑस्क"],
   ["Government and education ready", "सरकारी और शिक्षा सेवाओं के लिए तैयार", "सरकारी आणि शैक्षणिक सेवांसाठी तयार"],
   ["Online", "ऑनलाइन", "ऑनलाइन"],
   ["Offline", "ऑफलाइन", "ऑफलाइन"],
@@ -774,7 +774,7 @@ function qs(selector) {
 }
 
 function uiIcon(name, size = 20) {
-  return window.PrintHubUI?.icon(name, size) || "";
+  return window.PrintKioskUI?.icon(name, size) || "";
 }
 
 function adminLocale() {
@@ -1684,8 +1684,8 @@ function completeDemoPayment() {
 
 function demoPaymentUrl(details = priceDetails()) {
   const amount = Math.max(0, Number(details.total) || 0).toFixed(2);
-  const note = encodeURIComponent(`PrintHub ${currentJobId()}`);
-  return `upi://pay?pa=printhubkiosk@upi&pn=PrintHub%20Kiosk&am=${amount}&cu=INR&tn=${note}`;
+  const note = encodeURIComponent(`Print Kiosk ${currentJobId()}`);
+  return `upi://pay?pa=printkiosk@upi&pn=Print%20Kiosk&am=${amount}&cu=INR&tn=${note}`;
 }
 
 function paymentQrMarkup(paymentUrl) {
@@ -3312,8 +3312,8 @@ function renderMobilePaymentShell() {
   return `
     <main class="mobile-payment-page">
       <section class="mobile-payment-card">
-        <img src="./assets/printhub-mark.png" alt="PrintHub" draggable="false" data-no-visual-search />
-        <h1>${payment.completed ? "Payment successful" : "PrintHub Payment"}</h1>
+        <img src="./assets/printhub-mark.png" alt="Print Kiosk" draggable="false" data-no-visual-search />
+        <h1>${payment.completed ? "Payment successful" : "Print Kiosk Payment"}</h1>
         ${amountText ? `<strong class="mobile-payment-amount">${escapeHtml(amountText)}</strong>` : ""}
         ${payment.job?.fileName ? `<p class="mobile-payment-job">${escapeHtml(payment.job.fileName)}</p>` : ""}
         ${payment.message ? `<p class="helper-text">${escapeHtml(payment.message)}</p>` : ""}
@@ -3360,9 +3360,9 @@ function renderCustomerTopbar() {
   return `
     <header class="topbar">
       <div class="brand">
-        <div class="brand-mark"><img src="./assets/printhub-mark.png" alt="PrintHub" draggable="false" data-no-visual-search /></div>
+        <div class="brand-mark"><img src="./assets/printhub-mark.png" alt="Print Kiosk" draggable="false" data-no-visual-search /></div>
         <div>
-          <div class="brand-title">PrintHub Kiosk</div>
+          <div class="brand-title">Print Kiosk</div>
           <div class="brand-subtitle">${escapeHtml(kioskLabel || KIOSK_ID)} | Government and education ready</div>
         </div>
       </div>
@@ -3392,9 +3392,9 @@ function renderAdminTopbar() {
   return `
     <header class="topbar admin-topbar">
       <div class="brand">
-        <div class="brand-mark"><img src="./assets/printhub-mark.png" alt="PrintHub" draggable="false" data-no-visual-search /></div>
+        <div class="brand-mark"><img src="./assets/printhub-mark.png" alt="Print Kiosk" draggable="false" data-no-visual-search /></div>
         <div>
-          <div class="brand-title">PrintHub Admin Console</div>
+          <div class="brand-title">Print Kiosk Admin Console</div>
           <div class="brand-subtitle">${escapeHtml(adminLabel)} | assigned project management</div>
         </div>
       </div>
@@ -4090,7 +4090,7 @@ function renderLogin() {
   return `
     <div class="login-view">
       <div class="login-panel">
-        <h1>PrintHub Admin Login</h1>
+        <h1>Print Kiosk Admin Login</h1>
         <p class="helper-text">Use your admin credentials. The system opens the right dashboard automatically.</p>
         ${state.adminLoginError ? `<div class="empty-note">${escapeHtml(state.adminLoginError)}</div>` : ""}
         <label>Email or mobile
