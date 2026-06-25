@@ -2185,6 +2185,15 @@ function stopUploadPolling() {
   }
 }
 
+function publicMobileUploadUrl(token = "") {
+  const publicOrigin = /^https?:$/.test(window.location.protocol)
+    ? window.location.origin.replace(/\/+$/, "")
+    : "";
+  const uploadOrigin = publicOrigin || BACKEND_URL;
+  const tokenPath = token ? `/${encodeURIComponent(token)}` : "";
+  return `${uploadOrigin}/mobile-upload${tokenPath}`;
+}
+
 async function startMobileUploadSession() {
   if (!state.selectedService) {
     state.step = 0;
@@ -2209,14 +2218,19 @@ async function startMobileUploadSession() {
       throw new Error("Upload service unavailable.");
     }
 
-    state.uploadSession = await response.json();
-    state.uploadSession.status = "waiting";
+    const payload = await response.json();
+    state.uploadSession = {
+      ...payload,
+      uploadUrl: publicMobileUploadUrl(payload.token),
+      qrSvg: "",
+      status: "waiting"
+    };
     render();
     startUploadPolling();
   } catch (error) {
     state.uploadSession = {
       token: "",
-      uploadUrl: `${BACKEND_URL}/mobile-upload`,
+      uploadUrl: publicMobileUploadUrl(),
       qrSvg: "",
       status: "offline",
       error: "Mobile upload service is not running. Start backend or restart the kiosk app."
