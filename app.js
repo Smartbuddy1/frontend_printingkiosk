@@ -9,8 +9,12 @@ const isWebsiteRootEntry = isIndexEntry && !isKioskDeviceEntry;
 const isMobilePaymentEntry = runtimeConfig.has("mobilePayment");
 const isAdminEntry = !isMobilePaymentEntry && (currentPage === "admin.html" || currentPath.endsWith("/admin") || runtimeConfig.get("panel") === "admin");
 const DEFAULT_BACKEND_URL = /^https?:$/.test(window.location.protocol) ? window.location.origin : "http://localhost:5080";
+const HOSTED_PROXY_BACKEND_URL = /^https?:$/.test(window.location.protocol) &&
+  (["localhost", "127.0.0.1"].includes(window.location.hostname) || window.location.hostname.endsWith(".vercel.app"))
+  ? window.location.origin
+  : "";
 const LOCAL_AGENT_URL = runtimeConfig.get("localAgentUrl") || frontendConfig.localAgentUrl || "http://localhost:5077";
-const BACKEND_URL = (runtimeConfig.get("backendUrl") || frontendConfig.backendUrl || DEFAULT_BACKEND_URL).replace(/\/+$/, "");
+const BACKEND_URL = (runtimeConfig.get("backendUrl") || HOSTED_PROXY_BACKEND_URL || frontendConfig.backendUrl || DEFAULT_BACKEND_URL).replace(/\/+$/, "");
 const RAZORPAY_CHECKOUT_URL = "https://checkout.razorpay.com/v1/checkout.js";
 const PRINTER_STATUS_TIMEOUT_MS = 15000;
 const MAX_FILES_PER_JOB = 10;
