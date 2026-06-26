@@ -15,6 +15,13 @@ const HOSTED_PROXY_BACKEND_URL = /^https?:$/.test(window.location.protocol) &&
   : "";
 const LOCAL_AGENT_URL = runtimeConfig.get("localAgentUrl") || frontendConfig.localAgentUrl || "http://localhost:5077";
 const BACKEND_URL = (runtimeConfig.get("backendUrl") || HOSTED_PROXY_BACKEND_URL || frontendConfig.backendUrl || DEFAULT_BACKEND_URL).replace(/\/+$/, "");
+const PUBLIC_FRONTEND_URL = (
+  runtimeConfig.get("publicFrontendUrl") ||
+  runtimeConfig.get("frontendUrl") ||
+  frontendConfig.publicFrontendUrl ||
+  frontendConfig.frontendUrl ||
+  ""
+).replace(/\/+$/, "");
 const RAZORPAY_CHECKOUT_URL = "https://checkout.razorpay.com/v1/checkout.js";
 const PRINTER_STATUS_TIMEOUT_MS = 15000;
 const MAX_FILES_PER_JOB = 10;
@@ -2332,7 +2339,6 @@ async function refreshPrinterStatus({ rerender = true } = {}) {
 
   state.printer = {
     ...state.printer,
-    online: false,
     checking: true,
     agent: "Checking",
     statusText: "Checking printer status..."
@@ -2788,13 +2794,39 @@ async function createRazorpayOrder() {
 }
 
 function buildMobilePaymentUrl(paymentUrl, paymentId) {
-  if (paymentUrl) return paymentUrl;
+  if (!paymentId) return paymentUrl || "";
 
-  const baseUrl = (BACKEND_URL || window.location.origin || "").replace(/\/+$/, "");
-  const url = new URL("/index.html", `${baseUrl}/`);
+  const configuredFrontendUrl = parseHttpUrl(PUBLIC_FRONTEND_URL);
+  const currentFrontendUrl = /^https?:$/.test(window.location.protocol)
+    ? new URL(window.location.href)
+    : null;
+  const fallbackCheckoutUrl = parseHttpUrl(paymentUrl);
+  const url = configuredFrontendUrl || currentFrontendUrl || fallbackCheckoutUrl || new URL(window.location.href);
+  normalizeIndexPageUrl(url);
+  url.search = "";
+  url.hash = "";
   url.searchParams.set("mobilePayment", paymentId);
-  url.searchParams.set("backendUrl", BACKEND_URL || baseUrl);
+  if (BACKEND_URL) {
+    url.searchParams.set("backendUrl", BACKEND_URL);
+  }
   return url.toString();
+}
+
+function parseHttpUrl(value = "") {
+  try {
+    const url = new URL(value);
+    return /^https?:$/.test(url.protocol) ? url : null;
+  } catch {
+    return null;
+  }
+}
+
+function normalizeIndexPageUrl(url) {
+  const lastSegment = url.pathname.split("/").pop() || "";
+  if (url.pathname === "/" || !lastSegment.includes(".")) {
+    const prefix = url.pathname.replace(/\/+$/, "");
+    url.pathname = `${prefix}/index.html`;
+  }
 }
 
 async function fetchPaymentQr(paymentUrl) {
@@ -3227,7 +3259,7 @@ function goToNextStep() {
   if (state.step === 3 && previousStep !== 3 && !state.printer.manualReadyOverride) {
     state.printer = {
       ...state.printer,
-      online: false,
+      checking: true,
       name: "Checking printer",
       paper: "Unknown",
       toner: "Unknown",
@@ -3351,8 +3383,8 @@ function renderAdminShell() {
 }
 
 function renderCustomerTopbar() {
-  const printerClass = state.printer.online && !state.printer.checking ? "" : "warning";
-  const printerText = state.printer.online && !state.printer.checking ? "Online" : "Offline";
+  const printerClass = state.printer.online ? "" : "warning";
+  const printerText = state.printer.online ? "Online" : state.printer.checking ? "Checking" : "Offline";
   const kioskLabel = [state.kiosk.kioskId || KIOSK_ID, state.kiosk.name, state.kiosk.branch]
     .filter(Boolean)
     .join(" | ");
