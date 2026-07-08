@@ -3492,6 +3492,68 @@ function goToNextStep() {
   }
 }
 
+function goToCustomerStep(targetStep) {
+  const nextStep = Math.max(0, Math.min(customerSteps.length - 1, Number(targetStep) || 0));
+  const previousStep = state.step;
+
+  state.uploadError = "";
+
+  if (previousStep === 3 && nextStep !== 3) {
+    stopPaymentPolling();
+  }
+
+  if (nextStep === 0) {
+    stopUploadPolling();
+    state.step = 0;
+    render();
+    return;
+  }
+
+  if (!state.selectedService) {
+    state.step = 0;
+    render();
+    return;
+  }
+
+  if (nextStep > 1 && !state.file) {
+    state.step = 1;
+    if (!isFormTemplateService()) {
+      startMobileUploadSession();
+    }
+    render();
+    return;
+  }
+
+  if (nextStep >= 3 && state.file) {
+    ensureActiveJobId();
+  }
+
+  state.step = nextStep;
+
+  if (state.step === 1 && !isFormTemplateService()) {
+    startMobileUploadSession();
+  }
+
+  if (state.step === 3 && previousStep !== 3) {
+    state.paymentStatus = "Pending";
+    state.paymentStatusMessage = "";
+    state.paymentError = "";
+    state.paymentOrder = null;
+    state.paymentBusy = false;
+    refreshPrinterStatus();
+  }
+
+  render();
+
+  if (state.step === 3 && previousStep !== 3) {
+    setTimeout(() => {
+      if (state.step === 3 && !state.paymentBusy && !state.paymentOrder?.qrSvg) {
+        startRazorpayPayment();
+      }
+    }, 0);
+  }
+}
+
 function openAdmin(page = "dashboard") {
   stopReceiptRedirect();
   state.mode = "admin";
@@ -3850,10 +3912,10 @@ function renderStepItem(step, index) {
   const label = index === 1 && isFormTemplateService() ? "Forms" : step;
   const status = index === state.step ? "active" : index < state.step ? "done" : "";
   return `
-    <div class="step-item ${status}">
+    <button type="button" class="step-item ${status}" data-step-index="${index}" aria-current="${index === state.step ? "step" : "false"}">
       <span class="step-number">${index + 1}</span>
       <span>${label}</span>
-    </div>
+    </button>
   `;
 }
 
@@ -3945,7 +4007,7 @@ function renderFormTemplateStep() {
               ${template.imageUrl && templateDocumentKind(template.documentType || template.imageUrl) !== "pdf"
                 ? `<span class="template-badge template-image"><img alt="" src="${escapeHtml(template.imageUrl)}" draggable="false" data-no-visual-search /></span>`
                 : `<span class="template-badge">${escapeHtml(templateDocumentKind(template.documentType || template.imageUrl) === "pdf" ? "PDF" : service.icon)}</span>`}
-              <div>
+              <div class="template-body">
                 <h2>${escapeHtml(templateTitle)}</h2>
                 <p>${escapeHtml(templateDescription)}</p>
               </div>
@@ -4416,7 +4478,7 @@ function renderPaymentStep() {
           <p class="helper-text">${escapeHtml(trackingMessage)}</p>
         </div>
       </div>
-      <div class="flow-actions ${paymentComplete ? "is-hidden" : ""}">
+      <div class="flow-actions">
         ${isDemoFallbackPayment ? `<button class="primary-button" data-action="demo-payment-success">Payment Done</button>` : ""}
         <button class="ghost-button" data-action="prev-step">Back</button>
       </div>
@@ -4453,6 +4515,7 @@ function renderPrintFailureStep() {
         <div class="flow-actions" style="margin-top: 16px;">
           <button class="primary-button" data-action="retry-print">Retry Print</button>
           <button class="secondary-button" data-action="request-refund">Request Refund</button>
+          <button class="ghost-button" data-action="prev-step">Back</button>
         </div>
       </div>
     </div>
@@ -4485,6 +4548,7 @@ function renderThankYouStep() {
         <div class="receipt-row"><span>Amount</span><strong>${money(receiptJob.amount)}</strong></div>
         <div class="receipt-row"><span>Status</span><strong>${escapeHtml(receiptJob.print)}</strong></div>
         <div class="flow-actions">
+          <button class="ghost-button" data-action="prev-step">Back</button>
           <button class="primary-button" data-action="finish-session">Return Home</button>
         </div>
       </div>
@@ -6862,6 +6926,11 @@ async function handleClick(event) {
   }
 
   if (target.disabled) {
+    return;
+  }
+
+  if (target.dataset.stepIndex !== undefined) {
+    goToCustomerStep(Number(target.dataset.stepIndex) || 0);
     return;
   }
 

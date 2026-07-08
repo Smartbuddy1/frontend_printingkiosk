@@ -10046,3 +10046,436 @@ tbody tr:hover {
     width: 100%;
   }
 }
+
+/* Customer tablet/phone flow: keep progress at the top, not as a tall side rail. */
+@media (max-width: 900px) {
+  .customer-shell .topbar {
+    align-items: start;
+    display: grid;
+    gap: 10px;
+    grid-template-columns: minmax(0, 1fr);
+    padding: 12px 14px;
+  }
+
+  .customer-shell .brand {
+    gap: 12px;
+    width: 100%;
+  }
+
+  .customer-shell .brand-mark {
+    border-radius: 12px;
+    flex: 0 0 48px;
+    height: 48px;
+    width: 48px;
+  }
+
+  .customer-shell .brand-title {
+    font-size: clamp(20px, 5vw, 26px);
+    line-height: 1.05;
+  }
+
+  .customer-shell .brand-subtitle {
+    display: none;
+  }
+
+  .customer-shell .topbar-actions {
+    display: grid;
+    gap: 8px;
+    grid-template-columns: minmax(0, 1fr) minmax(138px, auto);
+    margin-left: 0;
+    width: 100%;
+  }
+
+  .customer-shell .customer-language-control {
+    min-height: 46px;
+    padding: 0 12px;
+  }
+
+  .customer-shell .customer-language-control > .ui-icon,
+  .customer-shell .customer-language-control > span,
+  .customer-shell .topbar-actions [data-action="reset-session"] {
+    display: none;
+  }
+
+  .customer-shell .customer-language-control select {
+    font-size: 17px;
+    height: 46px;
+    padding: 0 26px 0 0;
+  }
+
+  .customer-shell .timer-widget {
+    border-radius: 8px;
+    gap: 7px;
+    justify-content: center;
+    margin-left: 0;
+    min-height: 46px;
+    min-width: 0;
+    padding: 5px 10px;
+    width: 100%;
+  }
+
+  .customer-shell .timer-widget .ui-icon {
+    height: 17px;
+    width: 17px;
+  }
+
+  .customer-shell .time-text {
+    font-size: 14px;
+    line-height: 1.05;
+  }
+
+  .customer-shell .date-text {
+    font-size: 10px;
+    line-height: 1.05;
+  }
+
+  .customer-shell .customer-layout,
+  .customer-shell:has(.service-stage) .customer-layout,
+  .customer-shell:has(.template-selection-stage) .customer-layout,
+  .customer-shell:has(.qr-only-upload-stage) .customer-layout,
+  .customer-shell:has(.preview-stage) .customer-layout,
+  .customer-shell:has(.payment-stage) .customer-layout,
+  .customer-shell:has(.receipt-stage) .customer-layout {
+    display: flex;
+    flex-direction: column;
+    grid-template-columns: minmax(0, 1fr);
+    min-width: 0;
+  }
+
+  .customer-shell .rail,
+  .customer-shell:has(.preview-stage) .rail {
+    background: #071f52;
+    border-bottom: 1px solid rgba(142, 179, 236, 0.28);
+    border-right: 0;
+    box-shadow: 0 8px 18px rgba(4, 20, 51, 0.14);
+    color: #ffffff;
+    display: block;
+    flex: 0 0 auto;
+    overflow: visible;
+    padding: 8px 12px 10px;
+  }
+
+  .customer-shell .rail .panel-title,
+  .customer-shell:has(.preview-stage) .panel-title,
+  .customer-shell .customer-support-card {
+    display: none;
+  }
+
+  .customer-shell .stepper,
+  .customer-shell:has(.preview-stage) .stepper {
+    display: grid;
+    gap: 6px;
+    grid-template-columns: repeat(5, minmax(0, 1fr));
+    margin: 0;
+    overflow: visible;
+  }
+
+  .customer-shell .step-item,
+  .customer-shell:has(.preview-stage) .step-item {
+    align-items: center;
+    background: rgba(255, 255, 255, 0.07);
+    border: 1px solid rgba(189, 213, 248, 0.22);
+    border-radius: 12px;
+    color: #dce9ff;
+    display: grid;
+    gap: 4px;
+    grid-template-columns: minmax(0, 1fr);
+    justify-items: center;
+    min-height: 58px;
+    padding: 6px 3px;
+    text-align: center;
+  }
+
+  .customer-shell .step-item.active,
+  .customer-shell:has(.preview-stage) .step-item.active {
+    background: #1768f2;
+    border-color: #68a2ff;
+    box-shadow: 0 8px 18px rgba(10, 82, 217, 0.22);
+    color: #ffffff;
+  }
+
+  .customer-shell .step-item.done,
+  .customer-shell:has(.preview-stage) .step-item.done {
+    background: rgba(31, 160, 107, 0.2);
+    border-color: rgba(108, 225, 165, 0.36);
+    color: #dff8ea;
+  }
+
+  .customer-shell .step-number,
+  .customer-shell:has(.preview-stage) .step-number {
+    font-size: 13px;
+    height: 28px;
+    width: 28px;
+  }
+
+  .customer-shell .step-item span:last-child {
+    display: block;
+    font-size: 11px;
+    font-weight: 700;
+    line-height: 1.05;
+    max-width: 100%;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .customer-shell .content,
+  .customer-shell:has(.service-stage) .content,
+  .customer-shell:has(.template-selection-stage) .content,
+  .customer-shell:has(.qr-only-upload-stage) .content,
+  .customer-shell:has(.preview-stage) .content,
+  .customer-shell:has(.payment-stage) .content,
+  .customer-shell:has(.receipt-stage) .content {
+    flex: 1 1 auto;
+    min-width: 0;
+    padding: 14px;
+  }
+}
+
+@media (max-width: 420px) {
+  .customer-shell .topbar {
+    padding: 10px;
+  }
+
+  .customer-shell .brand-mark {
+    flex-basis: 42px;
+    height: 42px;
+    width: 42px;
+  }
+
+  .customer-shell .brand-title {
+    font-size: 19px;
+  }
+
+  .customer-shell .topbar-actions {
+    grid-template-columns: minmax(0, 1fr) minmax(128px, auto);
+  }
+
+  .customer-shell .time-text {
+    font-size: 13px;
+  }
+
+  .customer-shell .date-text {
+    font-size: 9px;
+  }
+
+  .customer-shell .rail,
+  .customer-shell:has(.preview-stage) .rail {
+    padding: 7px 8px 8px;
+  }
+
+  .customer-shell .stepper,
+  .customer-shell:has(.preview-stage) .stepper {
+    gap: 4px;
+  }
+
+  .customer-shell .step-item,
+  .customer-shell:has(.preview-stage) .step-item {
+    border-radius: 10px;
+    min-height: 52px;
+    padding: 5px 2px;
+  }
+
+  .customer-shell .step-number,
+  .customer-shell:has(.preview-stage) .step-number {
+    font-size: 12px;
+    height: 25px;
+    width: 25px;
+  }
+
+  .customer-shell .step-item span:last-child {
+    font-size: 9px;
+  }
+}
+
+/* Mobile template picker polish. */
+.customer-shell .step-item {
+  cursor: pointer;
+  font-family: inherit;
+}
+
+.customer-shell .step-item:focus-visible,
+.customer-shell .template-card:focus-visible {
+  outline: 3px solid rgba(47, 124, 246, 0.35);
+  outline-offset: 2px;
+}
+
+@media (max-width: 640px) {
+  .customer-shell .template-selection-stage {
+    gap: 14px;
+  }
+
+  .customer-shell .template-selection-stage .template-stage-header {
+    background: #ffffff;
+    border: 1px solid #d9e5f4;
+    border-radius: 12px;
+    box-shadow: 0 10px 24px rgba(9, 30, 66, 0.06);
+    gap: 12px;
+    padding: 14px;
+  }
+
+  .customer-shell .template-selection-stage .template-stage-header h1 {
+    font-size: 24px;
+    line-height: 1.12;
+  }
+
+  .customer-shell .template-selection-stage .template-stage-header .stage-intro {
+    font-size: 14px;
+    line-height: 1.35;
+    margin-top: 6px;
+  }
+
+  .customer-shell .template-stage-summary {
+    gap: 7px;
+  }
+
+  .customer-shell .template-stage-summary span {
+    border-radius: 999px;
+    font-size: 12px;
+    min-height: 30px;
+    padding: 0 10px;
+  }
+
+  .customer-shell .template-selection-stage .template-grid {
+    gap: 12px;
+    padding: 0;
+  }
+
+  .customer-shell .template-selection-stage .template-card {
+    align-items: start;
+    background: #ffffff;
+    border: 1px solid #d7e4f5;
+    border-radius: 12px;
+    box-shadow: 0 12px 26px rgba(8, 30, 72, 0.08);
+    column-gap: 12px;
+    display: grid;
+    grid-template-columns: 54px minmax(0, 1fr);
+    min-height: 0;
+    padding: 14px;
+    text-align: left;
+  }
+
+  .customer-shell .template-selection-stage .template-badge {
+    border-radius: 10px;
+    font-size: 19px;
+    height: 54px;
+    width: 54px;
+  }
+
+  .customer-shell .template-selection-stage .template-body {
+    min-width: 0;
+  }
+
+  .customer-shell .template-selection-stage .template-card h2 {
+    font-size: 19px;
+    line-height: 1.15;
+    margin: 0 0 5px;
+  }
+
+  .customer-shell .template-selection-stage .template-card p {
+    color: #5d6d86;
+    font-size: 14px;
+    line-height: 1.35;
+    margin: 0;
+  }
+
+  .customer-shell .template-selection-stage .template-meta {
+    align-items: stretch;
+    display: grid;
+    gap: 9px;
+    grid-column: 1 / -1;
+    grid-template-columns: minmax(0, 1fr) minmax(112px, auto);
+    margin-top: 2px;
+  }
+
+  .customer-shell .template-selection-stage .template-meta > span {
+    align-items: center;
+    background: #f5f8fd;
+    border: 1px solid #e0e9f6;
+    border-radius: 9px;
+    color: #50627d;
+    display: flex;
+    font-size: 12px;
+    font-weight: 700;
+    justify-content: center;
+    line-height: 1.25;
+    min-height: 42px;
+    padding: 7px 8px;
+    text-align: center;
+  }
+
+  .customer-shell .template-selection-stage .template-price-box {
+    display: grid;
+    grid-column: 1;
+    grid-row: 2;
+  }
+
+  .customer-shell .template-selection-stage .template-price-box span {
+    background: #f7faff;
+    border-color: #d5e4f7;
+    border-radius: 9px;
+    display: flex;
+    min-height: 42px;
+    padding: 7px 10px;
+  }
+
+  .customer-shell .template-selection-stage .template-price-box b {
+    font-size: 17px;
+  }
+
+  .customer-shell .template-selection-stage .template-price-box small {
+    font-size: 12px;
+  }
+
+  .customer-shell .template-selection-stage .template-meta > strong {
+    align-items: center;
+    background: #1768f2;
+    border: 1px solid #1768f2;
+    border-radius: 9px;
+    color: #ffffff;
+    display: inline-flex;
+    font-size: 13px;
+    grid-column: 2;
+    grid-row: 2;
+    justify-content: center;
+    min-height: 42px;
+    padding: 0 12px;
+    text-align: center;
+  }
+
+  .customer-shell .template-selection-stage > .flow-actions {
+    margin-top: 2px;
+  }
+
+  .customer-shell .preview-control-actions [data-action="prev-step"],
+  .customer-shell .payment-stage > .flow-actions [data-action="prev-step"] {
+    display: inline-flex;
+  }
+}
+
+@media (max-width: 380px) {
+  .customer-shell .template-selection-stage .template-card {
+    grid-template-columns: 48px minmax(0, 1fr);
+    padding: 12px;
+  }
+
+  .customer-shell .template-selection-stage .template-badge {
+    font-size: 17px;
+    height: 48px;
+    width: 48px;
+  }
+
+  .customer-shell .template-selection-stage .template-card h2 {
+    font-size: 17px;
+  }
+
+  .customer-shell .template-selection-stage .template-meta {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .customer-shell .template-selection-stage .template-price-box,
+  .customer-shell .template-selection-stage .template-meta > strong {
+    grid-column: 1;
+    grid-row: auto;
+  }
+}
