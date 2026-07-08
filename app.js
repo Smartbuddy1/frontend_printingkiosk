@@ -1081,6 +1081,16 @@ function readConfiguredKioskId() {
     (isWebsiteRootEntry ? "LOCAL-KIOSK" : UNASSIGNED_KIOSK_ID);
 }
 
+function readRuntimeScopeValue(...keys) {
+  for (const key of keys) {
+    const value = runtimeConfig.get(key) || frontendConfig[key] || "";
+    const normalized = String(value || "").trim();
+    if (normalized) return normalized;
+  }
+
+  return "";
+}
+
 function readStoredAdminSession() {
   try {
     const raw = window.sessionStorage.getItem(ADMIN_SESSION_KEY);
@@ -1751,7 +1761,32 @@ function demoServicesFromPayload(payload = {}) {
 }
 
 async function fetchPublicServicesConfig() {
-  return fetchJson(`${BACKEND_URL}/api/public/services`);
+  const url = new URL(`${BACKEND_URL}/api/public/services`);
+  const projectId = readRuntimeScopeValue("projectId", "project");
+  const adminId = readRuntimeScopeValue("adminId", "clientId", "ownerId");
+  const adminEmail = readRuntimeScopeValue("adminEmail", "email");
+
+  if (KIOSK_ID && KIOSK_ID !== UNASSIGNED_KIOSK_ID) {
+    url.searchParams.set("kioskId", KIOSK_ID);
+  }
+
+  if (projectId) {
+    url.searchParams.set("projectId", projectId);
+  }
+
+  if (adminId) {
+    url.searchParams.set("adminId", adminId);
+  }
+
+  if (adminEmail) {
+    url.searchParams.set("adminEmail", adminEmail);
+  }
+
+  if (DEMO_KIOSK_MODE) {
+    url.searchParams.set("demo", "true");
+  }
+
+  return fetchJson(url.toString());
 }
 
 function applyDemoKioskConfig({ rerender = false, livePayload = null } = {}) {
