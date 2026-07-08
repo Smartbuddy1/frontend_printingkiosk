@@ -668,17 +668,17 @@ function renderLogin() {
     <div class="app-shell admin-shell">
       <header class="topbar admin-topbar">
         <div class="brand">
-          <div class="brand-mark"><img src="./assets/printhub-mark.png" alt="Print Kiosk" /></div>
+          <div class="brand-mark"><img src="./assets/nashik-municipal-logo.jpg" alt="Nashik Municipal Corporation" /></div>
           <div>
-            <div class="brand-title">Print Kiosk Admin Login</div>
-            <div class="brand-subtitle">One sign-in for client and super admin</div>
+            <div class="brand-title">Nashik Municipal Corporation Admin Login</div>
+            <div class="brand-subtitle">Printing Kiosk | One sign-in for client and super admin</div>
           </div>
         </div>
       </header>
       <main class="main admin-screen">
         <div class="login-view">
           <div class="login-panel">
-            <h1>Print Kiosk Admin Login</h1>
+            <h1>Nashik Municipal Corporation Admin Login</h1>
             <p class="helper-text">Use your admin credentials. The system opens the right dashboard automatically.</p>
             ${state.loginError ? `<div class="empty-note">${escapeHtml(state.loginError)}</div>` : ""}
             <label>Email or mobile
@@ -719,10 +719,10 @@ function renderTopbar() {
   return `
     <header class="topbar admin-topbar">
       <div class="brand">
-        <div class="brand-mark"><img src="./assets/printhub-mark.png" alt="Print Kiosk" /></div>
+        <div class="brand-mark"><img src="./assets/nashik-municipal-logo.jpg" alt="Nashik Municipal Corporation" /></div>
         <div>
-          <div class="brand-title">Print Kiosk Super Admin</div>
-          <div class="brand-subtitle">Kiosks, projects, jobs, payments, refunds</div>
+          <div class="brand-title">Nashik Municipal Corporation Super Admin</div>
+          <div class="brand-subtitle">Printing Kiosk | Kiosks, projects, jobs, payments, refunds</div>
         </div>
       </div>
       <div class="topbar-actions">
