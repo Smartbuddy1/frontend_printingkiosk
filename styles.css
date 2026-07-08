@@ -9968,3 +9968,81 @@ tbody tr:hover {
     display: none;
   }
 }
+
+@media (max-width: 640px) {
+  .customer-shell:has(.preview-stage) .customer-layout {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .customer-shell .preview-stage .preview-grid {
+    gap: 12px;
+    grid-template-columns: minmax(0, 1fr);
+    grid-template-rows: auto auto;
+    width: 100%;
+  }
+
+  .customer-shell .preview-stage .preview-workspace {
+    grid-template-columns: minmax(0, 1fr);
+    justify-items: center;
+    min-width: 0;
+    padding: 10px 10px 38px;
+    width: 100%;
+  }
+
+  .customer-shell .preview-stage .preview-toolbar {
+    align-self: auto;
+    display: flex;
+    gap: 7px;
+    grid-row: 2;
+    justify-self: center;
+    margin-top: 10px;
+    max-width: 100%;
+    order: 2;
+    padding: 7px;
+  }
+
+  .customer-shell .preview-stage .document-preview,
+  .customer-shell .preview-stage .document-preview.preview-live,
+  .customer-shell .preview-stage .document-preview.preview-document-mode,
+  .customer-shell .preview-stage .document-preview:has(.uploaded-image-paper) {
+    height: min(360px, 48dvh);
+    max-width: 100%;
+    min-height: 250px;
+    width: min(100%, 280px);
+  }
+
+  .customer-shell .preview-stage .preview-page-nav {
+    bottom: 8px;
+    left: 50%;
+    min-width: min(168px, calc(100% - 24px));
+    transform: translateX(-50%);
+  }
+
+  .customer-shell .preview-control-panel {
+    box-sizing: border-box;
+    max-width: 100%;
+    min-width: 0;
+    overflow: visible;
+    width: 100%;
+  }
+
+  .customer-shell .preview-job-info,
+  .customer-shell .preview-essential-settings,
+  .customer-shell .preview-order-summary,
+  .customer-shell .preview-control-actions {
+    box-sizing: border-box;
+    grid-template-columns: minmax(0, 1fr);
+    max-width: 100%;
+    min-width: 0;
+    width: 100%;
+  }
+
+  .customer-shell .preview-control-actions button,
+  .customer-shell .preview-essential-setting input,
+  .customer-shell .preview-essential-setting select,
+  .customer-shell .preview-color-control button {
+    max-width: 100%;
+    min-width: 0;
+    width: 100%;
+  }
+}
