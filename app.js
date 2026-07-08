@@ -661,6 +661,10 @@ let formTemplates = {
 };
 
 const initialJobs = [];
+const templatePreviewUrlCache = new Map();
+const PREVIEW_ZOOM_MIN = 0.7;
+const PREVIEW_ZOOM_MAX = 1.4;
+const PREVIEW_ZOOM_STEP = 0.1;
 
 const state = {
   mode: isAdminEntry ? "admin" : "customer",
@@ -1633,6 +1637,56 @@ function activePreviewFile() {
   return files[Math.min(state.previewFileIndex, Math.max(files.length - 1, 0))] || null;
 }
 
+function normalizedPreviewZoom(value = state.previewZoom) {
+  const zoom = Number(value) || 1;
+  const stepped = Math.round(zoom * 10) / 10;
+  return Math.min(PREVIEW_ZOOM_MAX, Math.max(PREVIEW_ZOOM_MIN, stepped));
+}
+
+function setPreviewZoom(value) {
+  state.previewZoom = normalizedPreviewZoom(value);
+}
+
+function previewReuseKey(file = activePreviewFile()) {
+  if (state.mode !== "customer" || state.step !== 2 || !["pdf", "image"].includes(file?.previewKind)) {
+    return "";
+  }
+
+  const previewUrl = file.previewUrl || "";
+  if (!previewUrl || file.previewLoading) return "";
+  return [
+    file.previewKind,
+    state.previewFileIndex,
+    file.templateId || file.name || "",
+    previewUrl
+  ].join("|");
+}
+
+function captureReusablePreviewContent(app) {
+  const key = previewReuseKey();
+  const layer = key ? app?.querySelector(".preview-zoom-layer[data-preview-reuse-key]") : null;
+
+  if (!layer || layer.dataset.previewReuseKey !== key || !layer.firstChild) {
+    return null;
+  }
+
+  const fragment = document.createDocumentFragment();
+  while (layer.firstChild) {
+    fragment.appendChild(layer.firstChild);
+  }
+
+  return { key, fragment };
+}
+
+function restoreReusablePreviewContent(app, preserved) {
+  if (!preserved?.key || !preserved.fragment) return;
+  const layer = app?.querySelector(".preview-zoom-layer[data-preview-reuse-key]");
+
+  if (layer?.dataset.previewReuseKey === preserved.key) {
+    layer.replaceChildren(preserved.fragment);
+  }
+}
+
 function colorSelectionAvailable(file = activePreviewFile()) {
   return Boolean(file && !file.templateId && file.previewKind === "image"
     && customerSettingEnabled("bw")
@@ -1702,10 +1756,11 @@ function startDemoPayment() {
   const details = priceDetails();
   const paymentUrl = demoPaymentUrl(details);
   state.paymentStatus = "Waiting";
-  state.paymentStatusMessage = "Payment ready.";
+  state.paymentStatusMessage = "Demo payment ready. Razorpay is not connected for this session.";
   state.paymentError = "";
   state.paymentBusy = false;
   state.paymentOrder = {
+    demo: true,
     paymentId: `PAY-${Date.now().toString().slice(-6)}`,
     orderId: `ORDER-${Date.now().toString().slice(-6)}`,
     amount: details.total * 100,
@@ -2181,12 +2236,17 @@ function createTemplateFile(template) {
 
   if (template.imageUrl) {
     const documentType = templateDocumentKind(template.documentType || template.imageUrl);
+    const templateUrl = template.imageUrl;
     return {
       name: `${template.id}.${documentType === "pdf" ? "pdf" : "png"}`,
       type: documentType === "pdf" ? "PDF" : "PNG",
       pages: Math.max(1, Number(template.pages) || 1),
       previewKind: documentType === "pdf" ? "pdf" : "image",
-      previewUrl: template.imageUrl,
+      previewUrl: documentType === "pdf" ? "" : templateUrl,
+      previewSourceUrl: templateUrl,
+      printUrl: templateUrl,
+      previewLoading: documentType === "pdf",
+      previewUrlFromCache: false,
       source: localizedTitle,
       templateId: template.id,
       templatePaperSize: normalizePaperSize(template.paperSize, "Auto", true),
@@ -2217,8 +2277,88 @@ function createTemplateFile(template) {
   };
 }
 
+function activeFileMatches(file) {
+  return Boolean(file && activePreviewFile() === file);
+}
+
+function resolvedFrontendUrl(value = "") {
+  const raw = String(value || "").trim();
+  if (!raw) return "";
+
+  try {
+    return new URL(raw, window.location.href).toString();
+  } catch {
+    return raw;
+  }
+}
+
+function filePrintSourceUrl(file) {
+  return file?.printUrl || file?.previewSourceUrl || file?.previewUrl || "";
+}
+
+function setTemplatePreviewUrl(file, previewUrl, { fromCache = false } = {}) {
+  if (!file) return;
+  file.previewUrl = previewUrl || "";
+  file.previewLoading = false;
+  file.previewUrlFromCache = Boolean(fromCache);
+}
+
+async function prepareTemplatePreviewFile(file) {
+  if (file?.previewKind !== "pdf" || !file.previewSourceUrl) {
+    return;
+  }
+
+  const sourceUrl = resolvedFrontendUrl(file.previewSourceUrl);
+  if (!sourceUrl || sourceUrl.startsWith("blob:")) {
+    setTemplatePreviewUrl(file, sourceUrl, { fromCache: false });
+    if (activeFileMatches(file)) render();
+    return;
+  }
+
+  const cachedUrl = templatePreviewUrlCache.get(sourceUrl);
+  if (cachedUrl) {
+    setTemplatePreviewUrl(file, cachedUrl, { fromCache: true });
+    if (activeFileMatches(file)) render();
+    return;
+  }
+
+  try {
+    const response = await fetch(sourceUrl, { cache: "force-cache" });
+    if (!response.ok) {
+      throw new Error("Template preview could not be loaded.");
+    }
+
+    const blob = await response.blob();
+    const previewBlob = blob.type === "application/pdf"
+      ? blob
+      : new Blob([blob], { type: "application/pdf" });
+    const previewUrl = URL.createObjectURL(previewBlob);
+    templatePreviewUrlCache.set(sourceUrl, previewUrl);
+    setTemplatePreviewUrl(file, previewUrl, { fromCache: true });
+  } catch {
+    setTemplatePreviewUrl(file, sourceUrl, { fromCache: false });
+  }
+
+  if (activeFileMatches(file)) {
+    render();
+  }
+}
+
+async function selectTemplateForPreview(template) {
+  stopUploadPolling();
+  clearCurrentFile();
+  applyTemplatePrintDefaults(template);
+  const file = createTemplateFile(template);
+  setJobFiles([file]);
+  state.uploadError = "";
+  state.uploadSession = null;
+  state.step = 2;
+  render();
+  await prepareTemplatePreviewFile(file);
+}
+
 function revokePreviewUrl(file) {
-  if (file?.previewUrl && file.previewUrl.startsWith("blob:")) {
+  if (file?.previewUrl && file.previewUrl.startsWith("blob:") && !file.previewUrlFromCache) {
     URL.revokeObjectURL(file.previewUrl);
   }
 }
@@ -2784,18 +2924,18 @@ async function syncBackendPrintStatus(printStatus, failureReason = "") {
 }
 
 function localAgentCanReadFile(file) {
-  return Boolean(file?.printContentBase64) || /^https?:\/\//i.test(file?.previewUrl || "");
+  return Boolean(file?.printContentBase64) || /^https?:\/\//i.test(resolvedFrontendUrl(filePrintSourceUrl(file)));
 }
 
 function localAgentFileUrl(file) {
   try {
-    const url = new URL(file.previewUrl);
+    const url = new URL(resolvedFrontendUrl(filePrintSourceUrl(file)));
     if (url.port === "5080") {
       url.hostname = "localhost";
     }
     return url.toString();
   } catch {
-    return file?.previewUrl || "";
+    return filePrintSourceUrl(file);
   }
 }
 
@@ -3118,11 +3258,6 @@ async function verifyRazorpayPayment(response, { updateKiosk = true, jobId = cur
 }
 
 async function startRazorpayPayment() {
-  if (DEMO_KIOSK_MODE) {
-    startDemoPayment();
-    return;
-  }
-
   if (state.paymentBusy) return;
 
   state.paymentBusy = true;
@@ -3183,6 +3318,14 @@ async function startRazorpayPayment() {
   } catch (error) {
     if (state.step !== 3) {
       state.paymentBusy = false;
+      return;
+    }
+
+    if (DEMO_KIOSK_MODE) {
+      startDemoPayment();
+      state.paymentStatusMessage = "Demo QR is shown because Razorpay order creation failed.";
+      state.paymentError = error.message || "Unable to connect Razorpay for this demo session.";
+      render();
       return;
     }
 
@@ -3403,9 +3546,11 @@ function render() {
   }
 
   const app = qs("#app");
+  const preservedPreview = captureReusablePreviewContent(app);
   app.innerHTML = state.mode === "customer" ? renderCustomerShell() : renderAdminShell();
   applyCustomerTranslations(app);
   applyAdminTranslations(app);
+  restoreReusablePreviewContent(app, preservedPreview);
   bindEvents();
   updateKioskClock();
 }
@@ -3895,6 +4040,9 @@ function renderPreviewStep() {
 
 function renderPreviewDocumentPanel(previewClass, paperClass, file) {
   const pages = Math.max(1, Number(file?.pages) || 1);
+  const zoom = normalizedPreviewZoom();
+  const canZoomIn = zoom < PREVIEW_ZOOM_MAX;
+  const canZoomOut = zoom > PREVIEW_ZOOM_MIN;
   return `
     <section class="preview-document-panel">
       <div class="preview-document-head">
@@ -3906,14 +4054,14 @@ function renderPreviewDocumentPanel(previewClass, paperClass, file) {
       </div>
       <div class="preview-workspace">
         <div class="preview-toolbar" aria-label="Preview tools">
-          <button type="button" data-action="zoom-in" aria-label="Zoom in">+</button>
-          <button type="button" data-action="zoom-out" aria-label="Zoom out">&minus;</button>
-          <span>${Math.round(state.previewZoom * 100)}%</span>
-          <button type="button" data-action="zoom-out" aria-label="Fit to page">${uiIcon("refresh", 17)}</button>
-          <button type="button" data-action="zoom-out" aria-label="Full page">${uiIcon("system", 17)}</button>
+          <button type="button" data-action="zoom-in" aria-label="Zoom in" title="Zoom in" ${canZoomIn ? "" : "disabled"}>+</button>
+          <button type="button" data-action="zoom-out" aria-label="Zoom out" title="Zoom out" ${canZoomOut ? "" : "disabled"}>&minus;</button>
+          <span>${Math.round(zoom * 100)}%</span>
+          <button type="button" data-action="fit-page" aria-label="Fit to page" title="Fit to page">${uiIcon("refresh", 17)}</button>
+          <button type="button" data-action="actual-size" aria-label="Actual size" title="Actual size">${uiIcon("system", 17)}</button>
         </div>
-        <div class="document-preview ${previewClass} ${paperClass}" style="--preview-zoom: ${state.previewZoom};">
-          <div class="preview-zoom-layer">${renderPreviewContent()}</div>
+        <div class="document-preview ${previewClass} ${paperClass}" style="--preview-zoom: ${zoom};">
+          <div class="preview-zoom-layer" data-preview-reuse-key="${escapeHtml(previewReuseKey(file))}">${renderPreviewContent()}</div>
         </div>
         <div class="preview-page-nav" aria-label="Page navigation">
           <button type="button" aria-label="Previous page">&lsaquo;</button>
@@ -3952,7 +4100,7 @@ function renderPreviewInfoPanel(details, files) {
         <h2>${uiIcon("kiosks", 18)} Quick Actions</h2>
         <button type="button" data-action="zoom-in">${uiIcon("support", 15)} Zoom In</button>
         <button type="button" data-action="zoom-out">${uiIcon("support", 15)} Zoom Out</button>
-        <button type="button" data-action="zoom-out">${uiIcon("system", 15)} Fit to Page</button>
+        <button type="button" data-action="fit-page">${uiIcon("refresh", 15)} Fit to Page</button>
       </section>
     </aside>
   `;
@@ -4035,6 +4183,10 @@ function renderPreviewContent() {
 
   if (!file) {
     return renderPreviewFallback("No file selected", "Upload a file to see the preview.");
+  }
+
+  if (file.previewKind === "pdf" && file.previewLoading) {
+    return renderPreviewFallback("Loading form preview", "Preparing the template preview for this kiosk.");
   }
 
   if (file.previewKind === "pdf" && file.previewUrl) {
@@ -4198,6 +4350,7 @@ function renderPaymentStep() {
   ensureActiveJobId();
   const paymentComplete = state.paymentStatus === "Success";
   const qrReady = Boolean(state.paymentOrder?.qrSvg);
+  const isDemoFallbackPayment = Boolean(state.paymentOrder?.demo);
   const isPrinting = paymentComplete && state.step === 3 && (state.printProgress > 0 || Boolean(state.printStatusMessage));
   const printComplete = state.step === 4 || state.lastCompletedJob?.print === "Completed";
   const trackingMessage = state.printError
@@ -4207,17 +4360,17 @@ function renderPaymentStep() {
   const paymentHeading = DEMO_KIOSK_MODE
     ? (paymentComplete ? "Tracking" : "Scan to pay")
     : (paymentComplete ? "Tracking" : "Scan to pay");
-  const paymentIntro = DEMO_KIOSK_MODE
-    ? "Scan the QR code with any UPI app. Confirm when payment is done."
-    : "The kiosk shows only the QR. Complete payment on the phone; live tracking stays on this screen.";
-  const paymentQrHelp = DEMO_KIOSK_MODE
+  const paymentIntro = isDemoFallbackPayment
+    ? "Scan the demo UPI QR. Confirm when payment is done."
+    : "The kiosk shows only the QR. Complete payment on the phone through Razorpay; live tracking stays on this screen.";
+  const paymentQrHelp = isDemoFallbackPayment
     ? "Scan with the phone camera or any UPI app."
     : "Scan with the phone camera or any UPI app to open Razorpay.";
   const paidLabel = DEMO_KIOSK_MODE ? "Payment received" : "Paid on phone";
   const paidHelp = DEMO_KIOSK_MODE
     ? "Payment is verified. Watch print tracking on the kiosk."
     : "Payment is verified. Watch print tracking on the kiosk.";
-  const waitingPaymentLabel = DEMO_KIOSK_MODE ? "Waiting for payment" : "Waiting for phone payment";
+  const waitingPaymentLabel = isDemoFallbackPayment ? "Waiting for demo payment" : "Waiting for phone payment";
   const paymentDetailParts = [
     `${details.pages} page${details.pages === 1 ? "" : "s"}`,
     customerSettingEnabled("copies") ? `${details.copies} cop${details.copies === 1 ? "y" : "ies"}` : ""
@@ -4264,7 +4417,7 @@ function renderPaymentStep() {
         </div>
       </div>
       <div class="flow-actions ${paymentComplete ? "is-hidden" : ""}">
-        ${DEMO_KIOSK_MODE ? `<button class="primary-button" data-action="demo-payment-success">Payment Done</button>` : ""}
+        ${isDemoFallbackPayment ? `<button class="primary-button" data-action="demo-payment-success">Payment Done</button>` : ""}
         <button class="ghost-button" data-action="prev-step">Back</button>
       </div>
     </div>
@@ -6744,13 +6897,7 @@ async function handleClick(event) {
 
     const selectedTemplates = formTemplatesForService(target.dataset.service);
     if (isFormTemplateService(target.dataset.service) && selectedTemplates.length === 1) {
-      const template = selectedTemplates[0];
-      applyTemplatePrintDefaults(template);
-      setJobFiles([createTemplateFile(template)]);
-      state.uploadSession = null;
-      state.uploadError = "";
-      state.step = 2;
-      render();
+      await selectTemplateForPreview(selectedTemplates[0]);
       return;
     }
 
@@ -6873,14 +7020,7 @@ async function handleClick(event) {
       return;
     }
 
-    stopUploadPolling();
-    clearCurrentFile();
-    applyTemplatePrintDefaults(template);
-    setJobFiles([createTemplateFile(template)]);
-    state.uploadError = "";
-    state.uploadSession = null;
-    state.step = 2;
-    render();
+    await selectTemplateForPreview(template);
     return;
   }
 
@@ -6947,11 +7087,19 @@ async function handleClick(event) {
       goToNextStep();
       break;
     case "zoom-in":
-      state.previewZoom = Math.min(1.2, state.previewZoom + 0.1);
+      setPreviewZoom(state.previewZoom + PREVIEW_ZOOM_STEP);
       render();
       break;
     case "zoom-out":
-      state.previewZoom = 1;
+      setPreviewZoom(state.previewZoom - PREVIEW_ZOOM_STEP);
+      render();
+      break;
+    case "fit-page":
+      setPreviewZoom(1);
+      render();
+      break;
+    case "actual-size":
+      setPreviewZoom(1);
       render();
       break;
     case "delete-file":

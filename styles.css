@@ -9261,12 +9261,12 @@ tbody tr:hover {
 }
 
 .customer-shell .template-selection-stage .template-stage-header h1 {
-  font-size: clamp(32px, 3vw, 40px);
+  font-size: clamp(30px, 2.6vw, 36px);
   line-height: 1;
 }
 
 .customer-shell .template-selection-stage .template-stage-header .stage-intro {
-  font-size: 16px;
+  font-size: 15px;
   margin-top: 8px;
 }
 
@@ -9328,13 +9328,13 @@ tbody tr:hover {
 }
 
 .customer-shell .template-selection-stage .template-card h2 {
-  font-size: clamp(23px, 1.55vw, 28px);
+  font-size: clamp(21px, 1.4vw, 25px);
   margin-bottom: 8px;
 }
 
 .customer-shell .template-selection-stage .template-card p {
   color: #5b6f8d;
-  font-size: 17px;
+  font-size: 16px;
   line-height: 1.35;
 }
 
@@ -9345,7 +9345,7 @@ tbody tr:hover {
 
 .customer-shell .template-selection-stage .template-meta > span {
   color: #4d6280;
-  font-size: 14px;
+  font-size: 13px;
   font-weight: 700;
   text-align: right;
 }
@@ -9362,7 +9362,7 @@ tbody tr:hover {
 }
 
 .customer-shell .template-selection-stage .template-price-box b {
-  font-size: 20px;
+  font-size: 18px;
 }
 
 .customer-shell .template-selection-stage .template-meta > strong {
@@ -9372,13 +9372,26 @@ tbody tr:hover {
   border-radius: 8px;
   color: #075ee8;
   display: flex;
-  font-size: 16px;
+  font-size: 15px;
   justify-content: center;
   min-height: 40px;
 }
 
 .customer-shell .template-selection-stage > .flow-actions {
   margin-top: 10px;
+  max-width: 100%;
+  min-width: 0;
+}
+
+.customer-shell .template-selection-stage > .flow-actions button {
+  max-width: 100%;
+  min-width: 0;
+}
+
+@media (max-width: 900px) {
+  .customer-shell .template-selection-stage > .flow-actions button {
+    width: min(100%, calc(100vw - 48px));
+  }
 }
 
 @media (min-width: 901px) {
@@ -9570,8 +9583,8 @@ tbody tr:hover {
 .customer-shell .preview-stage .preview-grid {
   align-items: stretch;
   display: grid;
-  gap: 14px;
-  grid-template-columns: minmax(560px, 1fr) 270px 430px;
+  gap: 12px;
+  grid-template-columns: minmax(640px, 1fr) 250px 400px;
   height: 100%;
   min-height: 0;
 }
@@ -9637,10 +9650,10 @@ tbody tr:hover {
   background: #f0f4f9;
   border-radius: 8px;
   display: grid;
-  grid-template-columns: 48px minmax(0, 1fr);
+  grid-template-columns: 44px minmax(0, 1fr);
   justify-items: center;
   overflow: hidden;
-  padding: 14px 14px 38px;
+  padding: 10px 10px 38px;
   position: relative;
 }
 
