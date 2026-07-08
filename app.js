@@ -27,6 +27,8 @@ const PRINTER_STATUS_TIMEOUT_MS = 15000;
 const MAX_FILES_PER_JOB = 10;
 const RECEIPT_REDIRECT_SECONDS = 15;
 const UNASSIGNED_KIOSK_ID = "UNASSIGNED-KIOSK";
+const CUSTOMER_DEMO_LOGO_SRC = "./assets/nashik-municipal-logo.jpg";
+const CUSTOMER_DEMO_LOGO_ALT = "Nashik Municipal Corporation";
 const ADMIN_SESSION_KEY = "printingKioskAdminSession";
 const ADMIN_LANGUAGE_KEY = "printingKioskAdminLanguage";
 const CUSTOMER_LANGUAGE_KEY = "printingKioskCustomerLanguage";
@@ -691,6 +693,7 @@ const state = {
   paymentOrder: null,
   paymentBusy: false,
   paymentPoller: null,
+  customerClockTimer: null,
   mobilePayment: {
     paymentId: runtimeConfig.get("mobilePayment") || "",
     loading: Boolean(runtimeConfig.get("mobilePayment")),
@@ -782,6 +785,63 @@ function qs(selector) {
 
 function uiIcon(name, size = 20) {
   return window.PrintKioskUI?.icon(name, size) || "";
+}
+
+function customerClockParts(now = new Date()) {
+  return {
+    time: now.toLocaleTimeString("en-IN", {
+      hour: "2-digit",
+      minute: "2-digit",
+      second: "2-digit",
+      hour12: true
+    }).toUpperCase(),
+    date: now.toLocaleDateString("en-IN", {
+      weekday: "short",
+      day: "2-digit",
+      month: "short",
+      year: "numeric"
+    })
+  };
+}
+
+function renderCustomerClockTile() {
+  const clock = customerClockParts();
+
+  return `
+    <div class="customer-clock-tile" data-customer-clock data-no-customer-translation aria-label="${escapeHtml(`${clock.time}, ${clock.date}`)}">
+      ${uiIcon("clock", 18)}
+      <strong data-customer-clock-time>${escapeHtml(clock.time)}</strong>
+      <span data-customer-clock-date>${escapeHtml(clock.date)}</span>
+    </div>
+  `;
+}
+
+function updateCustomerClockTile() {
+  const tile = document.querySelector("[data-customer-clock]");
+  if (!tile) return false;
+
+  const clock = customerClockParts();
+  const time = tile.querySelector("[data-customer-clock-time]");
+  const date = tile.querySelector("[data-customer-clock-date]");
+
+  if (time) time.textContent = clock.time;
+  if (date) date.textContent = clock.date;
+  tile.setAttribute("aria-label", `${clock.time}, ${clock.date}`);
+  return true;
+}
+
+function syncCustomerClockTimer() {
+  const hasClock = updateCustomerClockTile();
+
+  if (!hasClock && state.customerClockTimer) {
+    clearInterval(state.customerClockTimer);
+    state.customerClockTimer = null;
+    return;
+  }
+
+  if (hasClock && !state.customerClockTimer) {
+    state.customerClockTimer = setInterval(updateCustomerClockTile, 1000);
+  }
 }
 
 function adminLocale() {
@@ -1636,10 +1696,69 @@ function setDemoPrinterReady({ rerender = false } = {}) {
   if (rerender) render();
 }
 
-function applyDemoKioskConfig({ rerender = false } = {}) {
-  services = normalizeServicesConfig(demoKioskServices);
+function cloneConfig(value) {
+  return JSON.parse(JSON.stringify(value));
+}
+
+function demoTemplateUploadsFromPayload(payload = {}) {
+  const rawServices = Array.isArray(payload.services) ? payload.services : [];
+  if (!rawServices.length) return [];
+
+  const liveServices = normalizeServicesConfig(rawServices);
+  return liveServices
+    .filter((service) => service.mode === "template")
+    .flatMap((service) => (service.templates || [])
+      .filter((template) => template.imageUrl)
+      .map((template, index) => ({
+        ...template,
+        id: slug(`${service.id}-${template.id || template.title || index + 1}`, `template-${index + 1}`),
+        title: template.title || `${service.title} ${index + 1}`,
+        description: template.description || `Uploaded from ${service.title}.`
+      })));
+}
+
+function demoTemplateServiceFromPayload(payload = {}) {
+  const rawServices = Array.isArray(payload.services) ? payload.services : [];
+  if (!rawServices.length) return null;
+
+  const liveServices = normalizeServicesConfig(rawServices);
+  return liveServices.find((service) => service.mode === "template" && (service.templates || []).some((template) => template.imageUrl)) || null;
+}
+
+function demoServicesFromPayload(payload = {}) {
+  const nextServices = cloneConfig(demoKioskServices);
+  const uploadedTemplates = demoTemplateUploadsFromPayload(payload);
+
+  if (!uploadedTemplates.length) {
+    return nextServices;
+  }
+
+  const templateService = demoTemplateServiceFromPayload(payload);
+  return nextServices.map((service) => {
+    if (service.id !== "demo-existing-documents") {
+      return service;
+    }
+
+    return {
+      ...service,
+      description: "Print ready-made forms uploaded from admin.",
+      descriptionHi: "",
+      descriptionMr: "",
+      pricing: templateService?.pricing || service.pricing,
+      templates: uploadedTemplates
+    };
+  });
+}
+
+async function fetchPublicServicesConfig() {
+  return fetchJson(`${BACKEND_URL}/api/public/services`);
+}
+
+function applyDemoKioskConfig({ rerender = false, livePayload = null } = {}) {
+  const demoServices = livePayload ? demoServicesFromPayload(livePayload) : cloneConfig(demoKioskServices);
+  services = normalizeServicesConfig(demoServices);
   state.pricing = normalizePricing(Object.fromEntries(
-    demoKioskServices.map((service) => [service.id, service.pricing])
+    demoServices.map((service) => [service.id, service.pricing])
   ));
   state.kiosk = {
     kioskId: KIOSK_ID,
@@ -2574,6 +2693,17 @@ function applyServiceConfig(payload, { rerender = true, source = "backend" } = {
 
 async function refreshKioskConfig({ rerender = true, force = false } = {}) {
   if (DEMO_KIOSK_MODE && state.mode === "customer") {
+    try {
+      const payload = await fetchPublicServicesConfig();
+      applyDemoKioskConfig({ rerender, livePayload: payload });
+      return true;
+    } catch (error) {
+      applyDemoKioskConfig({ rerender });
+      return false;
+    }
+  }
+
+  if (DEMO_KIOSK_MODE) {
     applyDemoKioskConfig({ rerender });
     return true;
   }
@@ -2603,9 +2733,6 @@ function stopConfigPolling() {
 
 function startConfigPolling() {
   stopConfigPolling();
-  if (DEMO_KIOSK_MODE) {
-    return;
-  }
 
   state.configPoller = setInterval(() => {
     if (state.mode === "customer") {
@@ -3305,13 +3432,13 @@ function openCustomer(reset = false) {
 
   if (reset) {
     resetCustomer();
-    refreshKioskConfig({ rerender: false, force: true });
+    refreshKioskConfig({ rerender: DEMO_KIOSK_MODE, force: true });
     render();
     return;
   }
 
   state.mode = "customer";
-  refreshKioskConfig({ rerender: false, force: true });
+  refreshKioskConfig({ rerender: DEMO_KIOSK_MODE, force: true });
   render();
 }
 
@@ -3344,7 +3471,7 @@ function renderMobilePaymentShell() {
   return `
     <main class="mobile-payment-page">
       <section class="mobile-payment-card">
-        <img src="./assets/printhub-mark.png" alt="Print Kiosk" draggable="false" data-no-visual-search />
+        <img src="${CUSTOMER_DEMO_LOGO_SRC}" alt="${CUSTOMER_DEMO_LOGO_ALT}" draggable="false" data-no-visual-search />
         <h1>${payment.completed ? "Payment successful" : "Print Kiosk Payment"}</h1>
         ${amountText ? `<strong class="mobile-payment-amount">${escapeHtml(amountText)}</strong>` : ""}
         ${payment.job?.fileName ? `<p class="mobile-payment-job">${escapeHtml(payment.job.fileName)}</p>` : ""}
@@ -3383,8 +3510,6 @@ function renderAdminShell() {
 }
 
 function renderCustomerTopbar() {
-  const printerClass = state.printer.online ? "" : "warning";
-  const printerText = state.printer.online ? "Online" : state.printer.checking ? "Checking" : "Offline";
   const kioskLabel = [state.kiosk.kioskId || KIOSK_ID, state.kiosk.name, state.kiosk.branch]
     .filter(Boolean)
     .join(" | ");
@@ -3392,7 +3517,7 @@ function renderCustomerTopbar() {
   return `
     <header class="topbar">
       <div class="brand">
-        <div class="brand-mark"><img src="./assets/printhub-mark.png" alt="Print Kiosk" draggable="false" data-no-visual-search /></div>
+        <div class="brand-mark"><img src="${CUSTOMER_DEMO_LOGO_SRC}" alt="${CUSTOMER_DEMO_LOGO_ALT}" draggable="false" data-no-visual-search /></div>
         <div>
           <div class="brand-title">Print Kiosk</div>
           <div class="brand-subtitle">${escapeHtml(kioskLabel || KIOSK_ID)} | Government and education ready</div>
@@ -3408,8 +3533,8 @@ function renderCustomerTopbar() {
             <option value="mr" ${state.customerLanguage === "mr" ? "selected" : ""}>Marathi</option>
           </select>
         </label>
-        <span class="status-pill ${printerClass}" role="status" aria-label="Printer ${printerText}"><span class="dot"></span>${printerText}</span>
         <button class="ghost-button" data-action="reset-session">New Session</button>
+        ${renderCustomerClockTile()}
       </div>
     </header>
   `;
@@ -6349,6 +6474,7 @@ function bindEvents() {
   app.onclick = handleClick;
   app.onchange = handleChange;
   app.oninput = handleInput;
+  syncCustomerClockTimer();
 }
 
 function syncAdminLoginDraftFromDom() {
@@ -7202,6 +7328,9 @@ if (isMobilePaymentEntry) {
   startConfigPolling();
 }
 if (!isMobilePaymentEntry && state.mode === "customer") {
+  if (DEMO_KIOSK_MODE) {
+    refreshKioskConfig({ rerender: true, force: true });
+  }
   refreshPrinterStatus();
 }
 if (!isMobilePaymentEntry && state.adminAuthed) {

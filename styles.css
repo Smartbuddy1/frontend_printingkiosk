@@ -8796,3 +8796,58 @@ tbody tr:hover {
     width: 100%;
   }
 }
+
+.customer-shell .customer-clock-tile {
+  align-items: center;
+  background: #ffffff;
+  border: 1px solid rgba(255, 255, 255, 0.78);
+  border-radius: 8px;
+  box-shadow: 0 8px 18px rgba(0, 12, 44, 0.18);
+  color: #08245a;
+  display: grid;
+  flex: 0 0 auto;
+  gap: 0 8px;
+  grid-template-columns: auto auto;
+  line-height: 1;
+  min-height: 48px;
+  min-width: 148px;
+  padding: 7px 12px;
+}
+
+.customer-shell .customer-clock-tile .ui-icon {
+  color: #1f5fbf;
+  grid-row: 1 / 3;
+}
+
+.customer-shell .customer-clock-tile strong {
+  font-size: 17px;
+  font-variant-numeric: tabular-nums;
+  font-weight: var(--weight-heading);
+  letter-spacing: 0;
+  white-space: nowrap;
+}
+
+.customer-shell .customer-clock-tile span {
+  color: #3c4d70;
+  font-size: 11px;
+  font-weight: var(--weight-semibold);
+  letter-spacing: 0;
+  white-space: nowrap;
+}
+
+@media (max-width: 640px) {
+  .customer-shell .customer-clock-tile {
+    flex: 1 1 160px;
+    min-height: 40px;
+    min-width: 0;
+    padding: 7px 10px;
+  }
+
+  .customer-shell .customer-clock-tile strong {
+    font-size: 15px;
+  }
+
+  .customer-shell .customer-clock-tile span {
+    font-size: 10px;
+  }
+}
