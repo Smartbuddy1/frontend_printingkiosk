@@ -3854,7 +3854,7 @@ function renderCustomerTopbar() {
       <div class="brand">
         <div class="brand-mark"><img src="./assets/nashik-municipal-logo.jpg" alt="Nashik Municipal Corporation" draggable="false" data-no-visual-search /></div>
         <div>
-          <div class="brand-title">Nashik Municipal Corporation</div>
+          <div class="brand-title">Printing Kiosk</div>
           <div class="brand-subtitle">Printing Kiosk</div>
         </div>
       </div>
