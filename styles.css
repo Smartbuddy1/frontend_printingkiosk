@@ -10323,6 +10323,128 @@ tbody tr:hover {
   }
 }
 
+/* Tablet customer header: keep language and clock in the header, clear of steps. */
+@media (min-width: 641px) and (max-width: 1180px) {
+  .customer-shell.app-shell {
+    grid-template-rows: auto minmax(0, 1fr) auto;
+  }
+
+  .customer-shell .topbar {
+    align-items: center;
+    display: flex;
+    gap: 12px;
+    grid-template-columns: none;
+    min-height: 72px;
+    padding: 10px 16px;
+  }
+
+  .customer-shell .brand {
+    flex: 1 1 auto;
+    gap: 10px;
+    min-width: 0;
+    width: auto;
+  }
+
+  .customer-shell .brand-mark {
+    border-radius: 12px;
+    flex: 0 0 44px;
+    height: 44px;
+    width: 44px;
+  }
+
+  .customer-shell .brand-title {
+    font-size: clamp(19px, 3vw, 28px);
+    line-height: 1.05;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .customer-shell .topbar-actions {
+    align-items: center;
+    display: flex;
+    flex: 0 0 auto;
+    gap: 10px;
+    margin-left: auto;
+    width: auto;
+  }
+
+  .customer-shell .customer-language-control {
+    min-height: 44px;
+    padding: 0;
+  }
+
+  .customer-shell .customer-language-control select {
+    font-size: 15px;
+    height: 44px;
+    min-width: 122px;
+    padding-right: 30px;
+  }
+
+  .customer-shell .timer-widget {
+    min-height: 44px;
+    min-width: 158px;
+    padding: 5px 10px;
+    width: auto;
+  }
+
+  .customer-shell .time-text {
+    font-size: 14px;
+  }
+
+  .customer-shell .date-text {
+    font-size: 10px;
+  }
+}
+
+@media (min-width: 641px) and (max-width: 760px) {
+  .customer-shell .topbar {
+    gap: 8px;
+    padding: 8px 12px;
+  }
+
+  .customer-shell .brand {
+    gap: 8px;
+  }
+
+  .customer-shell .brand-mark {
+    flex-basis: 40px;
+    height: 40px;
+    width: 40px;
+  }
+
+  .customer-shell .brand-title {
+    font-size: clamp(17px, 3vw, 21px);
+  }
+
+  .customer-shell .topbar-actions {
+    gap: 8px;
+  }
+
+  .customer-shell .customer-language-control select {
+    font-size: 14px;
+    min-width: 108px;
+  }
+
+  .customer-shell .timer-widget {
+    min-width: 142px;
+    padding: 4px 8px;
+  }
+
+  .customer-shell .timer-widget .ui-icon {
+    height: 15px;
+    width: 15px;
+  }
+
+  .customer-shell .time-text {
+    font-size: 13px;
+  }
+
+  .customer-shell .date-text {
+    font-size: 9px;
+  }
+}
+
 /* Mini tablet preview: avoid a cramped side panel on 7-10 inch screens. */
 @media (min-width: 641px) and (max-width: 1180px) {
   .customer-shell:has(.preview-stage) .content {
@@ -10362,34 +10484,27 @@ tbody tr:hover {
     grid-template-columns: minmax(0, 1fr);
     justify-items: center;
     min-width: 0;
-    padding: 12px 12px 54px;
+    overflow: visible;
+    padding: 12px;
     width: 100%;
   }
 
   .customer-shell .preview-stage .preview-toolbar {
-    align-self: auto;
-    display: flex;
-    gap: 8px;
-    grid-row: 2;
-    justify-self: center;
-    margin-top: 10px;
-    padding: 7px;
+    display: none;
   }
 
   .customer-shell .preview-stage .document-preview,
   .customer-shell .preview-stage .document-preview.preview-live,
   .customer-shell .preview-stage .document-preview.preview-document-mode,
   .customer-shell .preview-stage .document-preview:has(.uploaded-image-paper) {
-    height: min(520px, 58dvh);
+    height: min(560px, 62dvh);
     max-width: 100%;
     min-height: 360px;
-    width: min(100%, calc((58dvh) * var(--paper-ratio, 210 / 297)));
+    width: min(100%, calc((62dvh) * var(--paper-ratio, 210 / 297)));
   }
 
   .customer-shell .preview-stage .preview-page-nav {
-    bottom: 10px;
-    left: 50%;
-    transform: translateX(-50%);
+    display: none;
   }
 
   .customer-shell .preview-control-panel {
@@ -10787,5 +10902,281 @@ tbody tr:hover {
   .customer-shell .template-selection-stage .template-meta > strong {
     grid-column: 1;
     grid-row: auto;
+  }
+}
+
+/* Adaptive customer screen fit: final layer for phone, tablet, kiosk, and desktop. */
+.customer-shell {
+  --adaptive-gap: clamp(8px, 1.2vmin, 18px);
+  --adaptive-pad: clamp(10px, 1.6vmin, 22px);
+  --adaptive-card-pad: clamp(12px, 1.6vmin, 24px);
+  --adaptive-radius: 8px;
+  --adaptive-control-h: clamp(40px, 5.2vmin, 54px);
+  --adaptive-step-h: clamp(50px, 7vmin, 72px);
+  --adaptive-preview-h: clamp(310px, 52dvh, 640px);
+}
+
+.customer-shell.app-shell {
+  grid-template-rows: auto minmax(0, 1fr) auto;
+  min-height: 100dvh;
+}
+
+.customer-shell > .main,
+.customer-shell .customer-layout,
+.customer-shell .content {
+  min-width: 0;
+}
+
+.customer-shell .content {
+  padding: var(--adaptive-pad);
+}
+
+.customer-shell .stage,
+.customer-shell .service-stage,
+.customer-shell .template-selection-stage,
+.customer-shell .qr-only-upload-stage,
+.customer-shell .preview-stage,
+.customer-shell .payment-stage,
+.customer-shell .receipt-stage {
+  gap: var(--adaptive-gap);
+  max-width: min(1420px, calc(100vw - (var(--adaptive-pad) * 2)));
+  min-width: 0;
+}
+
+.customer-shell .topbar {
+  min-width: 0;
+}
+
+.customer-shell .brand,
+.customer-shell .topbar-actions {
+  min-width: 0;
+}
+
+.customer-shell .brand-title {
+  min-width: 0;
+}
+
+.customer-shell .customer-language-control select,
+.customer-shell .timer-widget {
+  min-height: var(--adaptive-control-h);
+}
+
+.customer-shell .service-grid,
+.customer-shell .service-stage.is-single .service-grid,
+.customer-shell .service-stage.is-pair .service-grid,
+.customer-shell .service-stage.is-catalog .service-grid {
+  gap: var(--adaptive-gap);
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 310px), 1fr));
+}
+
+.customer-shell .service-card,
+.customer-shell .template-card,
+.customer-shell .module-card,
+.customer-shell .receipt-card,
+.customer-shell .payment-qr-card,
+.customer-shell .payment-tracking-card,
+.customer-shell .preview-document-panel,
+.customer-shell .preview-control-panel {
+  border-radius: var(--adaptive-radius);
+}
+
+.customer-shell .preview-grid,
+.customer-shell .payment-kiosk-panel,
+.customer-shell .template-selection-stage .template-grid {
+  gap: var(--adaptive-gap);
+}
+
+.customer-shell .preview-stage .document-preview,
+.customer-shell .preview-stage .document-preview.preview-live,
+.customer-shell .preview-stage .document-preview.preview-document-mode,
+.customer-shell .preview-stage .document-preview:has(.uploaded-image-paper) {
+  height: var(--adaptive-preview-h);
+}
+
+.customer-shell .preview-control-actions {
+  gap: clamp(8px, 1.1vmin, 12px);
+}
+
+.customer-shell .preview-control-actions button {
+  min-height: var(--adaptive-control-h);
+}
+
+@media (min-width: 1181px) {
+  .customer-shell {
+    --adaptive-preview-h: clamp(420px, calc(100dvh - 260px), 680px);
+  }
+
+  .customer-shell .topbar {
+    align-items: center;
+    display: flex;
+    gap: clamp(14px, 1.2vw, 24px);
+    min-height: 84px;
+    padding: clamp(12px, 1.2vw, 18px) clamp(18px, 2vw, 32px);
+  }
+
+  .customer-shell .brand {
+    flex: 1 1 auto;
+    min-width: 0;
+  }
+
+  .customer-shell .topbar-actions {
+    align-items: center;
+    display: flex;
+    flex: 0 0 auto;
+    gap: 12px;
+    margin-left: auto;
+    width: auto;
+  }
+}
+
+@media (min-width: 641px) and (max-width: 1180px) {
+  .customer-shell {
+    --adaptive-preview-h: clamp(350px, 56dvh, 620px);
+  }
+
+  .customer-shell .topbar {
+    align-items: center;
+    display: grid;
+    gap: 10px;
+    grid-template-columns: minmax(0, 1fr) auto;
+    min-height: 0;
+    padding: clamp(8px, 1.4vmin, 14px) clamp(12px, 2vmin, 18px);
+  }
+
+  .customer-shell .brand {
+    align-items: center;
+    grid-column: 1;
+    min-width: 0;
+    width: auto;
+  }
+
+  .customer-shell .brand-mark {
+    flex: 0 0 clamp(38px, 6vmin, 48px);
+    height: clamp(38px, 6vmin, 48px);
+    width: clamp(38px, 6vmin, 48px);
+  }
+
+  .customer-shell .brand-title {
+    font-size: clamp(17px, 3.1vmin, 28px);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .customer-shell .topbar-actions {
+    align-items: center;
+    display: flex;
+    gap: 10px;
+    grid-column: 2;
+    justify-self: end;
+    margin-left: 0;
+    width: auto;
+  }
+
+  .customer-shell .customer-language-control select {
+    font-size: clamp(14px, 1.9vmin, 16px);
+    height: var(--adaptive-control-h);
+    min-width: clamp(104px, 15vmin, 142px);
+  }
+
+  .customer-shell .timer-widget {
+    height: var(--adaptive-control-h);
+    min-width: clamp(136px, 20vmin, 190px);
+    padding: 4px 10px;
+    width: auto;
+  }
+
+  .customer-shell .rail,
+  .customer-shell:has(.preview-stage) .rail {
+    padding: clamp(8px, 1.4vmin, 14px);
+  }
+
+  .customer-shell .stepper,
+  .customer-shell:has(.preview-stage) .stepper {
+    gap: clamp(5px, 1vmin, 10px);
+  }
+
+  .customer-shell .step-item,
+  .customer-shell:has(.preview-stage) .step-item {
+    min-height: var(--adaptive-step-h);
+  }
+
+  .customer-shell .preview-stage .preview-grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .customer-shell .preview-stage .preview-workspace {
+    overflow: visible;
+  }
+
+  .customer-shell .preview-stage .preview-page-nav,
+  .customer-shell .preview-stage .preview-toolbar {
+    display: none;
+  }
+}
+
+@media (min-width: 901px) and (max-width: 1180px) and (orientation: landscape) {
+  .customer-shell {
+    --adaptive-preview-h: clamp(320px, calc(100dvh - 320px), 450px);
+  }
+
+  .customer-shell .preview-stage .preview-grid {
+    grid-template-columns: minmax(0, 1fr) clamp(340px, 34vw, 460px);
+  }
+}
+
+@media (max-width: 640px) {
+  .customer-shell {
+    --adaptive-preview-h: clamp(300px, 50dvh, 470px);
+  }
+
+  .customer-shell .topbar {
+    align-items: start;
+    display: grid;
+    gap: 8px;
+    grid-template-columns: minmax(0, 1fr);
+    padding: 10px;
+  }
+
+  .customer-shell .brand {
+    width: 100%;
+  }
+
+  .customer-shell .brand-title {
+    font-size: clamp(17px, 5vw, 23px);
+    overflow-wrap: anywhere;
+    white-space: normal;
+  }
+
+  .customer-shell .topbar-actions {
+    display: grid;
+    gap: 8px;
+    grid-template-columns: minmax(0, 1fr) minmax(132px, auto);
+    margin-left: 0;
+    width: 100%;
+  }
+
+  .customer-shell .customer-language-control,
+  .customer-shell .timer-widget {
+    width: 100%;
+  }
+
+  .customer-shell .customer-language-control select {
+    min-width: 0;
+    width: 100%;
+  }
+
+  .customer-shell .step-item,
+  .customer-shell:has(.preview-stage) .step-item {
+    min-height: 52px;
+  }
+
+  .customer-shell .preview-stage .preview-grid,
+  .customer-shell .preview-job-info,
+  .customer-shell .preview-essential-settings,
+  .customer-shell .preview-order-summary,
+  .customer-shell .preview-control-actions,
+  .customer-shell .payment-kiosk-panel {
+    grid-template-columns: minmax(0, 1fr);
   }
 }
