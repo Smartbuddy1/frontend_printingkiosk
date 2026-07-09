@@ -363,6 +363,37 @@ const CUSTOMER_TRANSLATIONS = {
   mr: Object.fromEntries(CUSTOMER_TRANSLATION_ROWS.map(([english, , marathi]) => [english, marathi]))
 };
 
+const CUSTOMER_TRANSLATION_OVERRIDES = {
+  hi: {
+    "Forms": "फॉर्म",
+    "Document Preview": "दस्तावेज़ पूर्वावलोकन",
+    "Ready to Print": "प्रिंट के लिए तैयार",
+    "Paper": "पेपर",
+    "Rate": "दर",
+    "Page Range": "पेज रेंज",
+    "Terms & Conditions": "नियम और शर्तें",
+    "Privacy Policy": "गोपनीयता नीति",
+    "Refund Policy": "रिफंड नीति",
+    "Contact Us": "संपर्क करें",
+    "A4 · portrait": "A4 · पोर्ट्रेट",
+    "Rs. 3 / page · B/W": "Rs. 3 / पेज · B/W"
+  },
+  mr: {
+    "Forms": "फॉर्म",
+    "Document Preview": "दस्तऐवज पूर्वावलोकन",
+    "Ready to Print": "प्रिंटसाठी तयार",
+    "Paper": "पेपर",
+    "Rate": "दर",
+    "Page Range": "पेज रेंज",
+    "Terms & Conditions": "नियम आणि अटी",
+    "Privacy Policy": "गोपनीयता धोरण",
+    "Refund Policy": "परतावा धोरण",
+    "Contact Us": "संपर्क करा",
+    "A4 · portrait": "A4 · पोर्ट्रेट",
+    "Rs. 3 / page · B/W": "Rs. 3 / पेज · B/W"
+  }
+};
+
 function readStoredAdminLanguage() {
   try {
     const language = window.localStorage.getItem(ADMIN_LANGUAGE_KEY) || "en";
@@ -463,9 +494,9 @@ const demoKioskServices = [
   {
     id: "demo-documents",
     icon: "DC",
-    title: "Documents",
-    titleHi: "à¤¦à¤¸à¥à¤¤à¤¾à¤µà¥‡à¤œà¤¼",
-    titleMr: "à¤¦à¤¸à¥à¤¤à¤à¤µà¤œ",
+    title: "Upload & Print",
+    titleHi: "अपलोड और प्रिंट",
+    titleMr: "अपलोड आणि प्रिंट",
     description: "Upload PDF or image documents.",
     descriptionHi: "PDF à¤¯à¤¾ à¤šà¤¿à¤¤à¥à¤° à¤¦à¤¸à¥à¤¤à¤¾à¤µà¥‡à¤œà¤¼ à¤…à¤ªà¤²à¥‹à¤¡ à¤•à¤°à¥‡à¤‚à¥¤",
     descriptionMr: "PDF à¤•à¤¿à¤‚à¤µà¤¾ à¤ªà¥à¤°à¤¤à¤¿à¤®à¤¾ à¤¦à¤¸à¥à¤¤à¤à¤µà¤œ à¤…à¤ªà¤²à¥‹à¤¡ à¤•à¤°à¤¾.",
@@ -479,9 +510,9 @@ const demoKioskServices = [
   {
     id: "demo-existing-documents",
     icon: "EX",
-    title: "Existing Documents",
-    titleHi: "à¤®à¥Œà¤œà¥‚à¤¦à¤¾ à¤¦à¤¸à¥à¤¤à¤¾à¤µà¥‡à¤œà¤¼",
-    titleMr: "à¤µà¤¿à¤¦à¥à¤¯à¤®à¤¾à¤¨ à¤¦à¤¸à¥à¤¤à¤à¤µà¤œ",
+    title: "Government Forms",
+    titleHi: "सरकारी फॉर्म",
+    titleMr: "सरकारी फॉर्म",
     description: "Print ready-made forms and documents.",
     descriptionHi: "à¤¤à¥ˆà¤¯à¤¾à¤° à¤«à¤¼à¥‰à¤°à¥à¤® à¤”à¤° à¤¦à¤¸à¥à¤¤à¤¾à¤µà¥‡à¤œà¤¼ à¤ªà¥à¤°à¤¿à¤‚à¤Ÿ à¤•à¤°à¥‡à¤‚à¥¤",
     descriptionMr: "à¤¤à¤¯à¤¾à¤° à¤«à¥‰à¤°à¥à¤® à¤†à¤£à¤¿ à¤¦à¤¸à¥à¤¤à¤à¤µà¤œ à¤ªà¥à¤°à¤¿à¤‚à¤Ÿ à¤•à¤°à¤¾.",
@@ -662,9 +693,13 @@ let formTemplates = {
 
 const initialJobs = [];
 const templatePreviewUrlCache = new Map();
+const PDFJS_MODULE_URL = "./assets/vendor/pdfjs/pdf.min.mjs";
+const PDFJS_WORKER_URL = "./assets/vendor/pdfjs/pdf.worker.min.mjs";
 const PREVIEW_ZOOM_MIN = 0.7;
 const PREVIEW_ZOOM_MAX = 1.4;
 const PREVIEW_ZOOM_STEP = 0.1;
+
+let pdfJsModulePromise = null;
 
 const state = {
   mode: isAdminEntry ? "admin" : "customer",
@@ -840,15 +875,55 @@ function storeCustomerLanguage() {
   }
 }
 
+const CP1252_BYTE_MAP = new Map([
+  [0x20AC, 0x80], [0x201A, 0x82], [0x0192, 0x83], [0x201E, 0x84],
+  [0x2026, 0x85], [0x2020, 0x86], [0x2021, 0x87], [0x02C6, 0x88],
+  [0x2030, 0x89], [0x0160, 0x8A], [0x2039, 0x8B], [0x0152, 0x8C],
+  [0x017D, 0x8E], [0x2018, 0x91], [0x2019, 0x92], [0x201C, 0x93],
+  [0x201D, 0x94], [0x2022, 0x95], [0x2013, 0x96], [0x2014, 0x97],
+  [0x02DC, 0x98], [0x2122, 0x99], [0x0161, 0x9A], [0x203A, 0x9B],
+  [0x0153, 0x9C], [0x017E, 0x9E], [0x0178, 0x9F]
+]);
+
+function textLooksMojibake(text) {
+  return /[ÃÂà][\u0080-\u00ff\u2018-\u201d\u2020\u2021\u2026\u2030\u2039\u203a\u0152\u0153\u0160\u0161\u0178\u017d\u017e]/.test(text);
+}
+
+function decodeMojibakeText(value) {
+  let text = String(value || "");
+  if (!text || !textLooksMojibake(text) || typeof TextDecoder === "undefined") return text;
+
+  for (let pass = 0; pass < 3 && textLooksMojibake(text); pass += 1) {
+    const bytes = [];
+
+    for (const char of text) {
+      const code = char.codePointAt(0);
+      const byte = code <= 0xff ? code : CP1252_BYTE_MAP.get(code);
+      if (byte === undefined) return text;
+      bytes.push(byte);
+    }
+
+    const next = new TextDecoder("utf-8", { fatal: false }).decode(new Uint8Array(bytes));
+    if (!next || next === text) break;
+    text = next;
+  }
+
+  return text;
+}
+
 function customerTranslateText(value) {
   const text = String(value || "").trim();
   const language = state.customerLanguage;
-  if (!text || language === "en") return text;
+  if (!text) return text;
+  if (language === "en") return decodeMojibakeText(text);
+
+  const overrides = CUSTOMER_TRANSLATION_OVERRIDES[language] || {};
+  if (overrides[text]) return overrides[text];
 
   const translations = CUSTOMER_TRANSLATIONS[language] || {};
-  if (translations[text]) return translations[text];
+  if (translations[text]) return decodeMojibakeText(translations[text]);
 
-  const translated = (english) => translations[english] || english;
+  const translated = (english) => decodeMojibakeText(translations[english] || english);
   const patterns = [
     [/^(.+) \| Government and education ready$/, (match) => `${match[1]} | ${translated("Government and education ready")}`],
     [/^Printer (Online|Offline)$/, (match) => `${language === "hi" ? "à¤ªà¥à¤°à¤¿à¤‚à¤Ÿà¤°" : "à¤ªà¥à¤°à¤¿à¤‚à¤Ÿà¤°"} ${translated(match[1])}`],
@@ -888,26 +963,26 @@ function customerTranslateText(value) {
 
   for (const [pattern, formatter] of patterns) {
     const match = text.match(pattern);
-    if (match) return formatter(match);
+    if (match) return decodeMojibakeText(formatter(match));
   }
 
-  return text;
+  return decodeMojibakeText(text);
 }
 
 function localizedServiceText(service, field) {
   const suffix = state.customerLanguage === "hi" ? "Hi" : state.customerLanguage === "mr" ? "Mr" : "";
   const english = String(service?.[field] || "").trim();
-  if (!suffix) return english;
+  if (!suffix) return decodeMojibakeText(english);
 
-  return String(service?.[`${field}${suffix}`] || "").trim() || customerTranslateText(english);
+  return decodeMojibakeText(String(service?.[`${field}${suffix}`] || "").trim()) || customerTranslateText(english);
 }
 
 function localizedTemplateText(template, field) {
   const suffix = state.customerLanguage === "hi" ? "Hi" : state.customerLanguage === "mr" ? "Mr" : "";
   const english = String(template?.[field] || "").trim();
-  if (!suffix) return english;
+  if (!suffix) return decodeMojibakeText(english);
 
-  return String(template?.[`${field}${suffix}`] || "").trim() || customerTranslateText(english);
+  return decodeMojibakeText(String(template?.[`${field}${suffix}`] || "").trim()) || customerTranslateText(english);
 }
 
 function localizedTemplateFields(template) {
@@ -916,7 +991,7 @@ function localizedTemplateFields(template) {
   if (!suffix) return fields;
 
   const localizedFields = Array.isArray(template?.[`fields${suffix}`]) ? template[`fields${suffix}`] : [];
-  return fields.map((field, index) => String(localizedFields[index] || "").trim() || customerTranslateText(field));
+  return fields.map((field, index) => decodeMojibakeText(String(localizedFields[index] || "").trim()) || customerTranslateText(field));
 }
 
 function applyCustomerTranslations(root) {
@@ -952,12 +1027,13 @@ function applyCustomerTranslations(root) {
 function adminTranslateText(value) {
   const text = String(value || "").trim();
   const language = state.adminLanguage;
-  if (!text || language === "en") return text;
+  if (!text) return text;
+  if (language === "en") return decodeMojibakeText(text);
 
   const translations = ADMIN_TRANSLATIONS[language] || {};
-  if (translations[text]) return translations[text];
+  if (translations[text]) return decodeMojibakeText(translations[text]);
 
-  const translated = (english) => translations[english] || english;
+  const translated = (english) => decodeMojibakeText(translations[english] || english);
   const patterns = [
     [/^(.+) \| assigned project management$/, (match) => `${match[1]} | ${translated("assigned project management")}`],
     [/^Last updated:\s*(.+)$/, (match) => `${translated("Last updated")}: ${match[1]}`],
@@ -979,10 +1055,10 @@ function adminTranslateText(value) {
 
   for (const [pattern, formatter] of patterns) {
     const match = text.match(pattern);
-    if (match) return formatter(match);
+    if (match) return decodeMojibakeText(formatter(match));
   }
 
-  return text;
+  return decodeMojibakeText(text);
 }
 
 function applyAdminTranslations(root) {
@@ -1133,6 +1209,12 @@ function templateDocumentKind(value = "") {
   const source = String(value || "").toLowerCase();
   if (source === "pdf" || source.startsWith("data:application/pdf") || /\.pdf(?:$|[?#])/i.test(source)) return "pdf";
   return "image";
+}
+
+function pdfStaticPreviewUrl(value = "") {
+  const source = String(value || "").trim();
+  const next = source.replace(/\.pdf(?=$|[?#])/i, ".png");
+  return next !== source ? next : "";
 }
 
 function uploadedTemplateTitle(file, fallback = "Template Document") {
@@ -1337,6 +1419,7 @@ function normalizeTemplates(templates) {
       fieldsHi: normalizeTemplateFields(template?.fieldsHi),
       fieldsMr: normalizeTemplateFields(template?.fieldsMr),
       imageUrl: String(template?.imageUrl || "").trim(),
+      previewImageUrl: String(template?.previewImageUrl || "").trim(),
       documentType: templateDocumentKind(template?.documentType || template?.imageUrl || "")
     };
   }).filter((template) => template.title);
@@ -1349,6 +1432,7 @@ function mergeDefaultTemplateData(templates, defaults = []) {
     return {
       ...template,
       imageUrl: template.imageUrl || fallback.imageUrl || "",
+      previewImageUrl: template.previewImageUrl || fallback.previewImageUrl || "",
       titleHi: template.titleHi || fallback.titleHi || "",
       titleMr: template.titleMr || fallback.titleMr || "",
       descriptionHi: template.descriptionHi || fallback.descriptionHi || "",
@@ -1685,6 +1769,73 @@ function restoreReusablePreviewContent(app, preserved) {
   if (layer?.dataset.previewReuseKey === preserved.key) {
     layer.replaceChildren(preserved.fragment);
   }
+}
+
+function pdfPreviewDocumentUrl(previewUrl) {
+  const url = String(previewUrl || "");
+  return url.includes("#") ? url : `${url}#page=1`;
+}
+
+function loadPdfJsModule() {
+  if (!pdfJsModulePromise) {
+    pdfJsModulePromise = import(PDFJS_MODULE_URL).then((pdfjsLib) => {
+      pdfjsLib.GlobalWorkerOptions.workerSrc = PDFJS_WORKER_URL;
+      return pdfjsLib;
+    });
+  }
+
+  return pdfJsModulePromise;
+}
+
+async function renderPdfPreviewCanvas(canvas) {
+  const sourceUrl = canvas?.dataset?.pdfUrl || "";
+  const shell = canvas?.closest(".pdf-preview-shell");
+  if (!canvas || !sourceUrl || canvas.dataset.renderedPdfUrl === sourceUrl) {
+    return;
+  }
+
+  canvas.dataset.renderedPdfUrl = sourceUrl;
+  shell?.classList.remove("is-ready", "is-error");
+
+  try {
+    const pdfjsLib = await loadPdfJsModule();
+    const loadingTask = pdfjsLib.getDocument({ url: sourceUrl });
+    const pdf = await loadingTask.promise;
+    const page = await pdf.getPage(1);
+    const baseViewport = page.getViewport({ scale: 1 });
+    const shellWidth = Math.max(240, Math.round(shell?.clientWidth || canvas.clientWidth || baseViewport.width));
+    const cssScale = shellWidth / baseViewport.width;
+    const pixelRatio = Math.min(window.devicePixelRatio || 1, 2);
+    const viewport = page.getViewport({ scale: cssScale * pixelRatio });
+    const context = canvas.getContext("2d", { alpha: false });
+
+    canvas.width = Math.ceil(viewport.width);
+    canvas.height = Math.ceil(viewport.height);
+    canvas.style.width = `${Math.ceil(baseViewport.width * cssScale)}px`;
+    canvas.style.height = `${Math.ceil(baseViewport.height * cssScale)}px`;
+
+    context.fillStyle = "#ffffff";
+    context.fillRect(0, 0, canvas.width, canvas.height);
+    await page.render({ canvasContext: context, viewport, background: "#ffffff" }).promise;
+    if (typeof pdf.cleanup === "function") {
+      pdf.cleanup();
+    }
+    shell?.classList.add("is-ready");
+  } catch (error) {
+    canvas.dataset.renderedPdfUrl = "";
+    const message = shell?.querySelector("[data-pdf-preview-status]");
+    if (message) {
+      message.textContent = "Preview could not render. You can still continue to print this PDF.";
+    }
+    shell?.classList.add("is-error");
+    console.warn("PDF preview render failed", error);
+  }
+}
+
+function hydratePdfPreviewCanvases(root = document) {
+  root.querySelectorAll(".pdf-preview-canvas[data-pdf-url]").forEach((canvas) => {
+    renderPdfPreviewCanvas(canvas);
+  });
 }
 
 function colorSelectionAvailable(file = activePreviewFile()) {
@@ -2237,15 +2388,18 @@ function createTemplateFile(template) {
   if (template.imageUrl) {
     const documentType = templateDocumentKind(template.documentType || template.imageUrl);
     const templateUrl = template.imageUrl;
+    const staticPreviewUrl = documentType === "pdf"
+      ? (String(template.previewImageUrl || "").trim() || pdfStaticPreviewUrl(templateUrl))
+      : templateUrl;
     return {
       name: `${template.id}.${documentType === "pdf" ? "pdf" : "png"}`,
       type: documentType === "pdf" ? "PDF" : "PNG",
       pages: Math.max(1, Number(template.pages) || 1),
-      previewKind: documentType === "pdf" ? "pdf" : "image",
-      previewUrl: documentType === "pdf" ? "" : templateUrl,
-      previewSourceUrl: templateUrl,
+      previewKind: staticPreviewUrl ? "image" : "pdf",
+      previewUrl: staticPreviewUrl,
+      previewSourceUrl: staticPreviewUrl ? "" : templateUrl,
       printUrl: templateUrl,
-      previewLoading: documentType === "pdf",
+      previewLoading: documentType === "pdf" && !staticPreviewUrl,
       previewUrlFromCache: false,
       source: localizedTitle,
       templateId: template.id,
@@ -3615,6 +3769,7 @@ function render() {
   restoreReusablePreviewContent(app, preservedPreview);
   bindEvents();
   updateKioskClock();
+  hydratePdfPreviewCanvases(app);
 }
 
 function updateKioskClock() {
@@ -4252,11 +4407,11 @@ function renderPreviewContent() {
   }
 
   if (file.previewKind === "pdf" && file.previewUrl) {
+    const previewUrl = pdfPreviewDocumentUrl(file.previewUrl);
     return `
       <div class="pdf-preview-shell">
-        <object class="preview-frame" data="${escapeHtml(file.previewUrl)}#toolbar=0&navpanes=0&view=FitH&zoom=page-width" type="application/pdf">
-          ${renderPreviewFallback("PDF preview unavailable", "The file is valid. Continue after checking file details.")}
-        </object>
+        <canvas class="pdf-preview-canvas" data-pdf-url="${escapeHtml(previewUrl)}" aria-label="PDF first page preview"></canvas>
+        <div class="pdf-preview-status" data-pdf-preview-status>Rendering PDF preview...</div>
       </div>
     `;
   }

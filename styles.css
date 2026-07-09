@@ -1422,7 +1422,8 @@ button:disabled:hover {
   text-align: center;
 }
 
-.preview-frame {
+.preview-frame,
+.pdf-preview-canvas {
   background: #ffffff;
   border: 0;
   display: block;
@@ -3266,6 +3267,7 @@ th {
 }
 
 .preview-frame,
+.pdf-preview-canvas,
 .preview-media {
   min-height: 360px;
 }
@@ -3561,6 +3563,7 @@ td {
   }
 
   .preview-frame,
+  .pdf-preview-canvas,
   .preview-media {
     height: 460px;
   }
@@ -3725,6 +3728,7 @@ td {
   }
 
   .preview-frame,
+  .pdf-preview-canvas,
   .preview-media {
     height: 380px;
   }
@@ -4041,7 +4045,8 @@ td {
 }
 
 .document-preview.color-bw .preview-media,
-.document-preview.color-bw .preview-frame {
+.document-preview.color-bw .preview-frame,
+.document-preview.color-bw .pdf-preview-canvas {
   filter: grayscale(1);
 }
 
@@ -4106,7 +4111,8 @@ td {
   overflow-wrap: anywhere;
 }
 
-.document-preview .preview-frame {
+.document-preview .preview-frame,
+.document-preview .pdf-preview-canvas {
   height: calc(clamp(420px, 56vh, 660px) - 34px);
   min-height: 0;
 }
@@ -7781,7 +7787,8 @@ tbody tr:hover {
 }
 
 .customer-shell .preview-stage .preview-zoom-layer,
-.customer-shell .preview-stage .preview-frame {
+.customer-shell .preview-stage .preview-frame,
+.customer-shell .preview-stage .pdf-preview-canvas {
   height: 100%;
   min-height: 0;
 }
@@ -8740,7 +8747,8 @@ tbody tr:hover {
     height: 16px;
   }
 
-  .customer-shell .preview-stage .preview-frame {
+  .customer-shell .preview-stage .preview-frame,
+  .customer-shell .preview-stage .pdf-preview-canvas {
     height: 100%;
   }
 
@@ -9104,7 +9112,8 @@ tbody tr:hover {
   padding: 8px;
 }
 
-.customer-shell .preview-stage .preview-frame {
+.customer-shell .preview-stage .preview-frame,
+.customer-shell .preview-stage .pdf-preview-canvas {
   background: #ffffff;
   border: 0;
   display: block;
@@ -9136,11 +9145,13 @@ tbody tr:hover {
   width: min(100%, calc((100dvh - 128px) * var(--paper-ratio, 210 / 297)));
 }
 
-.customer-shell .preview-stage .document-preview.preview-live:has(.preview-frame) {
+.customer-shell .preview-stage .document-preview.preview-live:has(.preview-frame),
+.customer-shell .preview-stage .document-preview.preview-live:has(.pdf-preview-canvas) {
   background: #ffffff;
 }
 
-.customer-shell .preview-stage .preview-frame {
+.customer-shell .preview-stage .preview-frame,
+.customer-shell .preview-stage .pdf-preview-canvas {
   height: 100%;
   overflow: hidden;
 }
@@ -9708,7 +9719,8 @@ tbody tr:hover {
   width: auto;
 }
 
-.customer-shell .preview-stage .preview-frame {
+.customer-shell .preview-stage .preview-frame,
+.customer-shell .preview-stage .pdf-preview-canvas {
   background: #ffffff;
   border: 0;
   display: block;
@@ -9729,14 +9741,37 @@ tbody tr:hover {
   width: 100%;
 }
 
-.pdf-preview-shell .preview-frame {
+.pdf-preview-shell .pdf-preview-canvas {
   background: #ffffff;
-  height: 100%;
+  height: auto;
   left: 50%;
+  max-width: 100%;
+  min-height: 0;
   position: absolute;
   top: 0;
   transform: translateX(-50%);
-  width: calc(100% + 260px);
+  width: 100%;
+}
+
+.pdf-preview-status {
+  align-items: center;
+  color: #51627a;
+  display: grid;
+  font-size: 15px;
+  inset: 0;
+  justify-items: center;
+  line-height: 1.35;
+  padding: 24px;
+  position: absolute;
+  text-align: center;
+}
+
+.pdf-preview-shell.is-ready .pdf-preview-status {
+  display: none;
+}
+
+.pdf-preview-shell.is-error .pdf-preview-canvas {
+  display: none;
 }
 
 .preview-page-nav {
@@ -10048,7 +10083,7 @@ tbody tr:hover {
 }
 
 /* Customer tablet/phone flow: keep progress at the top, not as a tall side rail. */
-@media (max-width: 900px) {
+@media (max-width: 1180px) {
   .customer-shell .topbar {
     align-items: start;
     display: grid;
@@ -10285,6 +10320,281 @@ tbody tr:hover {
 
   .customer-shell .step-item span:last-child {
     font-size: 9px;
+  }
+}
+
+/* Mini tablet preview: avoid a cramped side panel on 7-10 inch screens. */
+@media (min-width: 641px) and (max-width: 1180px) {
+  .customer-shell:has(.preview-stage) .content {
+    padding: 12px;
+  }
+
+  .customer-shell .preview-stage {
+    max-width: 980px;
+    width: 100%;
+  }
+
+  .customer-shell .preview-stage .preview-grid {
+    gap: 12px;
+    grid-template-columns: minmax(0, 1fr);
+    grid-template-rows: auto auto;
+    width: 100%;
+  }
+
+  .customer-shell .preview-stage .preview-document-panel,
+  .customer-shell .preview-stage .preview-control-panel {
+    box-sizing: border-box;
+    max-width: 100%;
+    min-width: 0;
+    width: 100%;
+  }
+
+  .customer-shell .preview-stage .preview-document-head {
+    gap: 8px;
+    padding: 10px 12px;
+  }
+
+  .customer-shell .preview-stage .preview-document-head h2 {
+    font-size: clamp(18px, 2.6vw, 22px);
+  }
+
+  .customer-shell .preview-stage .preview-workspace {
+    grid-template-columns: minmax(0, 1fr);
+    justify-items: center;
+    min-width: 0;
+    padding: 12px 12px 54px;
+    width: 100%;
+  }
+
+  .customer-shell .preview-stage .preview-toolbar {
+    align-self: auto;
+    display: flex;
+    gap: 8px;
+    grid-row: 2;
+    justify-self: center;
+    margin-top: 10px;
+    padding: 7px;
+  }
+
+  .customer-shell .preview-stage .document-preview,
+  .customer-shell .preview-stage .document-preview.preview-live,
+  .customer-shell .preview-stage .document-preview.preview-document-mode,
+  .customer-shell .preview-stage .document-preview:has(.uploaded-image-paper) {
+    height: min(520px, 58dvh);
+    max-width: 100%;
+    min-height: 360px;
+    width: min(100%, calc((58dvh) * var(--paper-ratio, 210 / 297)));
+  }
+
+  .customer-shell .preview-stage .preview-page-nav {
+    bottom: 10px;
+    left: 50%;
+    transform: translateX(-50%);
+  }
+
+  .customer-shell .preview-control-panel {
+    align-content: start;
+    grid-template-rows: auto auto auto auto;
+    padding: 14px;
+  }
+
+  .customer-shell .preview-control-panel > h2 {
+    font-size: 22px;
+  }
+
+  .customer-shell .preview-job-info,
+  .customer-shell .preview-essential-settings,
+  .customer-shell .preview-order-summary {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .customer-shell .preview-job-info div:first-child {
+    grid-column: auto;
+  }
+
+  .customer-shell .preview-control-actions {
+    display: grid;
+    gap: 10px;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+
+  .customer-shell .preview-control-actions button {
+    min-height: 44px;
+    min-width: 0;
+    padding-left: 10px;
+    padding-right: 10px;
+    white-space: normal;
+    width: 100%;
+  }
+}
+
+@media (min-width: 641px) and (max-width: 760px) {
+  .customer-shell .preview-job-info,
+  .customer-shell .preview-essential-settings,
+  .customer-shell .preview-order-summary,
+  .customer-shell .preview-control-actions {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .customer-shell .preview-stage .document-preview,
+  .customer-shell .preview-stage .document-preview.preview-live,
+  .customer-shell .preview-stage .document-preview.preview-document-mode,
+  .customer-shell .preview-stage .document-preview:has(.uploaded-image-paper) {
+    height: min(470px, 54dvh);
+    min-height: 320px;
+  }
+}
+
+@media (min-width: 901px) and (max-width: 1180px) and (orientation: landscape) {
+  .customer-shell:has(.preview-stage) .topbar {
+    align-items: center;
+    display: flex;
+    gap: 16px;
+    justify-content: space-between;
+    padding: 10px 16px;
+  }
+
+  .customer-shell:has(.preview-stage) .brand {
+    flex: 1 1 auto;
+    min-width: 0;
+  }
+
+  .customer-shell:has(.preview-stage) .brand-title {
+    font-size: clamp(22px, 2.6vw, 28px);
+  }
+
+  .customer-shell:has(.preview-stage) .brand-subtitle {
+    display: none;
+  }
+
+  .customer-shell:has(.preview-stage) .topbar-actions {
+    display: flex;
+    flex: 0 0 auto;
+    gap: 12px;
+    margin-left: 0;
+    width: auto;
+  }
+
+  .customer-shell:has(.preview-stage) .customer-language-control {
+    min-height: 58px;
+    min-width: 140px;
+  }
+
+  .customer-shell:has(.preview-stage) .timer-widget {
+    min-height: 58px;
+    min-width: 184px;
+    width: auto;
+  }
+
+  .customer-shell:has(.preview-stage) .rail {
+    padding: 8px 14px;
+  }
+
+  .customer-shell:has(.preview-stage) .step-item {
+    min-height: 54px;
+    padding: 6px 4px;
+  }
+
+  .customer-shell:has(.preview-stage) .content {
+    padding: 10px 14px 12px;
+  }
+
+  .customer-shell .preview-stage {
+    max-width: none;
+  }
+
+  .customer-shell .preview-stage .preview-grid {
+    align-items: stretch;
+    grid-template-columns: minmax(0, 1fr) minmax(300px, 360px);
+    grid-template-rows: minmax(0, 1fr);
+  }
+
+  .customer-shell .preview-stage .preview-document-panel,
+  .customer-shell .preview-stage .preview-control-panel {
+    min-height: 0;
+  }
+
+  .customer-shell .preview-stage .preview-workspace {
+    padding: 10px 10px 68px;
+  }
+
+  .customer-shell .preview-stage .document-preview,
+  .customer-shell .preview-stage .document-preview.preview-live,
+  .customer-shell .preview-stage .document-preview.preview-document-mode,
+  .customer-shell .preview-stage .document-preview:has(.uploaded-image-paper) {
+    height: min(410px, calc(100dvh - 320px));
+    min-height: 300px;
+    width: min(100%, calc((100dvh - 320px) * var(--paper-ratio, 210 / 297)));
+  }
+
+  .customer-shell .preview-stage .preview-page-nav {
+    bottom: 0;
+  }
+
+  .customer-shell .preview-stage .preview-toolbar {
+    display: none;
+  }
+
+  .customer-shell .preview-control-panel {
+    gap: 10px;
+    grid-template-rows: auto;
+    overflow: auto;
+    padding: 12px;
+  }
+
+  .customer-shell .preview-control-panel > h2 {
+    font-size: 22px;
+  }
+
+  .customer-shell .preview-job-info,
+  .customer-shell .preview-essential-settings,
+  .customer-shell .preview-order-summary {
+    gap: 8px;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .customer-shell .preview-job-info div:first-child {
+    grid-column: 1 / -1;
+  }
+
+  .customer-shell .preview-essential-settings {
+    align-items: stretch;
+    display: grid;
+    flex: 0 0 auto;
+    min-height: 82px;
+    overflow: visible;
+  }
+
+  .customer-shell .preview-essential-setting {
+    min-height: 78px;
+  }
+
+  .customer-shell .preview-essential-setting input,
+  .customer-shell .preview-essential-setting select {
+    min-height: 42px;
+  }
+
+  .customer-shell .copies-stepper {
+    gap: 8px;
+    grid-template-columns: 46px minmax(0, 1fr) 46px;
+  }
+
+  .customer-shell .copies-stepper button,
+  .customer-shell .copies-stepper output {
+    height: 42px;
+    min-height: 42px;
+  }
+
+  .customer-shell .preview-order-summary {
+    padding: 10px;
+  }
+
+  .customer-shell .preview-control-actions {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .customer-shell .preview-control-actions .primary-button {
+    grid-column: 1 / -1;
   }
 }
 
