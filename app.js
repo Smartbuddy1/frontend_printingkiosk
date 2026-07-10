@@ -2481,11 +2481,10 @@ const demoKioskServices = [
 ];
 
 const customerSteps = [
-  "Services",
+  "Home",
   "Upload",
   "Preview",
-  "Payment",
-  "Receipt"
+  "Payment"
 ];
 
 const allowedUploadExtensions = ["PDF", "DOC", "DOCX", "JPG", "JPEG", "PNG"];
@@ -5565,48 +5564,23 @@ function renderCustomerTopbar() {
 }
 
 function renderCustomerFooter() {
-  const isTemplateStep = state.step === 1
-    && state.selectedService
-    && typeof isFormTemplateService === "function"
-    && isFormTemplateService(state.selectedService);
-  const isPreviewStep = state.step === 2 && state.selectedService;
-  const formsPaginationHtml = "";
-  const homeLabel = isTemplateStep ? "Back to Services" : "Home";
-  const showPolicyLinks = state.step === 0 || isPreviewStep;
-
   return `
     <footer class="customer-footer" aria-label="Kiosk links" style="display: flex; align-items: center;"> 
-      ${state.step > 0
-        ? `<button class="ghost-button new-session-footer-btn" data-action="reset-session" style="margin-right: auto; height: 44px; padding: 0 20px; font-weight: 700; font-family: Georgia, 'Times New Roman', serif;">${homeLabel}</button>`
-        : `<div class="powered-by-brand" style="margin-right: auto;">
-             <span class="powered-by-label">Powered by</span>
-             <img src="./assets/aarya-innovtech-logo.png" alt="Aarya Innovtech" class="powered-by-logo" draggable="false" data-no-visual-search />
-             <div class="powered-by-name">
-               <div class="powered-by-company">Aarya Innovtech Pvt. Ltd.</div>
-             </div>
-           </div>`
-      }
-      
-      ${formsPaginationHtml}
-
-      ${showPolicyLinks ? `
-        <button type="button" class="footer-link" data-policy-page="terms">Terms &amp; Conditions</button>
-        <span aria-hidden="true">|</span>
-        <button type="button" class="footer-link" data-policy-page="privacy">Privacy Policy</button>
-        <span aria-hidden="true">|</span>
-        <button type="button" class="footer-link" data-policy-page="refund">Refund Policy</button>
-        <span aria-hidden="true">|</span>
-        <button type="button" class="footer-link" data-policy-page="contact">Contact Us</button>
-      ` : isTemplateStep ? "" : `
-        <div style="margin-left: auto; display: flex; gap: 16px; align-items: center;">
-          <button class="ghost-button" data-action="prev-step" style="height: 42px; padding: 0 24px; font-weight: 700; font-family: Georgia, 'Times New Roman', serif; background: #edf5ff; border: 1px solid #bfdbfe; color: #0b65f0; border-radius: 8px; font-size: 15px; cursor: pointer;">
-            Back
-          </button>
-          <button class="primary-button" data-action="next-step" style="height: 42px; padding: 0 24px; font-weight: 700; font-family: Georgia, 'Times New Roman', serif; background: #0b65f0; border: none; color: #ffffff; border-radius: 8px; font-size: 15px; box-shadow: 0 4px 12px rgba(11, 101, 240, 0.2); cursor: pointer;">
-            Next
-          </button>
+      <div class="powered-by-brand" style="margin-right: auto;">
+        <span class="powered-by-label">Powered by</span>
+        <img src="./assets/aarya-innovtech-logo.png" alt="Aarya Innovtech" class="powered-by-logo" draggable="false" data-no-visual-search />
+        <div class="powered-by-name">
+          <div class="powered-by-company">Aarya Innovtech Pvt. Ltd.</div>
         </div>
-      `}
+      </div>
+      
+      <button type="button" class="footer-link" data-policy-page="terms">Terms &amp; Conditions</button>
+      <span aria-hidden="true">|</span>
+      <button type="button" class="footer-link" data-policy-page="privacy">Privacy Policy</button>
+      <span aria-hidden="true">|</span>
+      <button type="button" class="footer-link" data-policy-page="refund">Refund Policy</button>
+      <span aria-hidden="true">|</span>
+      <button type="button" class="footer-link" data-policy-page="contact">Contact Us</button>
     </footer>
   `;
 }
@@ -5664,13 +5638,12 @@ function renderCustomer() {
 
   const showPanels = state.step > 0 && Boolean(state.selectedService);
   const railSteps = state.step === 2
-    ? ["Services", isFormTemplateService() ? "Forms" : "Upload", "Preview", "Payment"]
+    ? ["Home", isFormTemplateService() ? "Forms" : "Upload", "Preview", "Payment"]
     : customerSteps;
   return `
     <div class="customer-layout ${showPanels ? "" : "upload-focused"}">
       ${showPanels ? `
         <aside class="rail">
-          <h2 class="panel-title">Customer Flow</h2>
           <div class="stepper">
             ${railSteps.map((step, index) => renderStepItem(step, index)).join("")}
           </div>
@@ -5785,8 +5758,9 @@ function contactIcon(kind) {
 function renderStepItem(step, index) {
   const label = index === 1 && isFormTemplateService() ? "Forms" : step;
   const status = index === state.step ? "active" : index < state.step ? "done" : "";
+  const homeAction = index === 0 ? 'data-action="reset-session" style="cursor: pointer;"' : '';
   return `
-    <div class="step-item ${status}">
+    <div class="step-item ${status}" ${homeAction}>
       <span class="step-number">${index + 1}</span>
       <span>${label}</span>
     </div>
@@ -6069,7 +6043,7 @@ function renderFormTemplateStep() {
                 <strong>Rs. ${cost}</strong>
                 <span>${escapeHtml(classicPrintModeLabel)}</span>
               </div>
-              <button class="classic-template-btn" data-template="${escapeHtml(template.id)}">Print Template</button>
+              <button class="classic-template-btn" data-template="${escapeHtml(template.id)}">Print</button>
             </div>
           </div>
         `;
@@ -6397,6 +6371,14 @@ function renderPreviewControlPanel(details, files) {
       <section class="preview-side-card preview-settings-card">
         <h2>${uiIcon("pricing", 16)} Print Settings</h2>
         <div class="preview-settings-list">
+          ${files.length > 1 ? `
+            <label class="preview-setting-row">
+              <span>Document</span>
+              <select data-preview-file-select aria-label="Select document">
+                ${files.map((item, index) => `<option value="${index}" ${index === state.previewFileIndex ? "selected" : ""}>Document ${index + 1} &middot; ${escapeHtml(item.type || "FILE")}</option>`).join("")}
+              </select>
+            </label>
+          ` : ""}
           ${showPrintType ? `
             <div class="preview-setting-row">
               <span>Print Type</span>
@@ -6435,26 +6417,7 @@ function renderPreviewControlPanel(details, files) {
         </div>
       </section>
 
-      <section class="preview-side-card preview-order-card">
-        <h2>${uiIcon("services", 16)} Order Summary</h2>
-        <div class="preview-order-list">
-          <div><span>Total Pages</span><strong>${details.pages}</strong></div>
-          <div><span>Copies</span><strong>${details.copies}</strong></div>
-          <div><span>Rate</span><strong>Rs. ${rateValue} / page &middot; ${rateLabel}</strong></div>
-        </div>
-        <div class="preview-total">
-          <span>Total Amount</span>
-          <strong>Rs. ${details.total}</strong>
-        </div>
-      </section>
 
-      <div class="preview-reviewed-note">
-        ${uiIcon("system", 15)}
-        <div>
-          <strong>I have reviewed the document and print settings.</strong>
-          <span>Please check the document carefully before proceeding.</span>
-        </div>
-      </div>
 
       <div class="preview-control-actions">
         <button class="ghost-button" data-action="prev-step">
@@ -6620,12 +6583,7 @@ function renderPaymentStep() {
       </div>
       <div class="payment-kiosk-panel">
         <div class="payment-qr-card module-card">
-        <div class="payment-summary">
-          <span>Total payable</span>
-          <strong>${money(details.total)}</strong>
-          <small class="payment-total-detail">${escapeHtml(paymentDetailParts)}</small>
-          <small>${details.pages} page${details.pages === 1 ? "" : "s"} &middot; ${details.copies} cop${details.copies === 1 ? "y" : "ies"}</small>
-        </div>
+
         ${paymentComplete ? `
           <div class="payment-success-state">
             <div class="badge good">${paidLabel}</div>
@@ -9176,7 +9134,7 @@ async function adminLogin() {
 }
 
 async function handleClick(event) {
-  const target = event.target.closest("button, [data-template], [data-service]");
+  const target = event.target.closest("button, [data-template], [data-service], [data-action]");
   if (!target) {
     return;
   }

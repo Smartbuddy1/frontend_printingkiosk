@@ -2154,22 +2154,28 @@ td {
 
 .customer-shell:has(.service-stage) > .main {
   min-height: 0;
-  overflow-x: hidden;
-  overflow-y: auto;
+  overflow: hidden;
 }
 
 .customer-shell:has(.service-stage) .customer-layout,
 .customer-shell:has(.service-stage) .content {
   min-height: 0;
+  height: 100%;
 }
 
 .customer-shell:has(.service-stage) .content {
   padding-bottom: clamp(14px, 2vh, 24px);
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
 }
 
 .customer-shell:has(.service-stage) .custom-home-stage {
   max-width: min(100%, 1180px);
   padding: clamp(14px, 2.4vh, 28px) 0 clamp(18px, 2.6vh, 30px);
+  height: 100%;
+  display: flex;
+  flex-direction: column;
 }
 
 .customer-shell:has(.service-stage) .custom-home-header h1 {
@@ -2186,17 +2192,20 @@ td {
   gap: clamp(18px, 4vw, 42px);
   grid-template-columns: repeat(2, minmax(0, 1fr));
   width: 100%;
+  flex: 1;
+  min-height: 0;
 }
 
 .customer-shell:has(.service-stage) .premium-service-card {
   border-radius: 12px;
   display: grid;
   gap: clamp(10px, 1.5vh, 16px);
-  grid-template-rows: auto minmax(92px, auto) auto auto auto;
+  grid-template-rows: auto minmax(0, 1fr) auto auto auto;
   max-width: none;
   min-height: 0 !important;
-  overflow: visible !important;
+  overflow: hidden !important;
   padding: clamp(18px, 2vw, 28px);
+  height: 100%;
 }
 
 .customer-shell:has(.service-stage) .premium-card-header {
@@ -2204,7 +2213,8 @@ td {
 }
 
 .customer-shell:has(.service-stage) .premium-illustration {
-  height: clamp(108px, 18vh, 156px);
+  height: 100%;
+  min-height: 0;
   margin-bottom: 0;
 }
 
@@ -2291,7 +2301,7 @@ td {
   }
 
   .customer-shell:has(.service-stage) .premium-illustration {
-    height: 96px;
+    min-height: 0;
   }
 
   .customer-shell:has(.service-stage) .premium-features {
@@ -2703,7 +2713,7 @@ td {
 }
 
 .customer-shell:has(.preview-stage) .customer-layout {
-  grid-template-columns: 168px minmax(0, 1fr) !important;
+  grid-template-columns: 220px minmax(0, 1fr) !important;
 }
 
 .customer-shell:has(.preview-stage) .rail {
@@ -2712,7 +2722,7 @@ td {
   color: #ffffff;
   display: flex;
   flex-direction: column;
-  padding: 20px 12px 12px !important;
+  padding: 28px 20px !important;
 }
 
 .customer-shell:has(.preview-stage) .panel-title {
@@ -2871,7 +2881,7 @@ td {
 }
 
 .customer-shell:has(.preview-stage) .preview-workspace {
-  align-items: center;
+  align-items: stretch;
   background: #f5f9fe !important;
   border: 1px solid #edf3fb;
   border-radius: 7px;

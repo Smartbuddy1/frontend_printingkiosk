@@ -193,7 +193,7 @@
 }
 
 .customer-shell .payment-stage {
-  align-items: center;
+  align-items: stretch;
 }
 
 .customer-shell .payment-kiosk-panel {
@@ -243,7 +243,7 @@
 
 .customer-shell .payment-summary strong {
   color: var(--blue);
-  font-size: clamp(30px, 4vw, 40px);
+  font-size: clamp(24px, 4vmin, 40px);
 }
 
 .customer-shell .payment-summary small {
@@ -267,8 +267,8 @@
 .customer-shell .payment-qr-code svg,
 .customer-shell .payment-qr-code img {
   display: block;
-  height: 232px;
-  width: 232px;
+  height: min(24vmin, 232px);
+  width: min(24vmin, 232px);
 }
 
 .customer-shell .payment-loading-state,
@@ -8416,7 +8416,7 @@ tbody tr:hover {
   }
 
   .customer-shell .payment-summary strong {
-    font-size: clamp(26px, 4vw, 34px);
+    font-size: clamp(20px, 4vmin, 34px);
   }
 
   .customer-shell .payment-qr-code {
@@ -8425,8 +8425,8 @@ tbody tr:hover {
 
   .customer-shell .payment-qr-code svg,
   .customer-shell .payment-qr-code img {
-    height: min(24vw, 190px);
-    width: min(24vw, 190px);
+    height: min(22vmin, 180px);
+    width: min(22vmin, 180px);
   }
 
   .customer-shell .payment-tracking-card h2 {
@@ -9541,7 +9541,7 @@ tbody tr:hover {
 
 /* Premium preview page layout */
 .customer-shell:has(.preview-stage) .customer-layout {
-  grid-template-columns: 168px minmax(0, 1fr);
+  grid-template-columns: 220px minmax(0, 1fr);
 }
 
 .customer-shell:has(.preview-stage) .rail {
@@ -9550,7 +9550,7 @@ tbody tr:hover {
   color: #ffffff;
   display: flex;
   flex-direction: column;
-  padding: 18px 14px;
+  padding: 28px 20px;
 }
 
 .customer-shell:has(.preview-stage) .panel-title {
@@ -9695,7 +9695,7 @@ tbody tr:hover {
 }
 
 .customer-shell .preview-stage .preview-workspace {
-  align-items: center;
+  align-items: stretch;
   background: #f0f4f9;
   border-radius: 8px;
   display: grid;
