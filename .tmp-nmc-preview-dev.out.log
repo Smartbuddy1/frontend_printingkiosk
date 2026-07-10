@@ -1,0 +1,48 @@
+Smart Printing Kiosk frontend dev server
+Local:     http://localhost:5173
+Admin:     http://localhost:5173/admin.html
+Super:     http://localhost:5173/super-admin.html
+Kiosk:     http://localhost:5173/index.html?device=mini-pc&kioskId=LOCAL-KIOSK&localAgentUrl=http://localhost:5077
+Backend:   http://localhost:5080
+Smart Printing Kiosk frontend dev server
+Local:     http://localhost:5174
+Admin:     http://localhost:5174/admin.html
+Super:     http://localhost:5174/super-admin.html
+Kiosk:     http://localhost:5174/index.html?device=mini-pc&kioskId=LOCAL-KIOSK&localAgentUrl=http://localhost:5077
+Backend:   http://localhost:5080
+Smart Printing Kiosk frontend dev server
+Local:     http://localhost:5175
+Admin:     http://localhost:5175/admin.html
+Super:     http://localhost:5175/super-admin.html
+Kiosk:     http://localhost:5175/index.html?device=mini-pc&kioskId=LOCAL-KIOSK&localAgentUrl=http://localhost:5077
+Backend:   http://localhost:5080
+Smart Printing Kiosk frontend dev server
+Local:     http://localhost:5176
+Admin:     http://localhost:5176/admin.html
+Super:     http://localhost:5176/super-admin.html
+Kiosk:     http://localhost:5176/index.html?device=mini-pc&kioskId=LOCAL-KIOSK&localAgentUrl=http://localhost:5077
+Backend:   http://localhost:5080
+Smart Printing Kiosk frontend dev server
+Local:     http://localhost:5177
+Admin:     http://localhost:5177/admin.html
+Super:     http://localhost:5177/super-admin.html
+Kiosk:     http://localhost:5177/index.html?device=mini-pc&kioskId=LOCAL-KIOSK&localAgentUrl=http://localhost:5077
+Backend:   http://localhost:5080
+Smart Printing Kiosk frontend dev server
+Local:     http://localhost:5178
+Admin:     http://localhost:5178/admin.html
+Super:     http://localhost:5178/super-admin.html
+Kiosk:     http://localhost:5178/index.html?device=mini-pc&kioskId=LOCAL-KIOSK&localAgentUrl=http://localhost:5077
+Backend:   http://localhost:5080
+Smart Printing Kiosk frontend dev server
+Local:     http://localhost:5179
+Admin:     http://localhost:5179/admin.html
+Super:     http://localhost:5179/super-admin.html
+Kiosk:     http://localhost:5179/index.html?device=mini-pc&kioskId=LOCAL-KIOSK&localAgentUrl=http://localhost:5077
+Backend:   http://localhost:5080
+Smart Printing Kiosk frontend dev server
+Local:     http://localhost:5180
+Admin:     http://localhost:5180/admin.html
+Super:     http://localhost:5180/super-admin.html
+Kiosk:     http://localhost:5180/index.html?device=mini-pc&kioskId=LOCAL-KIOSK&localAgentUrl=http://localhost:5077
+Backend:   http://localhost:5080

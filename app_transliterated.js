@@ -3057,49 +3057,6 @@ function templateDocumentKind(value = "") {
   return "image";
 }
 
-const TEMPLATE_IMAGE_URL_FIXES = Object.freeze({
-  "/assets/forms/nmc/nmc_27_______________________bmw_______________________________________________________________.pdf": "/assets/forms/nmc/nmc_27_______________________bmw____________________________________________________.pdf"
-});
-
-const NMC_FORM_PAGE_COUNTS = Object.freeze({
-  "/assets/forms/nmc/nmc_0_request_for_new_connection.pdf": 4,
-  "/assets/forms/nmc/nmc_5_registration_of_property_on_demand_register.pdf": 2,
-  "/assets/forms/nmc/nmc_9_no_objection_certificate__n_o_c__.pdf": 2,
-  "/assets/forms/nmc/nmc_13_tentative_layout.pdf": 5,
-  "/assets/forms/nmc/nmc_15_building_permission__b_p__.pdf": 10,
-  "/assets/forms/nmc/nmc_16_occupancy_certificate.pdf": 2,
-  "/assets/forms/nmc/nmc_17_no_objection_certificate__n_o_c__.pdf": 3,
-  "/assets/forms/nmc/nmc_20_hospital__nursing_home__maternity_homes_inspection_form.pdf": 2,
-  "/assets/forms/nmc/nmc_21_form_b.pdf": 3,
-  "/assets/forms/nmc/nmc_26_pre_natal_diagnostics_registration.pdf": 2,
-  "/assets/forms/nmc/nmc_29_marriage_registration.pdf": 5,
-  "/assets/forms/nmc/nmc_30_annual_return_form__marathi_.pdf": 7,
-  "/assets/forms/nmc/nmc_31_annual_return_form__english_.pdf": 6,
-  "/assets/forms/nmc/nmc_32_rules_and_regulation_of_various_appointments_to_the_municipal_services_video_resolution_no_75_dated_21_06_1985.pdf": 506,
-  "/assets/forms/nmc/nmc_33_rules__regulations_laws_and_standing_order.pdf": 113,
-  "/assets/forms/nmc/nmc_34____________________________________.pdf": 3,
-  "/assets/forms/nmc/nmc_35_________________________________________.pdf": 3,
-  "/assets/forms/nmc/nmc_38_____________________________________________________________________.pdf": 2
-});
-
-function normalizeTemplateImageUrl(value = "") {
-  const source = String(value || "").trim();
-  return TEMPLATE_IMAGE_URL_FIXES[source] || source;
-}
-
-function templatePageCount(template, fallbackPages = 1) {
-  const imageUrl = normalizeTemplateImageUrl(template?.imageUrl || "");
-  const knownPages = NMC_FORM_PAGE_COUNTS[imageUrl];
-  const sourcePages = Number(template?.pages || fallbackPages || 1);
-  return Math.max(1, Math.min(999, Number(knownPages || sourcePages || 1)));
-}
-
-function templateHasStaticPdfPreview(template) {
-  if (template?.hasStaticPreview === true) return true;
-  if (template?.hasStaticPreview === false) return false;
-  return false;
-}
-
 function uploadedTemplateTitle(file, fallback = "Template Document") {
   const name = String(file?.name || "").replace(/\.[^.]+$/, "").replace(/[_-]+/g, " ").trim();
   return name ? name.replace(/\s+/g, " ").replace(/\b\w/g, (letter) => letter.toUpperCase()) : fallback;
@@ -3287,10 +3244,6 @@ function normalizeTemplates(templates) {
 
   return templates.map((template, index) => {
     const title = String(template?.title || `Template ${index + 1}`).trim();
-    const imageUrl = normalizeTemplateImageUrl(template?.imageUrl || "");
-    const hasStaticPreview = typeof template?.hasStaticPreview === "boolean"
-      ? template.hasStaticPreview
-      : undefined;
     return {
       id: slug(template?.id || title, `template-${index + 1}`),
       title,
@@ -3299,15 +3252,14 @@ function normalizeTemplates(templates) {
       description: String(template?.description || "Blank printable template.").trim(),
       descriptionHi: String(template?.descriptionHi || "").trim(),
       descriptionMr: String(template?.descriptionMr || "").trim(),
-      pages: templatePageCount({ ...template, imageUrl }),
+      pages: Math.max(1, Math.min(20, Number(template?.pages || 1))),
       paperSize: normalizePaperSize(template?.paperSize, "Auto", true),
       orientation: normalizeOrientation(template?.orientation),
       fields: normalizeTemplateFields(template?.fields),
       fieldsHi: normalizeTemplateFields(template?.fieldsHi),
       fieldsMr: normalizeTemplateFields(template?.fieldsMr),
-      imageUrl,
-      documentType: templateDocumentKind(template?.documentType || imageUrl || ""),
-      hasStaticPreview
+      imageUrl: String(template?.imageUrl || "").trim(),
+      documentType: templateDocumentKind(template?.documentType || template?.imageUrl || "")
     };
   }).filter((template) => template.title);
 }
@@ -3318,21 +3270,14 @@ function mergeDefaultTemplateData(templates, defaults = []) {
 
     return {
       ...template,
-      imageUrl: normalizeTemplateImageUrl(template.imageUrl || fallback.imageUrl || ""),
-      pages: templatePageCount(
-        { ...template, imageUrl: template.imageUrl || fallback.imageUrl || "" },
-        fallback.pages || template.pages || 1
-      ),
+      imageUrl: template.imageUrl || fallback.imageUrl || "",
       titleHi: template.titleHi || fallback.titleHi || "",
       titleMr: template.titleMr || fallback.titleMr || "",
       descriptionHi: template.descriptionHi || fallback.descriptionHi || "",
       descriptionMr: template.descriptionMr || fallback.descriptionMr || "",
       fields: template.fields?.length ? template.fields : (fallback.fields || []),
       fieldsHi: template.fieldsHi?.length ? template.fieldsHi : (fallback.fieldsHi || []),
-      fieldsMr: template.fieldsMr?.length ? template.fieldsMr : (fallback.fieldsMr || []),
-      hasStaticPreview: typeof template.hasStaticPreview === "boolean"
-        ? template.hasStaticPreview
-        : fallback.hasStaticPreview
+      fieldsMr: template.fieldsMr?.length ? template.fieldsMr : (fallback.fieldsMr || [])
     };
   });
 }
@@ -3573,9 +3518,9 @@ function filteredFormTemplates(serviceId = state.selectedService) {
 
 function renderTemplateSearchKeyboard() {
   const rows = [
-    ["Q", "W", "E", "R", "T", "Y", "U", "I", "O", "P"],
-    ["A", "S", "D", "F", "G", "H", "J", "K", "L"],
-    ["Z", "X", "C", "V", "B", "N", "M"]
+    ["Q", "क्यू", "क्यू"],
+    ["A", "ा", "ा"],
+    ["Z", "ज़", "ज़"]
   ];
 
   return `
@@ -4263,17 +4208,16 @@ function createTemplateFile(template) {
   }
 
   if (template.imageUrl) {
-    const imageUrl = normalizeTemplateImageUrl(template.imageUrl);
-    const documentType = templateDocumentKind(template.documentType || imageUrl);
-    const staticPreviewUrl = documentType === "pdf" && templateHasStaticPdfPreview({ ...template, imageUrl })
-      ? imageUrl.replace(/\.pdf$/i, ".png")
+    const documentType = templateDocumentKind(template.documentType || template.imageUrl);
+    const staticPreviewUrl = documentType === "pdf" && template.hasStaticPreview !== false
+      ? template.imageUrl.replace(/\.pdf$/i, ".png")
       : "";
     return {
       name: `${template.id}.${documentType === "pdf" ? "pdf" : "png"}`,
       type: documentType === "pdf" ? "PDF" : "PNG",
-      pages: templatePageCount({ ...template, imageUrl }),
+      pages: Math.max(1, Number(template.pages) || 1),
       previewKind: documentType === "pdf" ? "pdf" : "image",
-      previewUrl: imageUrl,
+      previewUrl: template.imageUrl,
       staticPreviewUrl,
       source: localizedTitle,
       templateId: template.id,
@@ -4352,7 +4296,7 @@ async function startMobileUploadSession() {
   render();
 
   try {
-    const response = await fetch(`${BACKEND_URL}/api/mobile-upload/session`);
+    const response = await fetch(`${BACKEND_URL}/api/mobile-upload/session?_t=${Date.now()}`, { cache: "no-store" });
 
     if (!response.ok) {
       throw new Error("Upload service unavailable.");
@@ -4622,7 +4566,11 @@ function serviceConfigSignature(nextServices, nextPricing) {
     services: normalizeServicesConfig(nextServices).map((service) => ({
       id: service.id,
       title: service.title,
+      titleHi: service.titleHi,
+      titleMr: service.titleMr,
       description: service.description,
+      descriptionHi: service.descriptionHi,
+      descriptionMr: service.descriptionMr,
       defaultPages: service.defaultPages,
       mode: service.mode,
       imageUrl: service.imageUrl,
@@ -5851,7 +5799,7 @@ function renderServicesStep() {
             <div class="premium-icon-box bg-blue" aria-hidden="true">${uiIcon("upload", 28)}</div>
             <div class="premium-header-text">
               <h2>Upload & Print</h2>
-              <p>Upload PDF, Word, or image documents.</p>
+              <p>Upload PDF or image documents.</p>
             </div>
           </div>
           
@@ -5866,13 +5814,6 @@ function renderServicesStep() {
               <line x1="110" y1="90" x2="160" y2="90" stroke="#E2E8F0" stroke-width="4" stroke-linecap="round"/>
               <rect x="90" y="45" width="45" height="24" rx="4" fill="#EF4444"/>
               <text x="96" y="62" fill="white" font-family="sans-serif" font-weight="bold" font-size="14">PDF</text>
-              <!-- Word Document -->
-              <rect x="154" y="32" width="46" height="48" rx="4" fill="#FFFFFF" stroke="#BFDBFE" stroke-width="2"/>
-              <path d="M184 32V48H200L184 32Z" fill="#93C5FD"/>
-              <line x1="162" y1="54" x2="192" y2="54" stroke="#DBEAFE" stroke-width="4" stroke-linecap="round"/>
-              <line x1="162" y1="66" x2="184" y2="66" stroke="#DBEAFE" stroke-width="4" stroke-linecap="round"/>
-              <rect x="145" y="48" width="46" height="24" rx="4" fill="#2563EB"/>
-              <text x="153" y="65" fill="white" font-family="sans-serif" font-weight="bold" font-size="13">DOC</text>
               
               <!-- Cloud Upload -->
               <path d="M75 110C86.0457 110 95 101.046 95 90C95 78.9543 86.0457 70 75 70C74.5516 70 74.108 70.0152 73.6705 70.0449C71.3094 61.5422 63.6067 55 54 55C41.8497 55 32 64.8497 32 77C32 77.3093 32.0064 77.6171 32.0191 77.9234C24.1678 78.7516 18 85.3957 18 93.5C18 102.613 25.3873 110 34.5 110H75Z" fill="#2563EB"/>
@@ -5891,7 +5832,7 @@ function renderServicesStep() {
             <div class="premium-feature">
               <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#2563EB" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="17 8 12 3 7 8"></polyline><line x1="12" y1="3" x2="12" y2="15"></line></svg>
               <div>
-                <strong>Upload PDF / Word / Images</strong>
+                <strong>Upload PDF / Images</strong>
                 <span>Easy & secure upload</span>
               </div>
             </div>
@@ -6503,7 +6444,7 @@ function renderPreviewContent() {
     setTimeout(() => {
       import("./assets/vendor/pdfjs/pdf.min.mjs").then((pdfjsLib) => {
         pdfjsLib.GlobalWorkerOptions.workerSrc = "./assets/vendor/pdfjs/pdf.worker.min.mjs";
-        return pdfjsLib.getDocument({ url: file.previewUrl, enableXfa: true }).promise.then((pdf) => pdf.getPage(1));
+        return pdfjsLib.getDocument({ url: file.previewUrl }).promise.then((pdf) => pdf.getPage(1));
       }).then((page) => {
         const canvas = document.getElementById(canvasId);
         if (!canvas) return;
@@ -7355,10 +7296,10 @@ function dashboardMetrics() {
   const queueLength = jobs.filter((job) => /queue|printing|pending/i.test(job.print)).length;
 
   return [
-    ["Today Revenue", money(revenue.gross ?? dashboard.revenueToday ?? 0), "Live backend total", "pricing", "green"],
+    ["Today Revenue", money(revenue.gross ?? dashboard.revenueToday ?? 0), "Live backend total", "टुडे रेवेनुए", money(revenue.gross ?? dashboard.revenueToday ?? ०), "लाइव बैकेंड टोटल", "टुडे रेवेनुए", money(revenue.gross ?? dashboard.revenueToday ?? ०), "लाइव बैकेंड टोटल"],
     ["Today Jobs", String(dashboard.jobsToday ?? jobs.length), `${state.adminData.kiosks.length || 1} kiosk record(s)`, "services", "blue"],
     ["Failed Jobs", String(failed), "Managed access", "alert", failed ? "red" : "green"],
-    ["Pages Printed", String(pages), "Completed and queued jobs", "printer", "cyan"],
+    ["Pages Printed", String(pages), "Completed and queued jobs", "पेजेज प्रिंटेड", String(pages), "कम्प्लेटेड एंड केओइड जॉब्स", "पेजेज प्रिंटेड", String(pages), "कम्प्लेटेड एंड केओइड जॉब्स"],
     ["Pending Refunds", String(pendingRefunds), pendingRefunds ? "Pending super admin review" : "No pending records", "refunds", pendingRefunds ? "red" : "green"],
     ["Queue Length", String(queueLength), "Live job records", "history", queueLength ? "amber" : "blue"]
   ];
@@ -9441,7 +9382,11 @@ async function handleClick(event) {
         state.templateSearchQuery = "";
         state.templateSearchKeyboardActive = false;
       } else {
+        const wasStep = state.step;
         state.step = Math.max(0, state.step - 1);
+        if (wasStep === 2 && state.step === 1 && !isFormTemplateService()) {
+          startMobileUploadSession();
+        }
       }
       render();
       break;

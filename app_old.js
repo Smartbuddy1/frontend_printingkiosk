@@ -3497,15 +3497,7 @@ function renderCustomerTopbar() {
         </div>
       </div>
       <div class="topbar-actions">
-        <label class="customer-language-control">
-          ${uiIcon("language", 19)}
-          <span>Language</span>
-          <select data-customer-language aria-label="Language">
-            <option value="en" ${state.customerLanguage === "en" ? "selected" : ""}>English</option>
-            <option value="hi" ${state.customerLanguage === "hi" ? "selected" : ""}>Hindi</option>
-            <option value="mr" ${state.customerLanguage === "mr" ? "selected" : ""}>Marathi</option>
-          </select>
-        </label>
+        
         <button class="ghost-button" data-action="reset-session">New Session</button>
         <div class="timer-widget" aria-label="Current date and time">
           ${uiIcon("clock", 18)}
@@ -3549,15 +3541,7 @@ function renderAdminTopbar() {
         </div>
       </div>
       <div class="topbar-actions">
-        <label class="admin-language-control">
-          ${uiIcon("language", 19)}
-          <span>Language</span>
-          <select data-admin-language aria-label="Language">
-            <option value="en" ${state.adminLanguage === "en" ? "selected" : ""}>English</option>
-            <option value="hi" ${state.adminLanguage === "hi" ? "selected" : ""}>Hindi</option>
-            <option value="mr" ${state.adminLanguage === "mr" ? "selected" : ""}>Marathi</option>
-          </select>
-        </label>
+        
         ${state.adminAuthed ? `
           <button class="notification-button" data-admin-page="alerts" aria-label="Open alerts">
             ${uiIcon("bell", 22)}
