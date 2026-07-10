@@ -160,19 +160,17 @@ const ADMIN_TRANSLATION_ROWS = [
   ["Back to Services", "à¤¸à¥‡à¤µà¤¾à¤“à¤‚ à¤ªà¤° à¤µà¤¾à¤ªà¤¸ à¤œà¤¾à¤à¤", "à¤¸à¥‡à¤µà¤¾à¤‚à¤•à¤¡à¥‡ à¤ªà¤°à¤¤ à¤œà¤¾"],
   ["Save Service", "à¤¸à¥‡à¤µà¤¾ à¤¸à¤¹à¥‡à¤œà¥‡à¤‚", "à¤¸à¥‡à¤µà¤¾ à¤œà¤¤à¤¨ à¤•à¤°à¤¾"],
   ["New Service", "à¤¨à¤ˆ à¤¸à¥‡à¤µà¤¾", "à¤¨à¤µà¥€à¤¨ à¤¸à¥‡à¤µà¤¾"],
-  ["Yes", "à¤¹à¤¾à¤", "à¤¹à¥‹à¤¯"],
+  ["Yes", "à¤¹à¤¾à¤ ", "à¤¹à¥‹à¤¯"],
   ["No", "à¤¨à¤¹à¥€à¤‚", "à¤¨à¤¾à¤¹à¥€"],
-  ["Mode", "à¤®à¥‹à¤¡", "à¤ªà¥à¤°à¤•à¤¾à¤°"],
-  ["QR upload / image upload", "QR à¤…à¤ªà¤²à¥‹à¤¡ / à¤‡à¤®à¥‡à¤œ à¤…à¤ªà¤²à¥‹à¤¡", "QR à¤…à¤ªà¤²à¥‹à¤¡ / à¤ªà¥à¤°à¤¤à¤¿à¤®à¤¾ à¤…à¤ªà¤²à¥‹à¤¡"],
-  ["Form templates", "à¤«à¤¼à¥‰à¤°à¥à¤® à¤Ÿà¥‡à¤®à¥à¤ªà¤²à¥‡à¤Ÿ", "à¤«à¥‰à¤°à¥à¤® à¤¸à¤¾à¤šà¥‡"],
-  ["Icon", "à¤†à¤‡à¤•à¤¨", "à¤šà¤¿à¤¨à¥à¤¹"],
+  ["Mode", "à¤®à¥‹à¤¡", "à¤ªà¥ à¤°à¤•à¤¾à¤°"],
+  ["QR upload / image upload", "QR à¤…à¤ªà¤²à¥‹à¤¡ / à¤‡à¤®à¥‡à¤œ à¤…à¤ªà¤²à¥‹à¤¡", "QR à¤…à¤ªà¤²à¥‹à¤¡ / à¤ªà¥ à¤°à¤¤à¤¿à¤®à¤¾ à¤…à¤ªà¤²à¥‹à¤¡"],
+  ["Form templates", "à¤«à¤¼à¥‰à¤°à¥ à¤® à¤Ÿà¥‡à¤®à¥ à¤ªà¤²à¥‡à¤Ÿ", "à¤«à¥‰à¤°à¥ à¤® à¤¸à¤¾à¤šà¥‡"],
+  ["Icon", "à¤†à¤‡à¤•à¤¨", "à¤šà¤¿à¤¨à¥ à¤¹"],
   ["Service Name", "à¤¸à¥‡à¤µà¤¾ à¤•à¤¾ à¤¨à¤¾à¤®", "à¤¸à¥‡à¤µà¥‡à¤šà¥‡ à¤¨à¤¾à¤µ"],
-  ["Description", "à¤µà¤¿à¤µà¤°à¤£", "à¤µà¤°à¥à¤£à¤¨"],
-  ["B/W Rate", "à¤¶à¥à¤¯à¤¾à¤®-à¤¶à¥à¤µà¥‡à¤¤ à¤¦à¤°", "à¤•à¥ƒà¤·à¥à¤£à¤§à¤µà¤² à¤¦à¤°"],
+  ["Description", "à¤µà¤¿à¤µà¤°à¤£", "à¤µà¤°à¥ à¤£à¤¨"],
+  ["B/W Rate", "à¤¶à¥ à¤¯à¤¾à¤®-à¤¶à¥ à¤µà¥‡à¤¤ à¤¦à¤°", "à¤•à¥ƒà¤·à¥ à¤£à¤§à¤µà¤² à¤¦à¤°"],
   ["Color Rate", "à¤°à¤‚à¤—à¥€à¤¨ à¤¦à¤°", "à¤°à¤‚à¤—à¥€à¤¤ à¤¦à¤°"],
   ["Upload Service", "à¤…à¤ªà¤²à¥‹à¤¡ à¤¸à¥‡à¤µà¤¾", "à¤…à¤ªà¤²à¥‹à¤¡ à¤¸à¥‡à¤µà¤¾"],
-  ["This service will show QR upload to customers. Change mode to Form templates if it should contain forms.", "à¤¯à¤¹ à¤¸à¥‡à¤µà¤¾ à¤—à¥à¤°à¤¾à¤¹à¤•à¥‹à¤‚ à¤•à¥‹ QR à¤…à¤ªà¤²à¥‹à¤¡ à¤¦à¤¿à¤–à¤¾à¤à¤—à¥€à¥¤ à¤¯à¤¦à¤¿ à¤‡à¤¸à¤®à¥‡à¤‚ à¤«à¤¼à¥‰à¤°à¥à¤® à¤¹à¥‹à¤¨à¥‡ à¤šà¤¾à¤¹à¤¿à¤ à¤¤à¥‹ à¤®à¥‹à¤¡ à¤•à¥‹ à¤«à¤¼à¥‰à¤°à¥à¤® à¤Ÿà¥‡à¤®à¥à¤ªà¤²à¥‡à¤Ÿ à¤®à¥‡à¤‚ à¤¬à¤¦à¤²à¥‡à¤‚à¥¤", "à¤¹à¥€ à¤¸à¥‡à¤µà¤¾ à¤—à¥à¤°à¤¾à¤¹à¤•à¤¾à¤‚à¤¨à¤¾ QR à¤…à¤ªà¤²à¥‹à¤¡ à¤¦à¤¾à¤–à¤µà¥‡à¤². à¤¯à¤¾à¤¤ à¤«à¥‰à¤°à¥à¤® à¤…à¤¸à¤¾à¤µà¥‡à¤¤ à¤¤à¤° à¤ªà¥à¤°à¤•à¤¾à¤° à¤«à¥‰à¤°à¥à¤® à¤¸à¤¾à¤šà¥à¤¯à¤¾à¤‚à¤®à¤§à¥à¤¯à¥‡ à¤¬à¤¦à¤²à¤¾."],
-  ["Cancel", "à¤°à¤¦à¥à¤¦ à¤•à¤°à¥‡à¤‚", "à¤°à¤¦à¥à¤¦ à¤•à¤°à¤¾"],
   ["Forms under", "à¤•à¥‡ à¤…à¤‚à¤¤à¤°à¥à¤—à¤¤ à¤«à¤¼à¥‰à¤°à¥à¤®", "à¤…à¤‚à¤¤à¤°à¥à¤—à¤¤ à¤«à¥‰à¤°à¥à¤®"],
   ["Add or update the forms that belong to this service.", "à¤‡à¤¸ à¤¸à¥‡à¤µà¤¾ à¤¸à¥‡ à¤¸à¤‚à¤¬à¤‚à¤§à¤¿à¤¤ à¤«à¤¼à¥‰à¤°à¥à¤® à¤œà¥‹à¤¡à¤¼à¥‡à¤‚ à¤¯à¤¾ à¤…à¤ªà¤¡à¥‡à¤Ÿ à¤•à¤°à¥‡à¤‚à¥¤", "à¤¯à¤¾ à¤¸à¥‡à¤µà¥‡à¤¶à¥€ à¤¸à¤‚à¤¬à¤‚à¤§à¤¿à¤¤ à¤«à¥‰à¤°à¥à¤® à¤œà¥‹à¤¡à¤¾ à¤•à¤¿à¤‚à¤µà¤¾ à¤…à¤¦à¥à¤¯à¤¤à¤¨à¤¿à¤¤ à¤•à¤°à¤¾."],
   ["Add Form", "à¤«à¤¼à¥‰à¤°à¥à¤® à¤œà¥‹à¤¡à¤¼à¥‡à¤‚", "à¤«à¥‰à¤°à¥à¤® à¤œà¥‹à¤¡à¤¾"],
@@ -363,37 +361,6 @@ const CUSTOMER_TRANSLATIONS = {
   mr: Object.fromEntries(CUSTOMER_TRANSLATION_ROWS.map(([english, , marathi]) => [english, marathi]))
 };
 
-const CUSTOMER_TRANSLATION_OVERRIDES = {
-  hi: {
-    "Forms": "फॉर्म",
-    "Document Preview": "दस्तावेज़ पूर्वावलोकन",
-    "Ready to Print": "प्रिंट के लिए तैयार",
-    "Paper": "पेपर",
-    "Rate": "दर",
-    "Page Range": "पेज रेंज",
-    "Terms & Conditions": "नियम और शर्तें",
-    "Privacy Policy": "गोपनीयता नीति",
-    "Refund Policy": "रिफंड नीति",
-    "Contact Us": "संपर्क करें",
-    "A4 · portrait": "A4 · पोर्ट्रेट",
-    "Rs. 3 / page · B/W": "Rs. 3 / पेज · B/W"
-  },
-  mr: {
-    "Forms": "फॉर्म",
-    "Document Preview": "दस्तऐवज पूर्वावलोकन",
-    "Ready to Print": "प्रिंटसाठी तयार",
-    "Paper": "पेपर",
-    "Rate": "दर",
-    "Page Range": "पेज रेंज",
-    "Terms & Conditions": "नियम आणि अटी",
-    "Privacy Policy": "गोपनीयता धोरण",
-    "Refund Policy": "परतावा धोरण",
-    "Contact Us": "संपर्क करा",
-    "A4 · portrait": "A4 · पोर्ट्रेट",
-    "Rs. 3 / page · B/W": "Rs. 3 / पेज · B/W"
-  }
-};
-
 function readStoredAdminLanguage() {
   try {
     const language = window.localStorage.getItem(ADMIN_LANGUAGE_KEY) || "en";
@@ -495,8 +462,8 @@ const demoKioskServices = [
     id: "demo-documents",
     icon: "DC",
     title: "Upload & Print",
-    titleHi: "अपलोड और प्रिंट",
-    titleMr: "अपलोड आणि प्रिंट",
+    titleHi: "à¤¦à¤¸à¥à¤¤à¤¾à¤µà¥‡à¤œà¤¼",
+    titleMr: "à¤¦à¤¸à¥à¤¤à¤à¤µà¤œ",
     description: "Upload PDF or image documents.",
     descriptionHi: "PDF à¤¯à¤¾ à¤šà¤¿à¤¤à¥à¤° à¤¦à¤¸à¥à¤¤à¤¾à¤µà¥‡à¤œà¤¼ à¤…à¤ªà¤²à¥‹à¤¡ à¤•à¤°à¥‡à¤‚à¥¤",
     descriptionMr: "PDF à¤•à¤¿à¤‚à¤µà¤¾ à¤ªà¥à¤°à¤¤à¤¿à¤®à¤¾ à¤¦à¤¸à¥à¤¤à¤à¤µà¤œ à¤…à¤ªà¤²à¥‹à¤¡ à¤•à¤°à¤¾.",
@@ -511,8 +478,8 @@ const demoKioskServices = [
     id: "demo-existing-documents",
     icon: "EX",
     title: "Government Forms",
-    titleHi: "सरकारी फॉर्म",
-    titleMr: "सरकारी फॉर्म",
+    titleHi: "à¤®à¥Œà¤œà¥‚à¤¦à¤¾ à¤¦à¤¸à¥à¤¤à¤¾à¤µà¥‡à¤œà¤¼",
+    titleMr: "à¤µà¤¿à¤¦à¥à¤¯à¤®à¤¾à¤¨ à¤¦à¤¸à¥à¤¤à¤à¤µà¤œ",
     description: "Print ready-made forms and documents.",
     descriptionHi: "à¤¤à¥ˆà¤¯à¤¾à¤° à¤«à¤¼à¥‰à¤°à¥à¤® à¤”à¤° à¤¦à¤¸à¥à¤¤à¤¾à¤µà¥‡à¤œà¤¼ à¤ªà¥à¤°à¤¿à¤‚à¤Ÿ à¤•à¤°à¥‡à¤‚à¥¤",
     descriptionMr: "à¤¤à¤¯à¤¾à¤° à¤«à¥‰à¤°à¥à¤® à¤†à¤£à¤¿ à¤¦à¤¸à¥à¤¤à¤à¤µà¤œ à¤ªà¥à¤°à¤¿à¤‚à¤Ÿ à¤•à¤°à¤¾.",
@@ -522,7 +489,7 @@ const demoKioskServices = [
     projectIds: [],
     kioskIds: [],
     pricing: { bw: 3, color: 12 },
-            templates: [
+    templates: [
       {
         id: "demo-property-tax",
         title: "Property Tax Assessment",
@@ -582,7 +549,649 @@ const demoKioskServices = [
         fields: [],
         imageUrl: "/assets/forms/birth_certificate.pdf",
         documentType: "pdf"
+      },
+
+      {
+        id: "nmc-form-0",
+        title: "Request For New Connection",
+        titleHi: "Request For New Connection",
+        titleMr: "Request For New Connection",
+        description: "Category: Water Supply Department",
+        descriptionHi: "Category: Water Supply Department",
+        descriptionMr: "Category: Water Supply Department",
+        pages: 1,
+        paperSize: "A4",
+        orientation: "portrait",
+        fields: [],
+        imageUrl: "/assets/forms/nmc/nmc_0_request_for_new_connection.pdf",
+        documentType: "pdf",
+        hasStaticPreview: false
+      },
+      {
+        id: "nmc-form-1",
+        title: "Request For Change Of Water Rate",
+        titleHi: "Request For Change Of Water Rate",
+        titleMr: "Request For Change Of Water Rate",
+        description: "Category: Water Supply Department",
+        descriptionHi: "Category: Water Supply Department",
+        descriptionMr: "Category: Water Supply Department",
+        pages: 1,
+        paperSize: "A4",
+        orientation: "portrait",
+        fields: [],
+        imageUrl: "/assets/forms/nmc/nmc_1_request_for_change_of_water_rate.pdf",
+        documentType: "pdf",
+        hasStaticPreview: false
+      },
+      {
+        id: "nmc-form-2",
+        title: "Request For Change In Name",
+        titleHi: "Request For Change In Name",
+        titleMr: "Request For Change In Name",
+        description: "Category: Water Supply Department",
+        descriptionHi: "Category: Water Supply Department",
+        descriptionMr: "Category: Water Supply Department",
+        pages: 1,
+        paperSize: "A4",
+        orientation: "portrait",
+        fields: [],
+        imageUrl: "/assets/forms/nmc/nmc_2_request_for_change_in_name.pdf",
+        documentType: "pdf",
+        hasStaticPreview: false
+      },
+      {
+        id: "nmc-form-3",
+        title: "Request For Bill At Residential Rate",
+        titleHi: "Request For Bill At Residential Rate",
+        titleMr: "Request For Bill At Residential Rate",
+        description: "Category: Water Supply Department",
+        descriptionHi: "Category: Water Supply Department",
+        descriptionMr: "Category: Water Supply Department",
+        pages: 1,
+        paperSize: "A4",
+        orientation: "portrait",
+        fields: [],
+        imageUrl: "/assets/forms/nmc/nmc_3_request_for_bill_at_residential_rate.pdf",
+        documentType: "pdf",
+        hasStaticPreview: false
+      },
+      {
+        id: "nmc-form-4",
+        title: "Request For Change In Location Of Connection",
+        titleHi: "Request For Change In Location Of Connection",
+        titleMr: "Request For Change In Location Of Connection",
+        description: "Category: Water Supply Department",
+        descriptionHi: "Category: Water Supply Department",
+        descriptionMr: "Category: Water Supply Department",
+        pages: 1,
+        paperSize: "A4",
+        orientation: "portrait",
+        fields: [],
+        imageUrl: "/assets/forms/nmc/nmc_4_request_for_change_in_location_of_connection.pdf",
+        documentType: "pdf",
+        hasStaticPreview: false
+      },
+      {
+        id: "nmc-form-5",
+        title: "Registration Of Property On Demand Register",
+        titleHi: "Registration Of Property On Demand Register",
+        titleMr: "Registration Of Property On Demand Register",
+        description: "Category: Tax Department",
+        descriptionHi: "Category: Tax Department",
+        descriptionMr: "Category: Tax Department",
+        pages: 1,
+        paperSize: "A4",
+        orientation: "portrait",
+        fields: [],
+        imageUrl: "/assets/forms/nmc/nmc_5_registration_of_property_on_demand_register.pdf",
+        documentType: "pdf",
+        hasStaticPreview: false
+      },
+      {
+        id: "nmc-form-6",
+        title: "Reduction Of Property Tax",
+        titleHi: "Reduction Of Property Tax",
+        titleMr: "Reduction Of Property Tax",
+        description: "Category: Tax Department",
+        descriptionHi: "Category: Tax Department",
+        descriptionMr: "Category: Tax Department",
+        pages: 1,
+        paperSize: "A4",
+        orientation: "portrait",
+        fields: [],
+        imageUrl: "/assets/forms/nmc/nmc_6_reduction_of_property_tax.pdf",
+        documentType: "pdf",
+        hasStaticPreview: false
+      },
+      {
+        id: "nmc-form-7",
+        title: "Tax On Property",
+        titleHi: "Tax On Property",
+        titleMr: "Tax On Property",
+        description: "Category: Tax Department",
+        descriptionHi: "Category: Tax Department",
+        descriptionMr: "Category: Tax Department",
+        pages: 1,
+        paperSize: "A4",
+        orientation: "portrait",
+        fields: [],
+        imageUrl: "/assets/forms/nmc/nmc_7_tax_on_property.pdf",
+        documentType: "pdf",
+        hasStaticPreview: false
+      },
+      {
+        id: "nmc-form-8",
+        title: "No Objection Certifi hucate (N.O.C.)",
+        titleHi: "No Objection Certifi hucate (N.O.C.)",
+        titleMr: "No Objection Certifi hucate (N.O.C.)",
+        description: "Category: Electrical Department",
+        descriptionHi: "Category: Electrical Department",
+        descriptionMr: "Category: Electrical Department",
+        pages: 1,
+        paperSize: "A4",
+        orientation: "portrait",
+        fields: [],
+        imageUrl: "/assets/forms/nmc/nmc_8_no_objection_certifi_hucate__n_o_c__.pdf",
+        documentType: "pdf",
+        hasStaticPreview: false
+      },
+      {
+        id: "nmc-form-9",
+        title: "No Objection Certificate (N.O.C.)",
+        titleHi: "No Objection Certificate (N.O.C.)",
+        titleMr: "No Objection Certificate (N.O.C.)",
+        description: "Category: Business & Shop Registration",
+        descriptionHi: "Category: Business & Shop Registration",
+        descriptionMr: "Category: Business & Shop Registration",
+        pages: 1,
+        paperSize: "A4",
+        orientation: "portrait",
+        fields: [],
+        imageUrl: "/assets/forms/nmc/nmc_9_no_objection_certificate__n_o_c__.pdf",
+        documentType: "pdf",
+        hasStaticPreview: false
+      },
+      {
+        id: "nmc-form-10",
+        title: "Architect Registration Application",
+        titleHi: "Architect Registration Application",
+        titleMr: "Architect Registration Application",
+        description: "Category: Town Planning Department",
+        descriptionHi: "Category: Town Planning Department",
+        descriptionMr: "Category: Town Planning Department",
+        pages: 1,
+        paperSize: "A4",
+        orientation: "portrait",
+        fields: [],
+        imageUrl: "/assets/forms/nmc/nmc_10_architect_registration_application.pdf",
+        documentType: "pdf",
+        hasStaticPreview: false
+      },
+      {
+        id: "nmc-form-11",
+        title: "Structural Engineer / Engineer Supervisor New License Application",
+        titleHi: "Structural Engineer / Engineer Supervisor New License Application",
+        titleMr: "Structural Engineer / Engineer Supervisor New License Application",
+        description: "Category: Town Planning Department",
+        descriptionHi: "Category: Town Planning Department",
+        descriptionMr: "Category: Town Planning Department",
+        pages: 1,
+        paperSize: "A4",
+        orientation: "portrait",
+        fields: [],
+        imageUrl: "/assets/forms/nmc/nmc_11_structural_engineer___engineer_supervisor_new_license_application.pdf",
+        documentType: "pdf",
+        hasStaticPreview: false
+      },
+      {
+        id: "nmc-form-12",
+        title: "Structural Engineer / Engineer Supervisor License Renewal Application",
+        titleHi: "Structural Engineer / Engineer Supervisor License Renewal Application",
+        titleMr: "Structural Engineer / Engineer Supervisor License Renewal Application",
+        description: "Category: Town Planning Department",
+        descriptionHi: "Category: Town Planning Department",
+        descriptionMr: "Category: Town Planning Department",
+        pages: 1,
+        paperSize: "A4",
+        orientation: "portrait",
+        fields: [],
+        imageUrl: "/assets/forms/nmc/nmc_12_structural_engineer___engineer_supervisor_license_renewal_application.pdf",
+        documentType: "pdf",
+        hasStaticPreview: false
+      },
+      {
+        id: "nmc-form-13",
+        title: "Tentative Layout",
+        titleHi: "Tentative Layout",
+        titleMr: "Tentative Layout",
+        description: "Category: Town Planning Department",
+        descriptionHi: "Category: Town Planning Department",
+        descriptionMr: "Category: Town Planning Department",
+        pages: 1,
+        paperSize: "A4",
+        orientation: "portrait",
+        fields: [],
+        imageUrl: "/assets/forms/nmc/nmc_13_tentative_layout.pdf",
+        documentType: "pdf",
+        hasStaticPreview: false
+      },
+      {
+        id: "nmc-form-14",
+        title: "Final Layout",
+        titleHi: "Final Layout",
+        titleMr: "Final Layout",
+        description: "Category: Town Planning Department",
+        descriptionHi: "Category: Town Planning Department",
+        descriptionMr: "Category: Town Planning Department",
+        pages: 1,
+        paperSize: "A4",
+        orientation: "portrait",
+        fields: [],
+        imageUrl: "/assets/forms/nmc/nmc_14_final_layout.pdf",
+        documentType: "pdf",
+        hasStaticPreview: false
+      },
+      {
+        id: "nmc-form-15",
+        title: "Building Permission (B.P.)",
+        titleHi: "Building Permission (B.P.)",
+        titleMr: "Building Permission (B.P.)",
+        description: "Category: Town Planning Department",
+        descriptionHi: "Category: Town Planning Department",
+        descriptionMr: "Category: Town Planning Department",
+        pages: 1,
+        paperSize: "A4",
+        orientation: "portrait",
+        fields: [],
+        imageUrl: "/assets/forms/nmc/nmc_15_building_permission__b_p__.pdf",
+        documentType: "pdf",
+        hasStaticPreview: false
+      },
+      {
+        id: "nmc-form-16",
+        title: "Occupancy Certificate",
+        titleHi: "Occupancy Certificate",
+        titleMr: "Occupancy Certificate",
+        description: "Category: Town Planning Department",
+        descriptionHi: "Category: Town Planning Department",
+        descriptionMr: "Category: Town Planning Department",
+        pages: 1,
+        paperSize: "A4",
+        orientation: "portrait",
+        fields: [],
+        imageUrl: "/assets/forms/nmc/nmc_16_occupancy_certificate.pdf",
+        documentType: "pdf",
+        hasStaticPreview: false
+      },
+      {
+        id: "nmc-form-17",
+        title: "No Objection Certificate (N.O.C.)",
+        titleHi: "No Objection Certificate (N.O.C.)",
+        titleMr: "No Objection Certificate (N.O.C.)",
+        description: "Category: Town Planning Department",
+        descriptionHi: "Category: Town Planning Department",
+        descriptionMr: "Category: Town Planning Department",
+        pages: 1,
+        paperSize: "A4",
+        orientation: "portrait",
+        fields: [],
+        imageUrl: "/assets/forms/nmc/nmc_17_no_objection_certificate__n_o_c__.pdf",
+        documentType: "pdf",
+        hasStaticPreview: false
+      },
+      {
+        id: "nmc-form-18",
+        title: "Birth Certificate",
+        titleHi: "Birth Certificate",
+        titleMr: "Birth Certificate",
+        description: "Category: Birth & Death Certificate",
+        descriptionHi: "Category: Birth & Death Certificate",
+        descriptionMr: "Category: Birth & Death Certificate",
+        pages: 1,
+        paperSize: "A4",
+        orientation: "portrait",
+        fields: [],
+        imageUrl: "/assets/forms/nmc/nmc_18_birth_certificate.pdf",
+        documentType: "pdf",
+        hasStaticPreview: false
+      },
+      {
+        id: "nmc-form-19",
+        title: "Death Certificate",
+        titleHi: "Death Certificate",
+        titleMr: "Death Certificate",
+        description: "Category: Birth & Death Certificate",
+        descriptionHi: "Category: Birth & Death Certificate",
+        descriptionMr: "Category: Birth & Death Certificate",
+        pages: 1,
+        paperSize: "A4",
+        orientation: "portrait",
+        fields: [],
+        imageUrl: "/assets/forms/nmc/nmc_19_death_certificate.pdf",
+        documentType: "pdf",
+        hasStaticPreview: false
+      },
+      {
+        id: "nmc-form-20",
+        title: "Hospital/ Nursing Home/ Maternity Homes Inspection Form",
+        titleHi: "Hospital/ Nursing Home/ Maternity Homes Inspection Form",
+        titleMr: "Hospital/ Nursing Home/ Maternity Homes Inspection Form",
+        description: "Category: Medical Department",
+        descriptionHi: "Category: Medical Department",
+        descriptionMr: "Category: Medical Department",
+        pages: 1,
+        paperSize: "A4",
+        orientation: "portrait",
+        fields: [],
+        imageUrl: "/assets/forms/nmc/nmc_20_hospital__nursing_home__maternity_homes_inspection_form.pdf",
+        documentType: "pdf",
+        hasStaticPreview: false
+      },
+      {
+        id: "nmc-form-21",
+        title: "Form B",
+        titleHi: "Form B",
+        titleMr: "Form B",
+        description: "Category: Medical Department",
+        descriptionHi: "Category: Medical Department",
+        descriptionMr: "Category: Medical Department",
+        pages: 1,
+        paperSize: "A4",
+        orientation: "portrait",
+        fields: [],
+        imageUrl: "/assets/forms/nmc/nmc_21_form_b.pdf",
+        documentType: "pdf",
+        hasStaticPreview: false
+      },
+      {
+        id: "nmc-form-22",
+        title: "Doctor Registration Form",
+        titleHi: "Doctor Registration Form",
+        titleMr: "Doctor Registration Form",
+        description: "Category: Medical Department",
+        descriptionHi: "Category: Medical Department",
+        descriptionMr: "Category: Medical Department",
+        pages: 1,
+        paperSize: "A4",
+        orientation: "portrait",
+        fields: [],
+        imageUrl: "/assets/forms/nmc/nmc_22_doctor_registration_form.pdf",
+        documentType: "pdf",
+        hasStaticPreview: false
+      },
+      {
+        id: "nmc-form-23",
+        title: "Sisters Registration Form",
+        titleHi: "Sisters Registration Form",
+        titleMr: "Sisters Registration Form",
+        description: "Category: Medical Department",
+        descriptionHi: "Category: Medical Department",
+        descriptionMr: "Category: Medical Department",
+        pages: 1,
+        paperSize: "A4",
+        orientation: "portrait",
+        fields: [],
+        imageUrl: "/assets/forms/nmc/nmc_23_sisters_registration_form.pdf",
+        documentType: "pdf",
+        hasStaticPreview: false
+      },
+      {
+        id: "nmc-form-24",
+        title: "Hospital Owner Registration",
+        titleHi: "Hospital Owner Registration",
+        titleMr: "Hospital Owner Registration",
+        description: "Category: Medical Department",
+        descriptionHi: "Category: Medical Department",
+        descriptionMr: "Category: Medical Department",
+        pages: 1,
+        paperSize: "A4",
+        orientation: "portrait",
+        fields: [],
+        imageUrl: "/assets/forms/nmc/nmc_24_hospital_owner_registration.pdf",
+        documentType: "pdf",
+        hasStaticPreview: false
+      },
+      {
+        id: "nmc-form-25",
+        title: "Hospital Registration or Renewal Document List",
+        titleHi: "Hospital Registration or Renewal Document List",
+        titleMr: "Hospital Registration or Renewal Document List",
+        description: "Category: Medical Department",
+        descriptionHi: "Category: Medical Department",
+        descriptionMr: "Category: Medical Department",
+        pages: 1,
+        paperSize: "A4",
+        orientation: "portrait",
+        fields: [],
+        imageUrl: "/assets/forms/nmc/nmc_25_hospital_registration_or_renewal_document_list.pdf",
+        documentType: "pdf",
+        hasStaticPreview: false
+      },
+      {
+        id: "nmc-form-26",
+        title: "Pre Natal Diagnostics Registration",
+        titleHi: "Pre Natal Diagnostics Registration",
+        titleMr: "Pre Natal Diagnostics Registration",
+        description: "Category: Medical Department",
+        descriptionHi: "Category: Medical Department",
+        descriptionMr: "Category: Medical Department",
+        pages: 1,
+        paperSize: "A4",
+        orientation: "portrait",
+        fields: [],
+        imageUrl: "/assets/forms/nmc/nmc_26_pre_natal_diagnostics_registration.pdf",
+        documentType: "pdf",
+        hasStaticPreview: false
+      },
+      {
+        id: "nmc-form-27",
+        title: "जैविक कचरा विल्हेवाट (BMW) प्रकल्प सभासदत्व अर्जासाठी आवश्यक असणरे कागदपत्रे.",
+        titleHi: "जैविक कचरा विल्हेवाट (BMW) प्रकल्प सभासदत्व अर्जासाठी आवश्यक असणरे कागदपत्रे.",
+        titleMr: "जैविक कचरा विल्हेवाट (BMW) प्रकल्प सभासदत्व अर्जासाठी आवश्यक असणरे कागदपत्रे.",
+        description: "Category: Medical Department",
+        descriptionHi: "Category: Medical Department",
+        descriptionMr: "Category: Medical Department",
+        pages: 1,
+        paperSize: "A4",
+        orientation: "portrait",
+        fields: [],
+        imageUrl: "/assets/forms/nmc/nmc_27_______________________bmw____________________________________________________.pdf",
+        documentType: "pdf",
+        hasStaticPreview: false
+      },
+      {
+        id: "nmc-form-28",
+        title: "Lokshahi Din Application Form",
+        titleHi: "Lokshahi Din Application Form",
+        titleMr: "Lokshahi Din Application Form",
+        description: "Category: Lokshahi Din Application Form",
+        descriptionHi: "Category: Lokshahi Din Application Form",
+        descriptionMr: "Category: Lokshahi Din Application Form",
+        pages: 1,
+        paperSize: "A4",
+        orientation: "portrait",
+        fields: [],
+        imageUrl: "/assets/forms/nmc/nmc_28_lokshahi_din_application_form.pdf",
+        documentType: "pdf",
+        hasStaticPreview: false
+      },
+      {
+        id: "nmc-form-29",
+        title: "Marriage Registration",
+        titleHi: "Marriage Registration",
+        titleMr: "Marriage Registration",
+        description: "Category: Health Department",
+        descriptionHi: "Category: Health Department",
+        descriptionMr: "Category: Health Department",
+        pages: 1,
+        paperSize: "A4",
+        orientation: "portrait",
+        fields: [],
+        imageUrl: "/assets/forms/nmc/nmc_29_marriage_registration.pdf",
+        documentType: "pdf",
+        hasStaticPreview: false
+      },
+      {
+        id: "nmc-form-30",
+        title: "Annual Return Form (Marathi)",
+        titleHi: "Annual Return Form (Marathi)",
+        titleMr: "Annual Return Form (Marathi)",
+        description: "Category: Local Body Tax Department (LBT)",
+        descriptionHi: "Category: Local Body Tax Department (LBT)",
+        descriptionMr: "Category: Local Body Tax Department (LBT)",
+        pages: 1,
+        paperSize: "A4",
+        orientation: "portrait",
+        fields: [],
+        imageUrl: "/assets/forms/nmc/nmc_30_annual_return_form__marathi_.pdf",
+        documentType: "pdf",
+        hasStaticPreview: false
+      },
+      {
+        id: "nmc-form-31",
+        title: "Annual Return Form (English)",
+        titleHi: "Annual Return Form (English)",
+        titleMr: "Annual Return Form (English)",
+        description: "Category: Local Body Tax Department (LBT)",
+        descriptionHi: "Category: Local Body Tax Department (LBT)",
+        descriptionMr: "Category: Local Body Tax Department (LBT)",
+        pages: 1,
+        paperSize: "A4",
+        orientation: "portrait",
+        fields: [],
+        imageUrl: "/assets/forms/nmc/nmc_31_annual_return_form__english_.pdf",
+        documentType: "pdf",
+        hasStaticPreview: false
+      },
+      {
+        id: "nmc-form-32",
+        title: "Rules and Regulation of Various Appointments To The Municipal Services Video Resolution No.75 Dated 21.06.1985",
+        titleHi: "Rules and Regulation of Various Appointments To The Municipal Services Video Resolution No.75 Dated 21.06.1985",
+        titleMr: "Rules and Regulation of Various Appointments To The Municipal Services Video Resolution No.75 Dated 21.06.1985",
+        description: "Category: Establishment Department",
+        descriptionHi: "Category: Establishment Department",
+        descriptionMr: "Category: Establishment Department",
+        pages: 1,
+        paperSize: "A4",
+        orientation: "portrait",
+        fields: [],
+        imageUrl: "/assets/forms/nmc/nmc_32_rules_and_regulation_of_various_appointments_to_the_municipal_services_video_resolution_no_75_dated_21_06_1985.pdf",
+        documentType: "pdf",
+        hasStaticPreview: false
+      },
+      {
+        id: "nmc-form-33",
+        title: "Rules, Regulations,Laws and Standing order",
+        titleHi: "Rules, Regulations,Laws and Standing order",
+        titleMr: "Rules, Regulations,Laws and Standing order",
+        description: "Category: Establishment Department",
+        descriptionHi: "Category: Establishment Department",
+        descriptionMr: "Category: Establishment Department",
+        pages: 1,
+        paperSize: "A4",
+        orientation: "portrait",
+        fields: [],
+        imageUrl: "/assets/forms/nmc/nmc_33_rules__regulations_laws_and_standing_order.pdf",
+        documentType: "pdf",
+        hasStaticPreview: false
+      },
+      {
+        id: "nmc-form-34",
+        title: "धोकादायक वृक्ष तोडणी अर्ज व हमीपत्र",
+        titleHi: "धोकादायक वृक्ष तोडणी अर्ज व हमीपत्र",
+        titleMr: "धोकादायक वृक्ष तोडणी अर्ज व हमीपत्र",
+        description: "Category: Garden Department",
+        descriptionHi: "Category: Garden Department",
+        descriptionMr: "Category: Garden Department",
+        pages: 1,
+        paperSize: "A4",
+        orientation: "portrait",
+        fields: [],
+        imageUrl: "/assets/forms/nmc/nmc_34____________________________________.pdf",
+        documentType: "pdf",
+        hasStaticPreview: false
+      },
+      {
+        id: "nmc-form-35",
+        title: "बांधकाम बाधित वृक्ष तोडणी अर्ज व हमीपत्र",
+        titleHi: "बांधकाम बाधित वृक्ष तोडणी अर्ज व हमीपत्र",
+        titleMr: "बांधकाम बाधित वृक्ष तोडणी अर्ज व हमीपत्र",
+        description: "Category: Garden Department",
+        descriptionHi: "Category: Garden Department",
+        descriptionMr: "Category: Garden Department",
+        pages: 1,
+        paperSize: "A4",
+        orientation: "portrait",
+        fields: [],
+        imageUrl: "/assets/forms/nmc/nmc_35_________________________________________.pdf",
+        documentType: "pdf",
+        hasStaticPreview: false
+      },
+      {
+        id: "nmc-form-36",
+        title: "अल्प मुदतीचे जाहिरात फलक मनपा जागेत उभारण्याकरीता परवानाासाठी नमूना अर्ज",
+        titleHi: "अल्प मुदतीचे जाहिरात फलक मनपा जागेत उभारण्याकरीता परवानाासाठी नमूना अर्ज",
+        titleMr: "अल्प मुदतीचे जाहिरात फलक मनपा जागेत उभारण्याकरीता परवानाासाठी नमूना अर्ज",
+        description: "Category: Advertisement & License Department",
+        descriptionHi: "Category: Advertisement & License Department",
+        descriptionMr: "Category: Advertisement & License Department",
+        pages: 1,
+        paperSize: "A4",
+        orientation: "portrait",
+        fields: [],
+        imageUrl: "/assets/forms/nmc/nmc_36_________________________________________________________________________.pdf",
+        documentType: "pdf",
+        hasStaticPreview: false
+      },
+      {
+        id: "nmc-form-37",
+        title: "दिर्घ मुदतीचे नविन आकाश-चिन्ह (जाहिरात फलक) परवानाा नुतनीकरणासाठी नमूना ब अर्ज",
+        titleHi: "दिर्घ मुदतीचे नविन आकाश-चिन्ह (जाहिरात फलक) परवानाा नुतनीकरणासाठी नमूना ब अर्ज",
+        titleMr: "दिर्घ मुदतीचे नविन आकाश-चिन्ह (जाहिरात फलक) परवानाा नुतनीकरणासाठी नमूना ब अर्ज",
+        description: "Category: Advertisement & License Department",
+        descriptionHi: "Category: Advertisement & License Department",
+        descriptionMr: "Category: Advertisement & License Department",
+        pages: 1,
+        paperSize: "A4",
+        orientation: "portrait",
+        fields: [],
+        imageUrl: "/assets/forms/nmc/nmc_37_______________________________________________________________________________.pdf",
+        documentType: "pdf",
+        hasStaticPreview: false
+      },
+      {
+        id: "nmc-form-38",
+        title: "दिर्घ मुदतीचे नविन आकाश-चिन्ह (जाहिरात फलक) परवानाासाठी नमूना अ अर्ज",
+        titleHi: "दिर्घ मुदतीचे नविन आकाश-चिन्ह (जाहिरात फलक) परवानाासाठी नमूना अ अर्ज",
+        titleMr: "दिर्घ मुदतीचे नविन आकाश-चिन्ह (जाहिरात फलक) परवानाासाठी नमूना अ अर्ज",
+        description: "Category: Advertisement & License Department",
+        descriptionHi: "Category: Advertisement & License Department",
+        descriptionMr: "Category: Advertisement & License Department",
+        pages: 1,
+        paperSize: "A4",
+        orientation: "portrait",
+        fields: [],
+        imageUrl: "/assets/forms/nmc/nmc_38_____________________________________________________________________.pdf",
+        documentType: "pdf",
+        hasStaticPreview: false
+      },
+      {
+        id: "nmc-form-39",
+        title: "अल्प मुदतीचे जाहिरात फलक खाजगी जागेत उभारण्याकरीता परवानाासाठी नमूना अर्ज",
+        titleHi: "अल्प मुदतीचे जाहिरात फलक खाजगी जागेत उभारण्याकरीता परवानाासाठी नमूना अर्ज",
+        titleMr: "अल्प मुदतीचे जाहिरात फलक खाजगी जागेत उभारण्याकरीता परवानाासाठी नमूना अर्ज",
+        description: "Category: Advertisement & License Department",
+        descriptionHi: "Category: Advertisement & License Department",
+        descriptionMr: "Category: Advertisement & License Department",
+        pages: 1,
+        paperSize: "A4",
+        orientation: "portrait",
+        fields: [],
+        imageUrl: "/assets/forms/nmc/nmc_39__________________________________________________________________________.pdf",
+        documentType: "pdf",
+        hasStaticPreview: false
       }
+
     ]
   }
 ];
@@ -591,8 +1200,7 @@ const customerSteps = [
   "Services",
   "Upload",
   "Preview",
-  "Payment",
-  "Receipt"
+  "Payment"
 ];
 
 const allowedUploadExtensions = ["PDF", "DOC", "DOCX", "JPG", "JPEG", "PNG"];
@@ -692,14 +1300,6 @@ let formTemplates = {
 };
 
 const initialJobs = [];
-const templatePreviewUrlCache = new Map();
-const PDFJS_MODULE_URL = "./assets/vendor/pdfjs/pdf.min.mjs";
-const PDFJS_WORKER_URL = "./assets/vendor/pdfjs/pdf.worker.min.mjs";
-const PREVIEW_ZOOM_MIN = 0.7;
-const PREVIEW_ZOOM_MAX = 1.4;
-const PREVIEW_ZOOM_STEP = 0.1;
-
-let pdfJsModulePromise = null;
 
 const state = {
   mode: isAdminEntry ? "admin" : "customer",
@@ -777,6 +1377,7 @@ const state = {
   lastCompletedJob: null,
   receiptRedirectTimer: null,
   receiptSecondsLeft: RECEIPT_REDIRECT_SECONDS,
+  thankYouPhase: "payment_done",
   jobs: [...initialJobs],
   adminData: {
     dashboard: null,
@@ -824,6 +1425,8 @@ const state = {
   servicesDirty: false,
   serviceEditor: null,
   adminSelectedServiceId: "",
+  templateSearchQuery: "",
+  templateSearchKeyboardActive: false,
   imageUploadBusy: false,
   configVersion: 0,
   configUpdatedAt: "",
@@ -875,55 +1478,15 @@ function storeCustomerLanguage() {
   }
 }
 
-const CP1252_BYTE_MAP = new Map([
-  [0x20AC, 0x80], [0x201A, 0x82], [0x0192, 0x83], [0x201E, 0x84],
-  [0x2026, 0x85], [0x2020, 0x86], [0x2021, 0x87], [0x02C6, 0x88],
-  [0x2030, 0x89], [0x0160, 0x8A], [0x2039, 0x8B], [0x0152, 0x8C],
-  [0x017D, 0x8E], [0x2018, 0x91], [0x2019, 0x92], [0x201C, 0x93],
-  [0x201D, 0x94], [0x2022, 0x95], [0x2013, 0x96], [0x2014, 0x97],
-  [0x02DC, 0x98], [0x2122, 0x99], [0x0161, 0x9A], [0x203A, 0x9B],
-  [0x0153, 0x9C], [0x017E, 0x9E], [0x0178, 0x9F]
-]);
-
-function textLooksMojibake(text) {
-  return /[ÃÂà][\u0080-\u00ff\u2018-\u201d\u2020\u2021\u2026\u2030\u2039\u203a\u0152\u0153\u0160\u0161\u0178\u017d\u017e]/.test(text);
-}
-
-function decodeMojibakeText(value) {
-  let text = String(value || "");
-  if (!text || !textLooksMojibake(text) || typeof TextDecoder === "undefined") return text;
-
-  for (let pass = 0; pass < 3 && textLooksMojibake(text); pass += 1) {
-    const bytes = [];
-
-    for (const char of text) {
-      const code = char.codePointAt(0);
-      const byte = code <= 0xff ? code : CP1252_BYTE_MAP.get(code);
-      if (byte === undefined) return text;
-      bytes.push(byte);
-    }
-
-    const next = new TextDecoder("utf-8", { fatal: false }).decode(new Uint8Array(bytes));
-    if (!next || next === text) break;
-    text = next;
-  }
-
-  return text;
-}
-
 function customerTranslateText(value) {
   const text = String(value || "").trim();
   const language = state.customerLanguage;
-  if (!text) return text;
-  if (language === "en") return decodeMojibakeText(text);
-
-  const overrides = CUSTOMER_TRANSLATION_OVERRIDES[language] || {};
-  if (overrides[text]) return overrides[text];
+  if (!text || language === "en") return text;
 
   const translations = CUSTOMER_TRANSLATIONS[language] || {};
-  if (translations[text]) return decodeMojibakeText(translations[text]);
+  if (translations[text]) return translations[text];
 
-  const translated = (english) => decodeMojibakeText(translations[english] || english);
+  const translated = (english) => translations[english] || english;
   const patterns = [
     [/^(.+) \| Government and education ready$/, (match) => `${match[1]} | ${translated("Government and education ready")}`],
     [/^Printer (Online|Offline)$/, (match) => `${language === "hi" ? "à¤ªà¥à¤°à¤¿à¤‚à¤Ÿà¤°" : "à¤ªà¥à¤°à¤¿à¤‚à¤Ÿà¤°"} ${translated(match[1])}`],
@@ -963,26 +1526,26 @@ function customerTranslateText(value) {
 
   for (const [pattern, formatter] of patterns) {
     const match = text.match(pattern);
-    if (match) return decodeMojibakeText(formatter(match));
+    if (match) return formatter(match);
   }
 
-  return decodeMojibakeText(text);
+  return text;
 }
 
 function localizedServiceText(service, field) {
   const suffix = state.customerLanguage === "hi" ? "Hi" : state.customerLanguage === "mr" ? "Mr" : "";
   const english = String(service?.[field] || "").trim();
-  if (!suffix) return decodeMojibakeText(english);
+  if (!suffix) return english;
 
-  return decodeMojibakeText(String(service?.[`${field}${suffix}`] || "").trim()) || customerTranslateText(english);
+  return String(service?.[`${field}${suffix}`] || "").trim() || customerTranslateText(english);
 }
 
 function localizedTemplateText(template, field) {
   const suffix = state.customerLanguage === "hi" ? "Hi" : state.customerLanguage === "mr" ? "Mr" : "";
   const english = String(template?.[field] || "").trim();
-  if (!suffix) return decodeMojibakeText(english);
+  if (!suffix) return english;
 
-  return decodeMojibakeText(String(template?.[`${field}${suffix}`] || "").trim()) || customerTranslateText(english);
+  return String(template?.[`${field}${suffix}`] || "").trim() || customerTranslateText(english);
 }
 
 function localizedTemplateFields(template) {
@@ -991,7 +1554,7 @@ function localizedTemplateFields(template) {
   if (!suffix) return fields;
 
   const localizedFields = Array.isArray(template?.[`fields${suffix}`]) ? template[`fields${suffix}`] : [];
-  return fields.map((field, index) => decodeMojibakeText(String(localizedFields[index] || "").trim()) || customerTranslateText(field));
+  return fields.map((field, index) => String(localizedFields[index] || "").trim() || customerTranslateText(field));
 }
 
 function applyCustomerTranslations(root) {
@@ -1027,13 +1590,12 @@ function applyCustomerTranslations(root) {
 function adminTranslateText(value) {
   const text = String(value || "").trim();
   const language = state.adminLanguage;
-  if (!text) return text;
-  if (language === "en") return decodeMojibakeText(text);
+  if (!text || language === "en") return text;
 
   const translations = ADMIN_TRANSLATIONS[language] || {};
-  if (translations[text]) return decodeMojibakeText(translations[text]);
+  if (translations[text]) return translations[text];
 
-  const translated = (english) => decodeMojibakeText(translations[english] || english);
+  const translated = (english) => translations[english] || english;
   const patterns = [
     [/^(.+) \| assigned project management$/, (match) => `${match[1]} | ${translated("assigned project management")}`],
     [/^Last updated:\s*(.+)$/, (match) => `${translated("Last updated")}: ${match[1]}`],
@@ -1055,10 +1617,10 @@ function adminTranslateText(value) {
 
   for (const [pattern, formatter] of patterns) {
     const match = text.match(pattern);
-    if (match) return decodeMojibakeText(formatter(match));
+    if (match) return formatter(match);
   }
 
-  return decodeMojibakeText(text);
+  return text;
 }
 
 function applyAdminTranslations(root) {
@@ -1145,13 +1707,13 @@ function storeAdminSession(payload = {}) {
       token: payload.token || "",
       admin: payload.admin || null
     }));
-  } catch {}
+  } catch { }
 }
 
 function clearAdminSession() {
   try {
     window.sessionStorage.removeItem(ADMIN_SESSION_KEY);
-  } catch {}
+  } catch { }
 }
 
 function isSessionAuthError(error) {
@@ -1209,12 +1771,6 @@ function templateDocumentKind(value = "") {
   const source = String(value || "").toLowerCase();
   if (source === "pdf" || source.startsWith("data:application/pdf") || /\.pdf(?:$|[?#])/i.test(source)) return "pdf";
   return "image";
-}
-
-function pdfStaticPreviewUrl(value = "") {
-  const source = String(value || "").trim();
-  const next = source.replace(/\.pdf(?=$|[?#])/i, ".png");
-  return next !== source ? next : "";
 }
 
 function uploadedTemplateTitle(file, fallback = "Template Document") {
@@ -1419,7 +1975,6 @@ function normalizeTemplates(templates) {
       fieldsHi: normalizeTemplateFields(template?.fieldsHi),
       fieldsMr: normalizeTemplateFields(template?.fieldsMr),
       imageUrl: String(template?.imageUrl || "").trim(),
-      previewImageUrl: String(template?.previewImageUrl || "").trim(),
       documentType: templateDocumentKind(template?.documentType || template?.imageUrl || "")
     };
   }).filter((template) => template.title);
@@ -1432,7 +1987,6 @@ function mergeDefaultTemplateData(templates, defaults = []) {
     return {
       ...template,
       imageUrl: template.imageUrl || fallback.imageUrl || "",
-      previewImageUrl: template.previewImageUrl || fallback.previewImageUrl || "",
       titleHi: template.titleHi || fallback.titleHi || "",
       titleMr: template.titleMr || fallback.titleMr || "",
       descriptionHi: template.descriptionHi || fallback.descriptionHi || "",
@@ -1623,8 +2177,8 @@ function selectedService() {
 function formTemplatesForService(serviceId = state.selectedService) {
   const service = services.find((item) => item.id === serviceId);
 
-  if (service) {
-    return service.mode === "template" ? (service.templates || []) : [];
+  if (service && service.templates) {
+    return service.templates;
   }
 
   return formTemplates[serviceId] || [];
@@ -1633,6 +2187,94 @@ function formTemplatesForService(serviceId = state.selectedService) {
 function isFormTemplateService(serviceId = state.selectedService) {
   const service = services.find((item) => item.id === serviceId);
   return service ? service.mode === "template" : formTemplatesForService(serviceId).length > 0;
+}
+
+function normalizedTemplateSearchQuery() {
+  return String(state.templateSearchQuery || "").trim().toLowerCase();
+}
+
+function templateSearchText(template) {
+  return [
+    localizedTemplateText(template, "title"),
+    localizedTemplateText(template, "description"),
+    template?.id,
+    template?.pages,
+    normalizePaperSize(template?.paperSize, "A4", true),
+    normalizeOrientation(template?.orientation)
+  ]
+    .filter(Boolean)
+    .join(" ")
+    .toLowerCase();
+}
+
+function filteredFormTemplates(serviceId = state.selectedService) {
+  const templates = formTemplatesForService(serviceId);
+  const query = normalizedTemplateSearchQuery();
+
+  if (!query) {
+    return templates;
+  }
+
+  return templates.filter((template) => templateSearchText(template).includes(query));
+}
+
+function renderTemplateSearchKeyboard() {
+  const rows = [
+    ["Q", "W", "E", "R", "T", "Y", "U", "I", "O", "P"],
+    ["A", "S", "D", "F", "G", "H", "J", "K", "L"],
+    ["Z", "X", "C", "V", "B", "N", "M"]
+  ];
+
+  return `
+    <div class="template-search-keyboard" aria-label="Virtual keyboard">
+      <div class="template-keyboard-header">
+        <button type="button" class="template-key template-key-close" data-template-search-action="close">Close</button>
+      </div>
+      ${rows.map((row, index) => `
+        <div class="template-keyboard-row template-keyboard-row-${index + 1}">
+          ${row.map((key) => `<button type="button" class="template-key" data-template-search-key="${key}">${key}</button>`).join("")}
+        </div>
+      `).join("")}
+      <div class="template-keyboard-row template-keyboard-controls">
+        <button type="button" class="template-key" data-template-search-action="space">Space</button>
+        <button type="button" class="template-key" data-template-search-action="backspace">Back</button>
+        <button type="button" class="template-key" data-template-search-action="clear">Clear</button>
+      </div>
+    </div>
+  `;
+}
+
+function focusTemplateSearchInput() {
+  requestAnimationFrame(() => {
+    const input = document.querySelector("[data-template-search-input]");
+    if (!input) return;
+
+    input.focus({ preventScroll: true });
+    if (typeof input.setSelectionRange === "function") {
+      const end = input.value.length;
+      input.setSelectionRange(end, end);
+    }
+  });
+}
+
+function activateTemplateSearchKeyboard({ focus = true } = {}) {
+  if (!state.templateSearchKeyboardActive) {
+    state.templateSearchKeyboardActive = true;
+    render();
+  }
+
+  if (focus) {
+    focusTemplateSearchInput();
+  }
+}
+
+function setTemplateSearchQuery(value, { focus = true } = {}) {
+  state.templateSearchKeyboardActive = true;
+  state.templateSearchQuery = String(value ?? "").slice(0, 80);
+  render();
+  if (focus) {
+    focusTemplateSearchInput();
+  }
 }
 
 function serviceAvailableForKiosk(service, kioskId = KIOSK_ID) {
@@ -1666,8 +2308,8 @@ function customerRateRows(rates, rowClass = "info-row", service = selectedServic
 
 function customerServiceRateLabels(rates, service) {
   return [
-    customerSettingEnabled("bw", service) ? `<span><strong>${money(rates.bw)}</strong> B/W per page</span>` : "",
-    customerSettingEnabled("color", service) ? `<span><strong>${money(rates.color)}</strong> Color per page</span>` : ""
+    customerSettingEnabled("bw", service) ? `<span><strong>${money(rates.bw)}</strong><em>B/W per page</em></span>` : "",
+    customerSettingEnabled("color", service) ? `<span><strong>${money(rates.color)}</strong><em>Color per page</em></span>` : ""
   ].filter(Boolean).join("");
 }
 
@@ -1721,125 +2363,8 @@ function activePreviewFile() {
   return files[Math.min(state.previewFileIndex, Math.max(files.length - 1, 0))] || null;
 }
 
-function normalizedPreviewZoom(value = state.previewZoom) {
-  const zoom = Number(value) || 1;
-  const stepped = Math.round(zoom * 10) / 10;
-  return Math.min(PREVIEW_ZOOM_MAX, Math.max(PREVIEW_ZOOM_MIN, stepped));
-}
-
-function setPreviewZoom(value) {
-  state.previewZoom = normalizedPreviewZoom(value);
-}
-
-function previewReuseKey(file = activePreviewFile()) {
-  if (state.mode !== "customer" || state.step !== 2 || !["pdf", "image"].includes(file?.previewKind)) {
-    return "";
-  }
-
-  const previewUrl = file.previewUrl || "";
-  if (!previewUrl || file.previewLoading) return "";
-  return [
-    file.previewKind,
-    state.previewFileIndex,
-    file.templateId || file.name || "",
-    previewUrl
-  ].join("|");
-}
-
-function captureReusablePreviewContent(app) {
-  const key = previewReuseKey();
-  const layer = key ? app?.querySelector(".preview-zoom-layer[data-preview-reuse-key]") : null;
-
-  if (!layer || layer.dataset.previewReuseKey !== key || !layer.firstChild) {
-    return null;
-  }
-
-  const fragment = document.createDocumentFragment();
-  while (layer.firstChild) {
-    fragment.appendChild(layer.firstChild);
-  }
-
-  return { key, fragment };
-}
-
-function restoreReusablePreviewContent(app, preserved) {
-  if (!preserved?.key || !preserved.fragment) return;
-  const layer = app?.querySelector(".preview-zoom-layer[data-preview-reuse-key]");
-
-  if (layer?.dataset.previewReuseKey === preserved.key) {
-    layer.replaceChildren(preserved.fragment);
-  }
-}
-
-function pdfPreviewDocumentUrl(previewUrl) {
-  const url = String(previewUrl || "");
-  return url.includes("#") ? url : `${url}#page=1`;
-}
-
-function loadPdfJsModule() {
-  if (!pdfJsModulePromise) {
-    pdfJsModulePromise = import(PDFJS_MODULE_URL).then((pdfjsLib) => {
-      pdfjsLib.GlobalWorkerOptions.workerSrc = PDFJS_WORKER_URL;
-      return pdfjsLib;
-    });
-  }
-
-  return pdfJsModulePromise;
-}
-
-async function renderPdfPreviewCanvas(canvas) {
-  const sourceUrl = canvas?.dataset?.pdfUrl || "";
-  const shell = canvas?.closest(".pdf-preview-shell");
-  if (!canvas || !sourceUrl || canvas.dataset.renderedPdfUrl === sourceUrl) {
-    return;
-  }
-
-  canvas.dataset.renderedPdfUrl = sourceUrl;
-  shell?.classList.remove("is-ready", "is-error");
-
-  try {
-    const pdfjsLib = await loadPdfJsModule();
-    const loadingTask = pdfjsLib.getDocument({ url: sourceUrl });
-    const pdf = await loadingTask.promise;
-    const page = await pdf.getPage(1);
-    const baseViewport = page.getViewport({ scale: 1 });
-    const shellWidth = Math.max(240, Math.round(shell?.clientWidth || canvas.clientWidth || baseViewport.width));
-    const cssScale = shellWidth / baseViewport.width;
-    const pixelRatio = Math.min(window.devicePixelRatio || 1, 2);
-    const viewport = page.getViewport({ scale: cssScale * pixelRatio });
-    const context = canvas.getContext("2d", { alpha: false });
-
-    canvas.width = Math.ceil(viewport.width);
-    canvas.height = Math.ceil(viewport.height);
-    canvas.style.width = `${Math.ceil(baseViewport.width * cssScale)}px`;
-    canvas.style.height = `${Math.ceil(baseViewport.height * cssScale)}px`;
-
-    context.fillStyle = "#ffffff";
-    context.fillRect(0, 0, canvas.width, canvas.height);
-    await page.render({ canvasContext: context, viewport, background: "#ffffff" }).promise;
-    if (typeof pdf.cleanup === "function") {
-      pdf.cleanup();
-    }
-    shell?.classList.add("is-ready");
-  } catch (error) {
-    canvas.dataset.renderedPdfUrl = "";
-    const message = shell?.querySelector("[data-pdf-preview-status]");
-    if (message) {
-      message.textContent = "Preview could not render. You can still continue to print this PDF.";
-    }
-    shell?.classList.add("is-error");
-    console.warn("PDF preview render failed", error);
-  }
-}
-
-function hydratePdfPreviewCanvases(root = document) {
-  root.querySelectorAll(".pdf-preview-canvas[data-pdf-url]").forEach((canvas) => {
-    renderPdfPreviewCanvas(canvas);
-  });
-}
-
 function colorSelectionAvailable(file = activePreviewFile()) {
-  return Boolean(file && !file.templateId && file.previewKind === "image"
+  return Boolean(file && !file.templateId
     && customerSettingEnabled("bw")
     && customerSettingEnabled("color"));
 }
@@ -1907,11 +2432,10 @@ function startDemoPayment() {
   const details = priceDetails();
   const paymentUrl = demoPaymentUrl(details);
   state.paymentStatus = "Waiting";
-  state.paymentStatusMessage = "Demo payment ready. Razorpay is not connected for this session.";
+  state.paymentStatusMessage = "Payment ready.";
   state.paymentError = "";
   state.paymentBusy = false;
   state.paymentOrder = {
-    demo: true,
     paymentId: `PAY-${Date.now().toString().slice(-6)}`,
     orderId: `ORDER-${Date.now().toString().slice(-6)}`,
     amount: details.total * 100,
@@ -2387,20 +2911,12 @@ function createTemplateFile(template) {
 
   if (template.imageUrl) {
     const documentType = templateDocumentKind(template.documentType || template.imageUrl);
-    const templateUrl = template.imageUrl;
-    const staticPreviewUrl = documentType === "pdf"
-      ? (String(template.previewImageUrl || "").trim() || pdfStaticPreviewUrl(templateUrl))
-      : templateUrl;
     return {
       name: `${template.id}.${documentType === "pdf" ? "pdf" : "png"}`,
       type: documentType === "pdf" ? "PDF" : "PNG",
       pages: Math.max(1, Number(template.pages) || 1),
-      previewKind: staticPreviewUrl ? "image" : "pdf",
-      previewUrl: staticPreviewUrl,
-      previewSourceUrl: staticPreviewUrl ? "" : templateUrl,
-      printUrl: templateUrl,
-      previewLoading: documentType === "pdf" && !staticPreviewUrl,
-      previewUrlFromCache: false,
+      previewKind: documentType === "pdf" ? "pdf" : "image",
+      previewUrl: template.imageUrl,
       source: localizedTitle,
       templateId: template.id,
       templatePaperSize: normalizePaperSize(template.paperSize, "Auto", true),
@@ -2431,88 +2947,8 @@ function createTemplateFile(template) {
   };
 }
 
-function activeFileMatches(file) {
-  return Boolean(file && activePreviewFile() === file);
-}
-
-function resolvedFrontendUrl(value = "") {
-  const raw = String(value || "").trim();
-  if (!raw) return "";
-
-  try {
-    return new URL(raw, window.location.href).toString();
-  } catch {
-    return raw;
-  }
-}
-
-function filePrintSourceUrl(file) {
-  return file?.printUrl || file?.previewSourceUrl || file?.previewUrl || "";
-}
-
-function setTemplatePreviewUrl(file, previewUrl, { fromCache = false } = {}) {
-  if (!file) return;
-  file.previewUrl = previewUrl || "";
-  file.previewLoading = false;
-  file.previewUrlFromCache = Boolean(fromCache);
-}
-
-async function prepareTemplatePreviewFile(file) {
-  if (file?.previewKind !== "pdf" || !file.previewSourceUrl) {
-    return;
-  }
-
-  const sourceUrl = resolvedFrontendUrl(file.previewSourceUrl);
-  if (!sourceUrl || sourceUrl.startsWith("blob:")) {
-    setTemplatePreviewUrl(file, sourceUrl, { fromCache: false });
-    if (activeFileMatches(file)) render();
-    return;
-  }
-
-  const cachedUrl = templatePreviewUrlCache.get(sourceUrl);
-  if (cachedUrl) {
-    setTemplatePreviewUrl(file, cachedUrl, { fromCache: true });
-    if (activeFileMatches(file)) render();
-    return;
-  }
-
-  try {
-    const response = await fetch(sourceUrl, { cache: "force-cache" });
-    if (!response.ok) {
-      throw new Error("Template preview could not be loaded.");
-    }
-
-    const blob = await response.blob();
-    const previewBlob = blob.type === "application/pdf"
-      ? blob
-      : new Blob([blob], { type: "application/pdf" });
-    const previewUrl = URL.createObjectURL(previewBlob);
-    templatePreviewUrlCache.set(sourceUrl, previewUrl);
-    setTemplatePreviewUrl(file, previewUrl, { fromCache: true });
-  } catch {
-    setTemplatePreviewUrl(file, sourceUrl, { fromCache: false });
-  }
-
-  if (activeFileMatches(file)) {
-    render();
-  }
-}
-
-async function selectTemplateForPreview(template) {
-  stopUploadPolling();
-  clearCurrentFile();
-  applyTemplatePrintDefaults(template);
-  const file = createTemplateFile(template);
-  setJobFiles([file]);
-  state.uploadError = "";
-  state.uploadSession = null;
-  state.step = 2;
-  render();
-  await prepareTemplatePreviewFile(file);
-}
-
 function revokePreviewUrl(file) {
-  if (file?.previewUrl && file.previewUrl.startsWith("blob:") && !file.previewUrlFromCache) {
+  if (file?.previewUrl && file.previewUrl.startsWith("blob:")) {
     URL.revokeObjectURL(file.previewUrl);
   }
 }
@@ -2914,7 +3350,7 @@ async function refreshKioskConfig({ rerender = true, force = false } = {}) {
 
   try {
     const payload = await fetchJson(`${BACKEND_URL}/api/kiosk/config?kioskId=${encodeURIComponent(KIOSK_ID)}${DEMO_KIOSK_MODE ? '&demo=true' : ''}`);
-    
+
     if (DEMO_KIOSK_MODE && state.mode === "customer") {
       let finalDemoServices = JSON.parse(JSON.stringify(demoKioskServices));
       if (payload && Array.isArray(payload.services)) {
@@ -2926,7 +3362,7 @@ async function refreshKioskConfig({ rerender = true, force = false } = {}) {
             existingDocsService.templates = allTemplates;
             // Optionally merge pricing
             if (payload.pricing) {
-               existingDocsService.pricing = payload.pricing[templateServices[0].id] || existingDocsService.pricing;
+              existingDocsService.pricing = payload.pricing[templateServices[0].id] || existingDocsService.pricing;
             }
           }
         }
@@ -2941,8 +3377,8 @@ async function refreshKioskConfig({ rerender = true, force = false } = {}) {
     });
   } catch (error) {
     if (DEMO_KIOSK_MODE && state.mode === "customer") {
-       applyDemoKioskConfig({ rerender });
-       return true;
+      applyDemoKioskConfig({ rerender });
+      return true;
     }
     state.configStatus = error.message || "Waiting for backend service config.";
     return false;
@@ -3078,18 +3514,18 @@ async function syncBackendPrintStatus(printStatus, failureReason = "") {
 }
 
 function localAgentCanReadFile(file) {
-  return Boolean(file?.printContentBase64) || /^https?:\/\//i.test(resolvedFrontendUrl(filePrintSourceUrl(file)));
+  return Boolean(file?.printContentBase64) || /^https?:\/\//i.test(file?.previewUrl || "");
 }
 
 function localAgentFileUrl(file) {
   try {
-    const url = new URL(resolvedFrontendUrl(filePrintSourceUrl(file)));
+    const url = new URL(file.previewUrl);
     if (url.port === "5080") {
       url.hostname = "localhost";
     }
     return url.toString();
   } catch {
-    return filePrintSourceUrl(file);
+    return file?.previewUrl || "";
   }
 }
 
@@ -3412,6 +3848,11 @@ async function verifyRazorpayPayment(response, { updateKiosk = true, jobId = cur
 }
 
 async function startRazorpayPayment() {
+  if (DEMO_KIOSK_MODE) {
+    startDemoPayment();
+    return;
+  }
+
   if (state.paymentBusy) return;
 
   state.paymentBusy = true;
@@ -3472,14 +3913,6 @@ async function startRazorpayPayment() {
   } catch (error) {
     if (state.step !== 3) {
       state.paymentBusy = false;
-      return;
-    }
-
-    if (DEMO_KIOSK_MODE) {
-      startDemoPayment();
-      state.paymentStatusMessage = "Demo QR is shown because Razorpay order creation failed.";
-      state.paymentError = error.message || "Unable to connect Razorpay for this demo session.";
-      render();
       return;
     }
 
@@ -3646,68 +4079,6 @@ function goToNextStep() {
   }
 }
 
-function goToCustomerStep(targetStep) {
-  const nextStep = Math.max(0, Math.min(customerSteps.length - 1, Number(targetStep) || 0));
-  const previousStep = state.step;
-
-  state.uploadError = "";
-
-  if (previousStep === 3 && nextStep !== 3) {
-    stopPaymentPolling();
-  }
-
-  if (nextStep === 0) {
-    stopUploadPolling();
-    state.step = 0;
-    render();
-    return;
-  }
-
-  if (!state.selectedService) {
-    state.step = 0;
-    render();
-    return;
-  }
-
-  if (nextStep > 1 && !state.file) {
-    state.step = 1;
-    if (!isFormTemplateService()) {
-      startMobileUploadSession();
-    }
-    render();
-    return;
-  }
-
-  if (nextStep >= 3 && state.file) {
-    ensureActiveJobId();
-  }
-
-  state.step = nextStep;
-
-  if (state.step === 1 && !isFormTemplateService()) {
-    startMobileUploadSession();
-  }
-
-  if (state.step === 3 && previousStep !== 3) {
-    state.paymentStatus = "Pending";
-    state.paymentStatusMessage = "";
-    state.paymentError = "";
-    state.paymentOrder = null;
-    state.paymentBusy = false;
-    refreshPrinterStatus();
-  }
-
-  render();
-
-  if (state.step === 3 && previousStep !== 3) {
-    setTimeout(() => {
-      if (state.step === 3 && !state.paymentBusy && !state.paymentOrder?.qrSvg) {
-        startRazorpayPayment();
-      }
-    }, 0);
-  }
-}
-
 function openAdmin(page = "dashboard") {
   stopReceiptRedirect();
   state.mode = "admin";
@@ -3762,14 +4133,28 @@ function render() {
   }
 
   const app = qs("#app");
-  const preservedPreview = captureReusablePreviewContent(app);
   app.innerHTML = state.mode === "customer" ? renderCustomerShell() : renderAdminShell();
   applyCustomerTranslations(app);
   applyAdminTranslations(app);
-  restoreReusablePreviewContent(app, preservedPreview);
   bindEvents();
   updateKioskClock();
-  hydratePdfPreviewCanvases(app);
+
+  try {
+    if (state.mode === "customer" && state.step !== undefined) {
+      sessionStorage.setItem("kioskCustomerState", JSON.stringify({
+        step: state.step,
+        selectedService: state.selectedService,
+        selectedTemplate: state.selectedTemplate
+      }));
+      const url = new URL(window.location);
+      if (state.step > 0) {
+        url.searchParams.set("step", state.step);
+      } else {
+        url.searchParams.delete("step");
+      }
+      window.history.replaceState({}, '', url);
+    }
+  } catch (e) {}
 }
 
 function updateKioskClock() {
@@ -3820,13 +4205,14 @@ function renderMobilePaymentShell() {
 }
 
 function renderCustomerShell() {
+  const showFooter = !state.showPrivacyPolicy;
   return `
-    <div class="app-shell customer-shell">
+    <div class="app-shell customer-shell ${showFooter ? "" : "no-customer-footer"}">
       ${renderCustomerTopbar()}
       <main class="main">
         ${renderCustomer()}
       </main>
-      ${renderCustomerFooter()}
+      ${showFooter ? renderCustomerFooter() : ""}
     </div>
   `;
 }
@@ -3854,8 +4240,8 @@ function renderCustomerTopbar() {
       <div class="brand">
         <div class="brand-mark"><img src="./assets/nashik-municipal-logo.jpg" alt="Nashik Municipal Corporation" draggable="false" data-no-visual-search /></div>
         <div>
-          <div class="brand-title">Printing Kiosk</div>
-          <div class="brand-subtitle">NMC</div>
+          <div class="brand-title nmc-devanagari-title">नाशिक महानगर पालिका</div>
+          <div class="brand-subtitle nmc-devanagari-subtitle">21 व्या शतकातील शहर</div>
         </div>
       </div>
       <div class="topbar-actions">
@@ -3868,8 +4254,8 @@ function renderCustomerTopbar() {
             <option value="mr" ${state.customerLanguage === "mr" ? "selected" : ""}>Marathi</option>
           </select>
         </label>
-        <button class="ghost-button" data-action="reset-session">New Session</button>
-        <div class="timer-widget" aria-label="Current date and time">
+        
+        <span class="status-pill ${printerClass}" style="opacity: 0; position: absolute; pointer-events: none;"><span class="dot"></span>${printerText}</span>\n        <div class="timer-widget" aria-label="Current date and time">
           ${uiIcon("clock", 18)}
           <div class="time-container">
             <div class="time-text" id="kiosk-time">--:--:-- --</div>
@@ -3882,15 +4268,63 @@ function renderCustomerTopbar() {
 }
 
 function renderCustomerFooter() {
+  let formsPaginationHtml = "";
+  if (state.step === 1 && state.selectedService && typeof isFormTemplateService === "function" && isFormTemplateService(state.selectedService)) {
+    const q = String(state.templateSearchQuery || "").toLowerCase().trim();
+    const forms = formTemplatesForService(state.selectedService) || [];
+    let filtered = forms;
+    if (q) {
+      filtered = filtered.filter(t => 
+        (t.title && String(t.title).toLowerCase().includes(q)) || 
+        (t.description && String(t.description).toLowerCase().includes(q)) ||
+        (t.department && String(t.department).toLowerCase().includes(q)) ||
+        (t.keyword && String(t.keyword).toLowerCase().includes(q))
+      );
+    }
+    const itemsPerPage = 4;
+    const totalPages = Math.max(1, Math.ceil(filtered.length / itemsPerPage));
+    
+    formsPaginationHtml = `
+      <div style="display: flex; align-items: center; justify-content: center; gap: 20px; margin: 0 auto;">
+        <button class="forms-v2-nav-btn btn-back" style="padding: 8px 16px; font-size: 15px; height: auto;" onclick="window.prevTemplatePage()" ${state.templatePage === 1 ? 'disabled' : ''}>
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="19" y1="12" x2="5" y2="12"></line><polyline points="12 19 5 12 12 5"></polyline></svg>
+          Previous
+        </button>
+        <span class="forms-v2-page-indicator" style="white-space: nowrap;">Page ${state.templatePage} of ${totalPages}</span>
+        <button class="forms-v2-nav-btn btn-next" style="padding: 8px 16px; font-size: 15px; height: auto;" onclick="window.nextTemplatePage()" ${state.templatePage >= totalPages ? 'disabled' : ''}>
+          Next
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="5" y1="12" x2="19" y2="12"></line><polyline points="12 5 19 12 12 19"></polyline></svg>
+        </button>
+      </div>
+    `;
+  }
+
   return `
-    <footer class="customer-footer" aria-label="Kiosk links">
-      <button type="button" class="footer-link" data-policy-page="terms">Terms &amp; Conditions</button>
-      <span aria-hidden="true">|</span>
-      <button type="button" class="footer-link" data-policy-page="privacy">Privacy Policy</button>
-      <span aria-hidden="true">|</span>
-      <button type="button" class="footer-link" data-policy-page="refund">Refund Policy</button>
-      <span aria-hidden="true">|</span>
-      <button type="button" class="footer-link" data-policy-page="contact">Contact Us</button>
+    <footer class="customer-footer" aria-label="Kiosk links"> 
+      ${state.step > 0
+        ? `<button class="ghost-button new-session-footer-btn" data-action="reset-session" style="margin-right: auto;">Home</button>`
+        : `<div class="powered-by-brand" style="margin-right: auto;">
+             <span class="powered-by-label">Powered by</span>
+             <img src="./assets/aarya-innovtech-logo.png" alt="Aarya Innovtech" class="powered-by-logo" draggable="false" data-no-visual-search />
+             <div class="powered-by-name">
+               <div class="powered-by-company">Aarya Innovtech Pvt. Ltd.</div>
+             </div>
+           </div>`
+      }
+      
+      ${formsPaginationHtml}
+
+      ${state.step === 0 ? `
+        <button type="button" class="footer-link" data-policy-page="terms">Terms &amp; Conditions</button>
+        <span aria-hidden="true">|</span>
+        <button type="button" class="footer-link" data-policy-page="privacy">Privacy Policy</button>
+        <span aria-hidden="true">|</span>
+        <button type="button" class="footer-link" data-policy-page="refund">Refund Policy</button>
+        <span aria-hidden="true">|</span>
+        <button type="button" class="footer-link" data-policy-page="contact">Contact Us</button>
+      ` : ""}
+      
+      ${(state.step > 0 && formsPaginationHtml) ? `<div style="margin-left: auto;"></div>` : ""}
     </footer>
   `;
 }
@@ -4067,10 +4501,10 @@ function renderStepItem(step, index) {
   const label = index === 1 && isFormTemplateService() ? "Forms" : step;
   const status = index === state.step ? "active" : index < state.step ? "done" : "";
   return `
-    <button type="button" class="step-item ${status}" data-step-index="${index}" aria-current="${index === state.step ? "step" : "false"}">
+    <div class="step-item ${status}">
       <span class="step-number">${index + 1}</span>
       <span>${label}</span>
-    </button>
+    </div>
   `;
 }
 
@@ -4095,40 +4529,199 @@ function renderServicesStep() {
     `;
   }
 
-  const availableServices = customerServices();
-  const hasSingleService = availableServices.length === 1;
   const printerReady = printerReadyForCustomerFlow();
-  const printerChecking = state.printer.checking;
-  let serviceCountClass = "is-catalog";
+  const printServiceId = services.find(s => s.id === 'demo-documents' || s.id === 'print')?.id || 'print';
+  const govtServiceId = services.find(s => s.id === 'demo-existing-documents' || s.id === 'govt-form')?.id || 'govt-form';
+  const printRates = serviceRates(printServiceId);
+  const govtRates = serviceRates(govtServiceId);
 
-  if (availableServices.length === 0) serviceCountClass = "is-empty";
-  if (availableServices.length === 1) serviceCountClass = "is-single";
-  if (availableServices.length === 2) serviceCountClass = "is-pair";
+  // Safe fallbacks if not configured
+  const pBw = printRates.bw || 2;
+  const pCol = printRates.color || 10;
+  const gBw = govtRates.bw || 3;
+  const gCol = govtRates.color || 12;
 
   return `
-    <div class="stage service-stage ${serviceCountClass}">
-      <div class="stage-header">
-        <h1>${hasSingleService ? "Services" : "Choose service"}</h1>
-        <p class="stage-intro">${hasSingleService ? "This service is available on this kiosk." : "Select what you need to print."}</p>
+    <div class="stage service-stage custom-home-stage">
+      <div class="stage-header custom-home-header">
+        <h1>Printing Kiosk</h1>
       </div>
       ${state.configStatus ? `<div class="save-note">${escapeHtml(state.configStatus)}</div>` : ""}
-      <div class="service-grid">
-        ${availableServices.length ? availableServices.map((service) => {
-          const rates = serviceRates(service.id);
-
-          return `
-            <button class="service-card ${state.selectedService === service.id ? "selected" : ""}" data-service="${service.id}" ${printerReady ? "" : "disabled"}>
-              ${serviceMediaMarkup(service)}
+      
+      <div class="premium-services-grid">
+        
+        <!-- Upload & Print Card -->
+        <div class="premium-service-card card-blue" data-service="${printServiceId}" style="cursor: pointer;">
+          <div class="premium-card-header">
+            <div class="premium-icon-box bg-blue" aria-hidden="true">${uiIcon("upload", 28)}</div>
+            <div class="premium-header-text">
+              <h2>Upload & Print</h2>
+              <p>Upload PDF or image documents.</p>
+            </div>
+          </div>
+          
+          <div class="premium-illustration">
+            <svg width="240" height="140" viewBox="0 0 240 140" fill="none" xmlns="http://www.w3.org/2000/svg">
+              <path opacity="0.3" d="M120 70C120 70 80 140 0 140V120C40 120 80 80 120 80C160 80 200 120 240 120V140C160 140 120 70 120 70Z" fill="#E2E8F0"/>
+              <!-- Document Base -->
+              <rect x="100" y="20" width="70" height="90" rx="4" fill="#FFFFFF" stroke="#CBD5E1" stroke-width="2"/>
+              <path d="M145 20V45H170L145 20Z" fill="#FCA5A5"/>
+              <line x1="110" y1="60" x2="160" y2="60" stroke="#E2E8F0" stroke-width="4" stroke-linecap="round"/>
+              <line x1="110" y1="75" x2="150" y2="75" stroke="#E2E8F0" stroke-width="4" stroke-linecap="round"/>
+              <line x1="110" y1="90" x2="160" y2="90" stroke="#E2E8F0" stroke-width="4" stroke-linecap="round"/>
+              <rect x="90" y="45" width="45" height="24" rx="4" fill="#EF4444"/>
+              <text x="96" y="62" fill="white" font-family="sans-serif" font-weight="bold" font-size="14">PDF</text>
+              
+              <!-- Cloud Upload -->
+              <path d="M75 110C86.0457 110 95 101.046 95 90C95 78.9543 86.0457 70 75 70C74.5516 70 74.108 70.0152 73.6705 70.0449C71.3094 61.5422 63.6067 55 54 55C41.8497 55 32 64.8497 32 77C32 77.3093 32.0064 77.6171 32.0191 77.9234C24.1678 78.7516 18 85.3957 18 93.5C18 102.613 25.3873 110 34.5 110H75Z" fill="#2563EB"/>
+              <path d="M54 75V95M54 75L47 82M54 75L61 82" stroke="white" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"/>
+              
+              <!-- Printer -->
+              <path d="M150 70H210C215.523 70 220 74.4772 220 80V100C220 105.523 215.523 110 210 110H150C144.477 110 140 105.523 140 100V80C140 74.4772 144.477 70 150 70Z" fill="#334155"/>
+              <rect x="160" y="60" width="40" height="10" fill="#E2E8F0"/>
+              <rect x="160" y="100" width="40" height="20" fill="white" stroke="#CBD5E1" stroke-width="2"/>
+              <line x1="165" y1="108" x2="195" y2="108" stroke="#94A3B8" stroke-width="2" stroke-linecap="round"/>
+              <line x1="165" y1="114" x2="185" y2="114" stroke="#94A3B8" stroke-width="2" stroke-linecap="round"/>
+            </svg>
+          </div>
+          
+          <div class="premium-features bg-light-blue">
+            <div class="premium-feature">
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#2563EB" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="17 8 12 3 7 8"></polyline><line x1="12" y1="3" x2="12" y2="15"></line></svg>
               <div>
-                <h2>${escapeHtml(localizedServiceText(service, "title"))}</h2>
-                <p>${escapeHtml(localizedServiceText(service, "description"))}</p>
+                <strong>Upload PDF / Images</strong>
+                <span>Easy & secure upload</span>
               </div>
-              <div class="service-rates">
-                ${customerServiceRateLabels(rates, service)}
+            </div>
+            <div class="premium-feature border-left">
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#2563EB" stroke-width="2"><polyline points="6 9 6 2 18 2 18 9"></polyline><path d="M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2"></path><rect x="6" y="14" width="12" height="8"></rect></svg>
+              <div>
+                <strong>High Quality Print</strong>
+                <span>Crisp & clear output</span>
               </div>
-            </button>
-          `;
-        }).join("") : `<div class="empty-note">No services are enabled for ${escapeHtml(KIOSK_ID)}. Open Admin Services to enable or assign services.</div>`}
+            </div>
+            <div class="premium-feature border-left">
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#2563EB" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path><polyline points="14 2 14 8 20 8"></polyline></svg>
+              <div>
+                <strong>A4 & Legal Size</strong>
+                <span>Multiple page options</span>
+              </div>
+            </div>
+          </div>
+          
+          <div class="premium-pricing">
+            <div class="premium-price-row">
+              <span class="price-label">
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#64748B" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path><polyline points="14 2 14 8 20 8"></polyline></svg>
+                B/W per page
+              </span>
+              <span class="price-value text-blue">Rs. ${pBw}</span>
+            </div>
+            <div class="premium-price-row">
+              <span class="price-label">
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#64748B" stroke-width="2"><circle cx="12" cy="12" r="10"></circle><circle cx="12" cy="12" r="4"></circle><line x1="4.93" y1="4.93" x2="9.17" y2="9.17"></line><line x1="14.83" y1="14.83" x2="19.07" y2="19.07"></line><line x1="14.83" y1="9.17" x2="19.07" y2="4.93"></line><line x1="14.83" y1="9.17" x2="18.36" y2="5.64"></line><line x1="4.93" y1="19.07" x2="9.17" y2="14.83"></line></svg>
+                Color per page
+              </span>
+              <span class="price-value text-blue">Rs. ${pCol}</span>
+            </div>
+          </div>
+          
+          <button class="premium-btn bg-blue" data-service="${printServiceId}" ${printerReady ? "" : "disabled"}>
+            Select & Proceed 
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="5" y1="12" x2="19" y2="12"></line><polyline points="12 5 19 12 12 19"></polyline></svg>
+          </button>
+        </div>
+
+        <!-- Government Forms Card -->
+        <div class="premium-service-card card-green" data-service="${govtServiceId}" style="cursor: pointer;">
+          <div class="premium-card-header">
+            <div class="premium-icon-box bg-green" aria-hidden="true">${uiIcon("pages", 28)}</div>
+            <div class="premium-header-text">
+              <h2>Government Forms</h2>
+              <p>Print ready-made forms and documents.</p>
+            </div>
+          </div>
+          
+          <div class="premium-illustration">
+            <svg width="240" height="140" viewBox="0 0 240 140" fill="none" xmlns="http://www.w3.org/2000/svg">
+              <path opacity="0.3" d="M120 70C120 70 160 140 240 140V120C200 120 160 80 120 80C80 80 40 120 0 120V140C80 140 120 70 120 70Z" fill="#D1FAE5"/>
+              
+              <!-- Building Background -->
+              <path d="M150 40L120 20L90 40H150Z" fill="#D1FAE5"/>
+              <rect x="100" y="40" width="8" height="40" fill="#D1FAE5"/>
+              <rect x="116" y="40" width="8" height="40" fill="#D1FAE5"/>
+              <rect x="132" y="40" width="8" height="40" fill="#D1FAE5"/>
+              <rect x="90" y="80" width="60" height="10" fill="#D1FAE5"/>
+              
+              <!-- Green Folder -->
+              <path d="M50 70H110L100 55H60L50 70Z" fill="#34D399"/>
+              <rect x="40" y="70" width="90" height="50" rx="4" fill="#10B981"/>
+              <!-- Emblem inside folder -->
+              <circle cx="85" cy="95" r="12" stroke="#FFFFFF" stroke-width="1.5" stroke-dasharray="2 2" fill="none"/>
+              <circle cx="85" cy="95" r="6" fill="#FFFFFF"/>
+              
+              <!-- Documents -->
+              <rect x="140" y="55" width="45" height="60" rx="2" fill="#F8FAFC" stroke="#CBD5E1" stroke-width="2" transform="rotate(10 140 55)"/>
+              <rect x="130" y="65" width="55" height="75" rx="2" fill="#FFFFFF" stroke="#CBD5E1" stroke-width="2" transform="rotate(-5 130 65)"/>
+              
+              <!-- Checkmarks -->
+              <path d="M165 95L170 100L178 92" stroke="#10B981" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" transform="rotate(-5 130 65)"/>
+              <path d="M165 105L170 110L178 102" stroke="#10B981" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" transform="rotate(-5 130 65)"/>
+              <path d="M165 115L170 120L178 112" stroke="#10B981" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" transform="rotate(-5 130 65)"/>
+              
+              <line x1="140" y1="95" x2="155" y2="95" stroke="#E2E8F0" stroke-width="3" stroke-linecap="round" transform="rotate(-5 130 65)"/>
+              <line x1="140" y1="105" x2="155" y2="105" stroke="#E2E8F0" stroke-width="3" stroke-linecap="round" transform="rotate(-5 130 65)"/>
+              <line x1="140" y1="115" x2="155" y2="115" stroke="#E2E8F0" stroke-width="3" stroke-linecap="round" transform="rotate(-5 130 65)"/>
+            </svg>
+          </div>
+          
+          <div class="premium-features bg-light-green">
+            <div class="premium-feature">
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#10B981" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path><polyline points="14 2 14 8 20 8"></polyline><line x1="16" y1="13" x2="8" y2="13"></line><line x1="16" y1="17" x2="8" y2="17"></line><polyline points="10 9 9 9 8 9"></polyline></svg>
+              <div>
+                <strong>Official Forms</strong>
+                <span>Trusted & verified</span>
+              </div>
+            </div>
+            <div class="premium-feature border-left-green">
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#10B981" stroke-width="2"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"></path><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"></path></svg>
+              <div>
+                <strong>Updated Formats</strong>
+                <span>Latest templates</span>
+              </div>
+            </div>
+            <div class="premium-feature border-left-green">
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#10B981" stroke-width="2"><circle cx="12" cy="12" r="10"></circle><polyline points="12 6 12 12 16 14"></polyline></svg>
+              <div>
+                <strong>Quick Print</strong>
+                <span>Save time & effort</span>
+              </div>
+            </div>
+          </div>
+          
+          <div class="premium-pricing">
+            <div class="premium-price-row">
+              <span class="price-label">
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#64748B" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path><polyline points="14 2 14 8 20 8"></polyline></svg>
+                B/W per page
+              </span>
+              <span class="price-value text-green">Rs. ${gBw}</span>
+            </div>
+            <div class="premium-price-row">
+              <span class="price-label">
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#64748B" stroke-width="2"><circle cx="12" cy="12" r="10"></circle><circle cx="12" cy="12" r="4"></circle><line x1="4.93" y1="4.93" x2="9.17" y2="9.17"></line><line x1="14.83" y1="14.83" x2="19.07" y2="19.07"></line><line x1="14.83" y1="9.17" x2="19.07" y2="4.93"></line><line x1="14.83" y1="9.17" x2="18.36" y2="5.64"></line><line x1="4.93" y1="19.07" x2="9.17" y2="14.83"></line></svg>
+                Color per page
+              </span>
+              <span class="price-value text-green">Rs. ${gCol}</span>
+            </div>
+          </div>
+          
+          <button class="premium-btn bg-green" data-service="${govtServiceId}" ${printerReady ? "" : "disabled"}>
+            Select & Proceed 
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="5" y1="12" x2="19" y2="12"></line><polyline points="12 5 19 12 12 19"></polyline></svg>
+          </button>
+        </div>
+
       </div>
     </div>
   `;
@@ -4137,48 +4730,169 @@ function renderServicesStep() {
 function renderFormTemplateStep() {
   const service = selectedService();
   const templates = formTemplatesForService(service.id);
+  const filteredTemplates = filteredFormTemplates(service.id);
+  const templateSearchQuery = String(state.templateSearchQuery || "");
   const rates = serviceRates(service.id);
+  const totalTemplates = templates.length;
+
+  // Pagination Logic
+  const itemsPerPage = 4;
+  if (!state.templatePage) state.templatePage = 1;
+  const totalFiltered = filteredTemplates.length;
+  const totalPages = Math.ceil(totalFiltered / itemsPerPage) || 1;
+  if (state.templatePage > totalPages) state.templatePage = totalPages;
+  const startIndex = (state.templatePage - 1) * itemsPerPage;
+  const paginatedTemplates = filteredTemplates.slice(startIndex, startIndex + itemsPerPage);
+
+  window.nextTemplatePage = () => {
+    state.templatePage = Math.min(totalPages, state.templatePage + 1);
+    try { render(); } catch (e) { window.location.reload(); }
+  };
+  window.prevTemplatePage = () => {
+    state.templatePage = Math.max(1, state.templatePage - 1);
+    try { render(); } catch (e) { window.location.reload(); }
+  };
+
+  const getDeptColor = (idx) => {
+    const colors = ['#f87171', '#4ade80', '#60a5fa', '#c084fc', '#facc15'];
+    return colors[idx % colors.length];
+  };
+
+  const getDeptIcon = (idx) => {
+    return `<svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path><polyline points="14 2 14 8 20 8"></polyline><line x1="16" y1="13" x2="8" y2="13"></line><line x1="16" y1="17" x2="8" y2="17"></line><polyline points="10 9 9 9 8 9"></polyline></svg>`;
+  };
 
   return `
-    <div class="stage template-selection-stage">
-      <div class="stage-header template-stage-header">
-        <div>
-          <h1>Choose form template</h1>
-          <p class="stage-intro">${escapeHtml(localizedServiceText(service, "title"))} selected. Pick a form to preview and print.</p>
+    <div class="stage template-selection-stage forms-v2-stage" style="background: #f8fafc; padding: 10px 14px; overflow: hidden; display: flex; flex-direction: column; gap: 10px;">
+      <div class="forms-v2-header">
+        <div class="forms-v2-title-area">
+          <div class="forms-v2-title-icon">
+            <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="#2563eb" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path><polyline points="14 2 14 8 20 8"></polyline><path d="M9 15l2 2 4-4"></path></svg>
+          </div>
+          <div>
+            <h1>Government Forms</h1>
+            <p>Find and print official forms in seconds.</p>
+          </div>
         </div>
-        <div class="template-stage-summary" aria-label="Template pricing summary">
-          <span><strong>${templates.length}</strong> forms</span>
-          ${customerSettingEnabled("bw", service) ? `<span><strong>${money(rates.bw)}</strong> B/W per page</span>` : ""}
+        <div class="forms-v2-stats">
+          <div class="forms-v2-stat-card">
+            <div class="stat-icon stat-icon-blue">
+               <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path><polyline points="14 2 14 8 20 8"></polyline></svg>
+            </div>
+            <div class="stat-text">
+              <strong>${totalTemplates}</strong>
+              <span>Total Forms</span>
+            </div>
+          </div>
+          <div class="forms-v2-stat-card">
+            <div class="stat-icon stat-icon-green">
+               <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M12 1v22M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"></path></svg>
+            </div>
+            <div class="stat-text">
+              <strong>₹${rates.bw || 3}</strong>
+              <span>Per Page (B/W)</span>
+            </div>
+          </div>
+          <div class="forms-v2-stat-card">
+            <div class="stat-icon stat-icon-purple">
+               <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"></polygon></svg>
+            </div>
+            <div class="stat-text">
+              <strong>Instant</strong>
+              <span>Printing</span>
+            </div>
+          </div>
         </div>
       </div>
-      <div class="template-grid">
-        ${templates.map((template) => {
-          const templateTitle = localizedTemplateText(template, "title");
-          const templateDescription = localizedTemplateText(template, "description");
-          const pages = Math.max(1, Number(template.pages) || 1);
 
-          return `
-            <button class="template-card" data-template="${escapeHtml(template.id)}">
-              ${template.imageUrl && templateDocumentKind(template.documentType || template.imageUrl) !== "pdf"
-                ? `<span class="template-badge template-image"><img alt="" src="${escapeHtml(template.imageUrl)}" draggable="false" data-no-visual-search /></span>`
-                : `<span class="template-badge">${escapeHtml(templateDocumentKind(template.documentType || template.imageUrl) === "pdf" ? "PDF" : service.icon)}</span>`}
-              <div class="template-body">
-                <h2>${escapeHtml(templateTitle)}</h2>
-                <p>${escapeHtml(templateDescription)}</p>
-              </div>
-              <div class="template-meta">
-                <span>${template.pages} page${template.pages === 1 ? "" : "s"} &middot; ${escapeHtml(normalizePaperSize(template.paperSize, "Auto", true))} &middot; ${escapeHtml(normalizeOrientation(template.orientation))}</span>
-                <div class="template-price-box">
-                  ${customerSettingEnabled("bw", service) ? `<span><b>${money(rates.bw * pages)}</b><small>B/W</small></span>` : ""}
-                </div>
-                <strong>Print Template</strong>
-              </div>
+      <div class="forms-v2-filter-bar">
+        <div class="forms-v2-search-wrapper">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#64748b" stroke-width="2.5" class="search-icon"><circle cx="11" cy="11" r="8"></circle><line x1="21" y1="21" x2="16.65" y2="16.65"></line></svg>
+          <input
+            class="forms-v2-search-input"
+            data-template-search-input
+            placeholder="Search forms by name, department or keyword..."
+            value="${escapeHtml(templateSearchQuery)}"
+            onclick="if(!document.querySelector('.template-keyboard-popup-container')) { this.nextElementSibling.click(); }"
+            oninput="state.templatePage = 1;"
+          />
+          <button type="button" style="display:none" data-template-search-action="toggle-keyboard"></button>
+          ${templateSearchQuery ? `
+            <button type="button" onclick="state.templateSearchQuery=''; state.templatePage=1; render();" title="Clear search" style="position: absolute; right: 12px; top: 50%; transform: translateY(-50%); background: transparent; border: none; padding: 4px; display: flex; align-items: center; justify-content: center; cursor: pointer; color: #94a3b8;">
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>
             </button>
-          `;
-        }).join("")}
+          ` : ""}
+        </div>
+        <div class="forms-v2-filters">
+          <div class="forms-v2-select">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#64748b" stroke-width="2"><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"></path><polyline points="9 22 9 12 15 12 15 22"></polyline></svg>
+            <select><option>All Departments</option></select>
+          </div>
+          <div class="forms-v2-select">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#64748b" stroke-width="2"><rect x="3" y="3" width="7" height="7"></rect><rect x="14" y="3" width="7" height="7"></rect><rect x="14" y="14" width="7" height="7"></rect><rect x="3" y="14" width="7" height="7"></rect></svg>
+            <select><option>All Categories</option></select>
+          </div>
+          <div class="forms-v2-select">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#64748b" stroke-width="2"><line x1="12" y1="5" x2="12" y2="19"></line><polyline points="19 12 12 19 5 12"></polyline></svg>
+            <select><option>Newest First</option></select>
+          </div>
+        </div>
       </div>
-      <div class="flow-actions">
-        <button class="ghost-button" data-action="prev-step">Back to Services</button>
+
+      ${state.templateSearchKeyboardActive ? `
+        <div class="template-keyboard-popup-container">
+          <div class="template-keyboard-popup-backdrop" data-template-search-action="close"></div>
+          <div class="template-keyboard-popup-content">
+            ${renderTemplateSearchKeyboard()}
+          </div>
+        </div>
+      ` : ""}
+
+      <div class="forms-v2-grid">
+        ${paginatedTemplates.length ? paginatedTemplates.map((template, idx) => {
+    const templateTitle = localizedTemplateText(template, "title");
+    const templateDescription = localizedTemplateText(template, "description");
+    const pages = Math.max(1, Number(template.pages) || 1);
+    const color = getDeptColor(idx);
+    const cost = rates.bw ? rates.bw * pages : 3 * pages;
+
+    return `
+            <div class="forms-v2-card">
+              <div class="forms-v2-card-body" data-template="${escapeHtml(template.id)}" style="cursor: pointer;">
+                <div class="forms-v2-card-icon-container">
+                  <div class="forms-v2-card-icon" style="color: ${color}; background: ${color}1A;">
+                    ${getDeptIcon(idx)}
+                  </div>
+                </div>
+                <div class="forms-v2-card-content">
+                  <div class="forms-v2-pdf-badge" style="color: ${color};">${templateDocumentKind(template.documentType || template.imageUrl) === 'pdf' ? 'PDF' : 'DOC'}</div>
+                  <h3>${escapeHtml(templateTitle)}</h3>
+                  <p>${escapeHtml(templateDescription) || "Official government form for processing."}</p>
+                  
+                  <div class="forms-v2-tags">
+                    <span class="tag-dept" style="color: #6366f1; background: #e0e7ff;">
+                      <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M3 21h18"></path><path d="M5 21V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2v16"></path><path d="M9 21v-4a2 2 0 0 1 2-2h2a2 2 0 0 1 2 2v4"></path></svg>
+                      ${escapeHtml(template.department || "Govt. Dept.")}
+                    </span>
+                    <span class="tag-meta">${escapeHtml(normalizePaperSize(template.paperSize, "A4", true))}</span>
+                    <span class="tag-meta">${customerSettingEnabled("bw", service) ? "B/W" : "Color"}</span>
+                  </div>
+                </div>
+              </div>
+              <div class="forms-v2-card-footer">
+                <div class="forms-v2-price">₹${cost} per page</div>
+                <div class="forms-v2-actions">
+                  <button class="forms-v2-btn forms-v2-btn-primary" data-template="${escapeHtml(template.id)}">
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 6 2 18 2 18 9"></polyline><path d="M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2"></path><rect x="6" y="14" width="12" height="8"></rect></svg>
+                    Print
+                  </button>
+                </div>
+              </div>
+            </div>
+          `;
+  }).join("") : `
+          <div class="empty-note template-search-empty">No forms match this search.</div>
+        `}
       </div>
     </div>
   `;
@@ -4257,28 +4971,25 @@ function renderPreviewStep() {
 
 function renderPreviewDocumentPanel(previewClass, paperClass, file) {
   const pages = Math.max(1, Number(file?.pages) || 1);
-  const zoom = normalizedPreviewZoom();
-  const canZoomIn = zoom < PREVIEW_ZOOM_MAX;
-  const canZoomOut = zoom > PREVIEW_ZOOM_MIN;
   return `
     <section class="preview-document-panel">
       <div class="preview-document-head">
         <div>
-          <h2>Document Preview</h2>
+          <h1>Preview and confirm</h1>
           <span class="ready-pill">${uiIcon("system", 14)} Ready to Print</span>
         </div>
         <span>Page 1 of ${pages}</span>
       </div>
       <div class="preview-workspace">
         <div class="preview-toolbar" aria-label="Preview tools">
-          <button type="button" data-action="zoom-in" aria-label="Zoom in" title="Zoom in" ${canZoomIn ? "" : "disabled"}>+</button>
-          <button type="button" data-action="zoom-out" aria-label="Zoom out" title="Zoom out" ${canZoomOut ? "" : "disabled"}>&minus;</button>
-          <span>${Math.round(zoom * 100)}%</span>
-          <button type="button" data-action="fit-page" aria-label="Fit to page" title="Fit to page">${uiIcon("refresh", 17)}</button>
-          <button type="button" data-action="actual-size" aria-label="Actual size" title="Actual size">${uiIcon("system", 17)}</button>
+          <button type="button" data-action="zoom-in" aria-label="Zoom in">+</button>
+          <button type="button" data-action="zoom-out" aria-label="Zoom out">&minus;</button>
+          <span>${Math.round(state.previewZoom * 100)}%</span>
+          <button type="button" data-action="zoom-out" aria-label="Fit to page">${uiIcon("refresh", 17)}</button>
+          <button type="button" data-action="zoom-out" aria-label="Full page">${uiIcon("system", 17)}</button>
         </div>
-        <div class="document-preview ${previewClass} ${paperClass}" style="--preview-zoom: ${zoom};">
-          <div class="preview-zoom-layer" data-preview-reuse-key="${escapeHtml(previewReuseKey(file))}">${renderPreviewContent()}</div>
+        <div class="document-preview ${previewClass} ${paperClass}" style="--preview-zoom: ${state.previewZoom};">
+          <div class="preview-zoom-layer">${renderPreviewContent()}</div>
         </div>
         <div class="preview-page-nav" aria-label="Page navigation">
           <button type="button" aria-label="Previous page">&lsaquo;</button>
@@ -4317,7 +5028,7 @@ function renderPreviewInfoPanel(details, files) {
         <h2>${uiIcon("kiosks", 18)} Quick Actions</h2>
         <button type="button" data-action="zoom-in">${uiIcon("support", 15)} Zoom In</button>
         <button type="button" data-action="zoom-out">${uiIcon("support", 15)} Zoom Out</button>
-        <button type="button" data-action="fit-page">${uiIcon("refresh", 15)} Fit to Page</button>
+        <button type="button" data-action="zoom-out">${uiIcon("system", 15)} Fit to Page</button>
       </section>
     </aside>
   `;
@@ -4332,16 +5043,16 @@ function renderPreviewControlPanel(details, files) {
     : serviceRates(service?.id).bw;
   const colorChoices = colorSelectionAvailable(file)
     ? [
-        { value: "bw", label: "B/W" },
-        { value: "color", label: "Color" }
-      ]
+      { value: "bw", label: "B/W" },
+      { value: "color", label: "Color" }
+    ]
     : [];
 
   return `
     <aside class="module-card preview-control-panel">
       <h2>Print settings</h2>
       <div class="preview-job-info">
-        <div><span>Document</span><strong>${escapeHtml(file?.source || file?.name || "Selected form")}</strong></div>
+        <div><span>Document</span><strong>${escapeHtml(file?.source || (file?.templateId ? file.name : "Uploaded Document"))}</strong></div>
         <div><span>Paper</span><strong>${escapeHtml(normalizePaperSize(state.settings.paperSize, "A4"))} · ${escapeHtml(normalizeOrientation(state.settings.orientation))}</strong></div>
         <div><span>Rate</span><strong>${money(rateValue)} / page · ${rateLabel}</strong></div>
       </div>
@@ -4374,12 +5085,6 @@ function renderPreviewControlPanel(details, files) {
             </div>
           </div>
         ` : ""}
-        ${customerSettingEnabled("pageRange") ? `
-          <label class="preview-essential-setting">
-            <span>Page Range</span>
-            <input value="${escapeHtml(state.settings.range)}" data-input="range" placeholder="all or 1-3,5" />
-          </label>
-        ` : ""}
       </div>
       <div class="preview-order-summary">
         <div><span>Total Pages</span><strong>${details.pages * details.copies}</strong></div>
@@ -4387,7 +5092,6 @@ function renderPreviewControlPanel(details, files) {
       </div>
       <div class="preview-control-actions">
         <button class="primary-button" data-action="next-step">Continue to Payment</button>
-        <button class="secondary-button" data-action="delete-file">Replace Document</button>
         <button class="ghost-button" data-action="prev-step">Back</button>
       </div>
     </aside>
@@ -4402,16 +5106,12 @@ function renderPreviewContent() {
     return renderPreviewFallback("No file selected", "Upload a file to see the preview.");
   }
 
-  if (file.previewKind === "pdf" && file.previewLoading) {
-    return renderPreviewFallback("Loading form preview", "Preparing the template preview for this kiosk.");
-  }
-
   if (file.previewKind === "pdf" && file.previewUrl) {
-    const previewUrl = pdfPreviewDocumentUrl(file.previewUrl);
     return `
       <div class="pdf-preview-shell">
-        <canvas class="pdf-preview-canvas" data-pdf-url="${escapeHtml(previewUrl)}" aria-label="PDF first page preview"></canvas>
-        <div class="pdf-preview-status" data-pdf-preview-status>Rendering PDF preview...</div>
+        <object class="preview-frame" data="${escapeHtml(file.previewUrl)}#toolbar=0&navpanes=0&view=FitH&zoom=page-width" type="application/pdf">
+          ${renderPreviewFallback("PDF preview unavailable", "The file is valid. Continue after checking file details.")}
+        </object>
       </div>
     `;
   }
@@ -4434,9 +5134,9 @@ function renderPreviewContent() {
 
   return `
     ${renderPreviewFallback(
-      file.source ? `${escapeHtml(file.source)} upload` : "Preview placeholder",
-      "A real uploaded PDF or image will render here."
-    )}
+    file.source ? `${escapeHtml(file.source)} upload` : "Preview placeholder",
+    "A real uploaded PDF or image will render here."
+  )}
     <div class="thumbnail-grid">
       ${Array.from({ length: Math.min(pages, 8) }, (_, index) => `
         <div class="page-thumb">
@@ -4483,7 +5183,7 @@ function renderTextDocumentPreview(file) {
       ${chunks.slice(0, pages).map((pageLines, index) => `
         <article class="form-preview-page">
           <div class="form-preview-page-header">
-            <strong>${escapeHtml(file.source || file.name)}</strong>
+            <strong>${escapeHtml(file.source || (file.templateId ? file.name : "Uploaded Document"))}</strong>
             <span>Page ${index + 1} of ${pages}</span>
           </div>
           <pre>${escapeHtml(pageLines.join("\n"))}</pre>
@@ -4567,7 +5267,6 @@ function renderPaymentStep() {
   ensureActiveJobId();
   const paymentComplete = state.paymentStatus === "Success";
   const qrReady = Boolean(state.paymentOrder?.qrSvg);
-  const isDemoFallbackPayment = Boolean(state.paymentOrder?.demo);
   const isPrinting = paymentComplete && state.step === 3 && (state.printProgress > 0 || Boolean(state.printStatusMessage));
   const printComplete = state.step === 4 || state.lastCompletedJob?.print === "Completed";
   const trackingMessage = state.printError
@@ -4577,17 +5276,17 @@ function renderPaymentStep() {
   const paymentHeading = DEMO_KIOSK_MODE
     ? (paymentComplete ? "Tracking" : "Scan to pay")
     : (paymentComplete ? "Tracking" : "Scan to pay");
-  const paymentIntro = isDemoFallbackPayment
-    ? "Scan the demo UPI QR. Confirm when payment is done."
-    : "The kiosk shows only the QR. Complete payment on the phone through Razorpay; live tracking stays on this screen.";
-  const paymentQrHelp = isDemoFallbackPayment
+  const paymentIntro = DEMO_KIOSK_MODE
+    ? "Scan the QR code with any UPI app. Confirm when payment is done."
+    : "The kiosk shows only the QR. Complete payment on the phone; live tracking stays on this screen.";
+  const paymentQrHelp = DEMO_KIOSK_MODE
     ? "Scan with the phone camera or any UPI app."
     : "Scan with the phone camera or any UPI app to open Razorpay.";
   const paidLabel = DEMO_KIOSK_MODE ? "Payment received" : "Paid on phone";
   const paidHelp = DEMO_KIOSK_MODE
     ? "Payment is verified. Watch print tracking on the kiosk."
     : "Payment is verified. Watch print tracking on the kiosk.";
-  const waitingPaymentLabel = isDemoFallbackPayment ? "Waiting for demo payment" : "Waiting for phone payment";
+  const waitingPaymentLabel = DEMO_KIOSK_MODE ? "Waiting for payment" : "Waiting for phone payment";
   const paymentDetailParts = [
     `${details.pages} page${details.pages === 1 ? "" : "s"}`,
     customerSettingEnabled("copies") ? `${details.copies} cop${details.copies === 1 ? "y" : "ies"}` : ""
@@ -4633,8 +5332,8 @@ function renderPaymentStep() {
           <p class="helper-text">${escapeHtml(trackingMessage)}</p>
         </div>
       </div>
-      <div class="flow-actions">
-        ${isDemoFallbackPayment ? `<button class="primary-button" data-action="demo-payment-success">Payment Done</button>` : ""}
+      <div class="flow-actions ${paymentComplete ? "is-hidden" : ""}">
+        ${DEMO_KIOSK_MODE ? `<button class="primary-button" data-action="demo-payment-success">Payment Done</button>` : ""}
         <button class="ghost-button" data-action="prev-step">Back</button>
       </div>
     </div>
@@ -4670,42 +5369,123 @@ function renderPrintFailureStep() {
         <div class="flow-actions" style="margin-top: 16px;">
           <button class="primary-button" data-action="retry-print">Retry Print</button>
           <button class="secondary-button" data-action="request-refund">Request Refund</button>
-          <button class="ghost-button" data-action="prev-step">Back</button>
         </div>
       </div>
     </div>
   `;
 }
 
-function renderThankYouStep() {
+/* ── Phase helpers ─────────────────────────────── */
+function renderThankYouPaymentDone() {
   const details = priceDetails();
-  const receiptJob = state.lastCompletedJob || {
-    id: currentJobId(),
-    service: selectedService()?.title,
-    pages: details.pages,
-    copies: details.copies,
-    amount: details.total,
-    print: "Completed"
-  };
+  const receiptJob = state.lastCompletedJob || { pages: details.pages, amount: details.total };
+  return `
+    <div class="tq-phase tq-phase-in">
+      <div class="tq-check-wrapper">
+        <div class="tq-check-ring"></div>
+        <svg class="tq-check-icon" viewBox="0 0 52 52" fill="none">
+          <circle cx="26" cy="26" r="25" stroke="#22c55e" stroke-width="2"/>
+          <path class="tq-check-path" d="M14 26 L22 34 L38 18" stroke="#22c55e" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" fill="none"/>
+        </svg>
+      </div>
+      <div class="tq-message">
+        <h1 class="tq-title">Payment Successful!</h1>
+        <p class="tq-subtitle">₹${(receiptJob.amount || 0).toFixed ? (receiptJob.amount || 0).toFixed(2) : receiptJob.amount} received &nbsp;·&nbsp; ${receiptJob.pages || 0} page${receiptJob.pages !== 1 ? 's' : ''}</p>
+      </div>
+      <div class="tq-pills">
+        <div class="tq-pill tq-pill-success">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="20 6 9 17 4 12"/></svg>
+          <span>Payment Confirmed</span>
+        </div>
+        <div class="tq-pill">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="1" y="4" width="22" height="16" rx="2"/><line x1="1" y1="10" x2="23" y2="10"/></svg>
+          <span>Preparing to print…</span>
+        </div>
+      </div>
+      <p class="tq-phase-hint">Please wait while we send your document to the printer</p>
+    </div>`;
+}
+
+function renderThankYouPrinting() {
+  return `
+    <div class="tq-phase tq-phase-in">
+      <div class="tq-printer-anim">
+        <div class="tq-printer-body">
+          <div class="tq-printer-slot">
+            <div class="tq-printer-paper"></div>
+          </div>
+          <div class="tq-printer-base"></div>
+          <div class="tq-printer-lights">
+            <div class="tq-light tq-light-blink"></div>
+            <div class="tq-light tq-light-blink" style="animation-delay:0.4s"></div>
+            <div class="tq-light tq-light-solid"></div>
+          </div>
+        </div>
+        <div class="tq-printer-output">
+          <div class="tq-output-paper"></div>
+        </div>
+      </div>
+      <div class="tq-message">
+        <h1 class="tq-title">Printing Your Document</h1>
+        <p class="tq-subtitle">Please don't leave — your document is being printed now</p>
+      </div>
+      <div class="tq-print-progress">
+        <div class="tq-progress-bar"><div class="tq-progress-fill"></div></div>
+        <span class="tq-progress-label">Sending to printer…</span>
+      </div>
+    </div>`;
+}
+
+function renderThankYouFinal() {
+  return `
+    <div class="tq-phase tq-phase-in">
+      <div class="tq-mascot-area">
+        <img src="./assets/smartbuddy-last-step.jpeg" alt="SmartBuddy" class="tq-mascot" draggable="false" data-no-visual-search />
+      </div>
+      <div class="tq-message">
+        <h1 class="tq-title tq-title-gradient">Thank You!</h1>
+        <p class="tq-subtitle">Your document has been printed successfully.<br>We hope to see you again!</p>
+      </div>
+      <div class="tq-redirect">
+        <div class="tq-redirect-ring">
+          <svg viewBox="0 0 36 36" class="tq-countdown-ring">
+            <circle cx="18" cy="18" r="15" fill="none" stroke="rgba(255,255,255,0.15)" stroke-width="2.5"/>
+            <circle id="tq-countdown-circle" cx="18" cy="18" r="15" fill="none" stroke="#22c55e" stroke-width="2.5"
+              stroke-dasharray="94.25" stroke-dashoffset="0"
+              stroke-linecap="round" transform="rotate(-90 18 18)"/>
+            <text id="tq-seconds-left" x="18" y="23" text-anchor="middle" font-size="10" font-weight="700" fill="#ffffff">${state.receiptSecondsLeft}</text>
+          </svg>
+        </div>
+        <p class="tq-redirect-text">Returning home in <strong id="tq-seconds-left-text">${state.receiptSecondsLeft}</strong>s</p>
+      </div>
+      <button class="tq-home-btn" data-action="finish-session">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/></svg>
+        Return Home Now
+      </button>
+    </div>`;
+}
+
+/* ── Main entry point ─────────────────────────── */
+function renderThankYouStep() {
+  // Reset phase to payment_done on every fresh render (only happens once on step entry)
+  const phase = state.thankYouPhase || "payment_done";
+
+  let phaseHtml;
+  if (phase === "printing") {
+    phaseHtml = renderThankYouPrinting();
+  } else if (phase === "thankyou") {
+    phaseHtml = renderThankYouFinal();
+  } else {
+    phaseHtml = renderThankYouPaymentDone();
+  }
 
   return `
-    <div class="stage receipt-stage">
-      <div class="stage-header">
-        <h1>Receipt</h1>
-        <p class="stage-intro">Printing completed successfully. Returning to the home page in ${state.receiptSecondsLeft} seconds.</p>
-      </div>
-      <div class="receipt-card">
-        <h2>Payment receipt</h2>
-        <div class="receipt-row"><span>Job ID</span><strong>${escapeHtml(receiptJob.id)}</strong></div>
-        <div class="receipt-row"><span>Documents</span><strong>${jobFiles().length}</strong></div>
-        <div class="receipt-row"><span>Pages</span><strong>${receiptJob.pages}</strong></div>
-        ${customerSettingEnabled("copies") ? `<div class="receipt-row"><span>Copies</span><strong>${receiptJob.copies}</strong></div>` : ""}
-        <div class="receipt-row"><span>Amount</span><strong>${money(receiptJob.amount)}</strong></div>
-        <div class="receipt-row"><span>Status</span><strong>${escapeHtml(receiptJob.print)}</strong></div>
-        <div class="flow-actions">
-          <button class="ghost-button" data-action="prev-step">Back</button>
-          <button class="primary-button" data-action="finish-session">Return Home</button>
-        </div>
+    <div class="thankyou-stage tq-phase-${phase}">
+      <div class="tq-bg-circle tq-bg-c1"></div>
+      <div class="tq-bg-circle tq-bg-c2"></div>
+      <div class="tq-bg-circle tq-bg-c3"></div>
+      <div class="tq-content">
+        <div id="tq-phase-content">${phaseHtml}</div>
       </div>
     </div>
   `;
@@ -5342,17 +6122,17 @@ function renderHistory() {
     .filter((job) => !search || JSON.stringify(job).toLowerCase().includes(search))
     .filter((job) => status === "all" || (status === "success" && /success|completed/i.test(`${job.payment} ${job.print}`)) || (status === "failed" && /failed/i.test(job.print)) || (status === "refund" && /refund/i.test(`${job.payment} ${job.print}`)))
     .map((job) => [
-    job.id,
-    job.date,
-    job.kiosk,
-    job.branch,
-    job.file,
-    job.pages,
-    job.copies,
-    money(job.amount),
-    job.payment,
-    job.print,
-    "View"
+      job.id,
+      job.date,
+      job.kiosk,
+      job.branch,
+      job.file,
+      job.pages,
+      job.copies,
+      money(job.amount),
+      job.payment,
+      job.print,
+      "View"
     ]);
 
   return `
@@ -5491,8 +6271,8 @@ function renderServiceHierarchyRow(service) {
         </div>
         <div class="service-hierarchy-children">
           ${service.mode === "template" && templates.length
-            ? templates.map((template) => `<span>${escapeHtml(template.title)}</span>`).join("")
-            : `<span>${escapeHtml(childText)}</span>`}
+      ? templates.map((template) => `<span>${escapeHtml(template.title)}</span>`).join("")
+      : `<span>${escapeHtml(childText)}</span>`}
         </div>
       </div>
       <span class="badge ${service.enabled ? "good" : "bad"}">${service.enabled ? "Enabled" : "Off"}</span>
@@ -5573,8 +6353,8 @@ function renderServicesReadOnly() {
     ${adminNotice()}
     <div class="service-admin-grid">
       ${page.items.length ? page.items.map((service) => {
-        const rates = serviceRates(service.id);
-        return `
+    const rates = serviceRates(service.id);
+    return `
           <article class="module-card read-only-service-card">
             <div class="service-admin-head">
               ${serviceMediaMarkup(service, "admin-image-preview")}
@@ -5589,7 +6369,7 @@ function renderServicesReadOnly() {
             </div>
           </article>
         `;
-      }).join("") : `<div class="empty-note">No services are assigned to your kiosks.</div>`}
+  }).join("") : `<div class="empty-note">No services are assigned to your kiosks.</div>`}
     </div>
     ${renderAdminPagination("services", page)}
   `;
@@ -5603,15 +6383,15 @@ function renderPricingReadOnly() {
     ${adminNotice()}
     <div class="settings-grid pricing-settings-grid">
       ${page.items.length ? page.items.map((service) => {
-        const rates = serviceRates(service.id);
-        return `
+    const rates = serviceRates(service.id);
+    return `
           <div class="setting-field service-pricing-card">
             <h2>${escapeHtml(service.title)}</h2>
             <div class="info-row"><span>B/W per page</span><strong>${money(rates.bw)}</strong></div>
             <div class="info-row"><span>Color per page</span><strong>${money(rates.color)}</strong></div>
           </div>
         `;
-      }).join("") : `<div class="empty-note">No pricing records are assigned to your kiosks.</div>`}
+  }).join("") : `<div class="empty-note">No pricing records are assigned to your kiosks.</div>`}
     </div>
     ${renderAdminPagination("pricing", page)}
   `;
@@ -5795,9 +6575,9 @@ function renderPricing() {
     ${state.pricingSaveStatus ? `<div class="save-note">${escapeHtml(state.pricingSaveStatus)}</div>` : ""}
     <div class="settings-grid pricing-settings-grid">
       ${services.map((service) => {
-        const rates = serviceRates(service.id);
+    const rates = serviceRates(service.id);
 
-        return `
+    return `
           <div class="setting-field service-pricing-card">
             <div>
               <h2>${escapeHtml(service.title)}</h2>
@@ -5809,7 +6589,7 @@ function renderPricing() {
             <input id="price-${service.id}-color" type="number" min="0" value="${rates.color}" data-service-price="${service.id}" data-price-key="color" />
           </div>
         `;
-      }).join("")}
+  }).join("")}
     </div>
   `;
 }
@@ -7075,17 +7855,12 @@ async function adminLogin() {
 }
 
 async function handleClick(event) {
-  const target = event.target.closest("button");
+  const target = event.target.closest("button, [data-template], [data-service]");
   if (!target) {
     return;
   }
 
   if (target.disabled) {
-    return;
-  }
-
-  if (target.dataset.stepIndex !== undefined) {
-    goToCustomerStep(Number(target.dataset.stepIndex) || 0);
     return;
   }
 
@@ -7102,6 +7877,8 @@ async function handleClick(event) {
     }
 
     state.selectedService = target.dataset.service;
+    state.templateSearchQuery = "";
+    state.templateSearchKeyboardActive = false;
     applyServicePrintDefaults(selectedService());
     state.step = 1;
     stopUploadPolling();
@@ -7121,7 +7898,13 @@ async function handleClick(event) {
 
     const selectedTemplates = formTemplatesForService(target.dataset.service);
     if (isFormTemplateService(target.dataset.service) && selectedTemplates.length === 1) {
-      await selectTemplateForPreview(selectedTemplates[0]);
+      const template = selectedTemplates[0];
+      applyTemplatePrintDefaults(template);
+      setJobFiles([createTemplateFile(template)]);
+      state.uploadSession = null;
+      state.uploadError = "";
+      state.step = 2;
+      render();
       return;
     }
 
@@ -7244,7 +8027,48 @@ async function handleClick(event) {
       return;
     }
 
-    await selectTemplateForPreview(template);
+    stopUploadPolling();
+    clearCurrentFile();
+    applyTemplatePrintDefaults(template);
+    setJobFiles([createTemplateFile(template)]);
+    state.uploadError = "";
+    state.uploadSession = null;
+    state.step = 2;
+    render();
+    return;
+  }
+
+  if (target.dataset.templateSearchKey !== undefined || target.dataset.templateSearchAction !== undefined) {
+    const current = String(state.templateSearchQuery || "");
+    let next = current;
+
+    if (target.dataset.templateSearchKey !== undefined) {
+      next = `${current}${String(target.dataset.templateSearchKey || "").toLowerCase()}`;
+    } else if (target.dataset.templateSearchAction === "toggle-keyboard") {
+      state.templateSearchKeyboardActive = !state.templateSearchKeyboardActive;
+      render();
+      if (state.templateSearchKeyboardActive) {
+        focusTemplateSearchInput();
+      }
+      return;
+    } else if (target.dataset.templateSearchAction === "close") {
+      state.templateSearchKeyboardActive = false;
+      render();
+      return;
+    } else if (target.dataset.templateSearchAction === "space") {
+      next = current.endsWith(" ") || !current ? current : `${current} `;
+    } else if (target.dataset.templateSearchAction === "backspace") {
+      next = current.slice(0, -1);
+    } else if (target.dataset.templateSearchAction === "clear") {
+      next = "";
+    }
+
+    setTemplateSearchQuery(next);
+    return;
+  }
+
+  if (target.dataset.templateSearchInput !== undefined) {
+    activateTemplateSearchKeyboard();
     return;
   }
 
@@ -7292,6 +8116,8 @@ async function handleClick(event) {
         state.step = 0;
         state.uploadSession = null;
         state.uploadError = "";
+        state.templateSearchQuery = "";
+        state.templateSearchKeyboardActive = false;
       } else {
         state.step = Math.max(0, state.step - 1);
       }
@@ -7311,19 +8137,11 @@ async function handleClick(event) {
       goToNextStep();
       break;
     case "zoom-in":
-      setPreviewZoom(state.previewZoom + PREVIEW_ZOOM_STEP);
+      state.previewZoom = Math.min(1.2, state.previewZoom + 0.1);
       render();
       break;
     case "zoom-out":
-      setPreviewZoom(state.previewZoom - PREVIEW_ZOOM_STEP);
-      render();
-      break;
-    case "fit-page":
-      setPreviewZoom(1);
-      render();
-      break;
-    case "actual-size":
-      setPreviewZoom(1);
+      state.previewZoom = 1;
       render();
       break;
     case "delete-file":
@@ -7581,6 +8399,11 @@ async function handleChange(event) {
 function handleInput(event) {
   const target = event.target;
 
+  if (target.dataset.templateSearchInput !== undefined) {
+    setTemplateSearchQuery(target.value);
+    return;
+  }
+
   if (target.dataset.input) {
     const settingKey = target.dataset.input === "range" ? "pageRange" : target.dataset.input;
     if (!customerSettingEnabled(settingKey)) {
@@ -7660,22 +8483,59 @@ function stopReceiptRedirect() {
 function startReceiptRedirect() {
   if (state.receiptRedirectTimer) return;
 
+  // Phase 1: Payment Done — shown immediately when render() is first called.
+  // We do NOT re-render every second. Instead we use DOM patching.
+  state.thankYouPhase = "payment_done";
   state.receiptSecondsLeft = RECEIPT_REDIRECT_SECONDS;
-  state.receiptRedirectTimer = setInterval(() => {
-    state.receiptSecondsLeft -= 1;
 
-    if (state.receiptSecondsLeft <= 0) {
-      stopReceiptRedirect();
-      resetCustomer();
+  // After 2 seconds, transition to printing animation phase
+  setTimeout(() => {
+    if (state.step !== 4) return;
+    state.thankYouPhase = "printing";
+    const stage = document.querySelector(".thankyou-stage");
+    if (stage) {
+      stage.classList.remove("tq-phase-payment");
+      stage.classList.add("tq-phase-printing");
+      // Update phase content via DOM
+      const phaseEl = document.getElementById("tq-phase-content");
+      if (phaseEl) phaseEl.innerHTML = renderThankYouPrinting();
+    } else {
       render();
-      refreshPrinterStatus();
-      return;
     }
 
-    if (state.mode === "customer" && state.step === 4) {
-      render();
-    }
-  }, 1000);
+    // After 4 seconds of printing animation, transition to Thank You
+    setTimeout(() => {
+      if (state.step !== 4) return;
+      state.thankYouPhase = "thankyou";
+      const stage2 = document.querySelector(".thankyou-stage");
+      if (stage2) {
+        stage2.classList.remove("tq-phase-printing");
+        stage2.classList.add("tq-phase-thankyou");
+        const phaseEl2 = document.getElementById("tq-phase-content");
+        if (phaseEl2) phaseEl2.innerHTML = renderThankYouFinal();
+      } else {
+        render();
+      }
+
+      // Now start the countdown — DOM only, no re-render
+      state.receiptRedirectTimer = setInterval(() => {
+        state.receiptSecondsLeft -= 1;
+
+        // Just update the countdown number in DOM
+        const secEl = document.getElementById("tq-seconds-left");
+        const secEl2 = document.getElementById("tq-seconds-left-text");
+        if (secEl) secEl.textContent = state.receiptSecondsLeft;
+        if (secEl2) secEl2.textContent = state.receiptSecondsLeft;
+
+        if (state.receiptSecondsLeft <= 0) {
+          stopReceiptRedirect();
+          resetCustomer();
+          render();
+          refreshPrinterStatus();
+        }
+      }, 1000);
+    }, 4000);
+  }, 2000);
 }
 
 function addJob(printStatus) {
@@ -7717,6 +8577,8 @@ function resetCustomer() {
   setPrivacyPolicyVisible(false);
   state.step = 0;
   state.selectedService = null;
+  state.templateSearchQuery = "";
+  state.templateSearchKeyboardActive = false;
   clearCurrentFile();
   state.uploadSession = null;
   state.previewZoom = 1;
@@ -7744,6 +8606,7 @@ function resetCustomer() {
   state.activeJobId = null;
   state.lastCompletedJob = null;
   state.receiptSecondsLeft = RECEIPT_REDIRECT_SECONDS;
+  state.thankYouPhase = "payment_done";
   state.printer = {
     ...state.printer,
     online: false,
@@ -7881,6 +8744,29 @@ if (TEST_HOOKS_ENABLED) {
 }
 
 hydrateAdminSession();
+
+try {
+  const savedState = sessionStorage.getItem("kioskCustomerState");
+  if (savedState) {
+    const parsed = JSON.parse(savedState);
+    if (parsed.step !== undefined && parsed.step > 0 && parsed.selectedService) {
+      state.step = parsed.step;
+      state.selectedService = parsed.selectedService;
+      if (parsed.selectedTemplate) state.selectedTemplate = parsed.selectedTemplate;
+      
+      if (state.step >= 2) {
+         const isTemplate = services.find(s => s.id === state.selectedService)?.mode === "template" || (formTemplates[state.selectedService] && formTemplates[state.selectedService].length > 0);
+         if (!isTemplate && (!state.files || state.files.length === 0)) {
+           state.step = 1;
+         }
+      }
+    } else if (parsed.step === 0) {
+      state.step = 0;
+      state.selectedService = null;
+    }
+  }
+} catch (e) {}
+
 render();
 loadPricingSettings();
 if (isMobilePaymentEntry) {

@@ -22,6 +22,7 @@
     close: '<path d="m6 6 12 12M18 6 6 18"/>',
     support: '<circle cx="12" cy="12" r="9"/><path d="M8.5 9a3.5 3.5 0 1 1 5.8 2.6c-1.5 1.2-2.3 1.7-2.3 3.4M12 18h.01"/>',
     printer: '<path d="M6 9V3h12v6M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2"/><rect x="6" y="14" width="12" height="7"/><path d="M18 12h.01"/>',
+    upload: '<path d="M12 16V5"/><path d="m8 9 4-4 4 4"/><path d="M4 16v2a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-2"/>',
     alert: '<path d="M10.3 3.6 2.6 17a2 2 0 0 0 1.7 3h15.4a2 2 0 0 0 1.7-3L13.7 3.6a2 2 0 0 0-3.4 0Z"/><path d="M12 9v4M12 17h.01"/>',
     activity: '<path d="M3 12h4l2.5-6 5 12 2.5-6h4"/>',
     pages: '<path d="M14 2H6a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h8a2 2 0 0 0 2-2V4a2 2 0 0 0-2-2Z"/><path d="M8 6h4M8 10h4M8 14h3"/><path d="M9 22h9a2 2 0 0 0 2-2V7"/>'
