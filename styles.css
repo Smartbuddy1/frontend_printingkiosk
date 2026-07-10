@@ -256,7 +256,7 @@
 
 .customer-shell .payment-qr-code {
   align-items: center;
-  background: #ffffff;
+  background: transparent;
   border: 1px solid var(--line);
   border-radius: 10px;
   display: grid;
@@ -454,7 +454,7 @@ th {
 }
 
 .admin-topbar .brand-mark {
-  background: #ffffff;
+  background: transparent;
   color: var(--surface-strong);
 }
 
@@ -1169,7 +1169,7 @@ button:disabled:hover {
 
 .qr-code-box {
   align-items: center;
-  background: #ffffff;
+  background: transparent;
   border: 1px solid #c7d3df;
   border-radius: 8px;
   display: flex;
@@ -1225,8 +1225,12 @@ button:disabled:hover {
 
 .preview-grid {
   display: grid;
-  gap: 18px;
-  grid-template-columns: 1fr 310px;
+  gap: 20px;
+  grid-template-columns: minmax(0, 3fr) minmax(360px, 2fr);
+  align-items: stretch;
+  box-sizing: border-box;
+  min-height: 0;
+  height: 100%;
 }
 
 .document-preview {
@@ -1236,7 +1240,7 @@ button:disabled:hover {
   display: grid;
   gap: 14px;
   grid-template-columns: 1fr;
-  min-height: 430px;
+  min-height: 0;
   overflow: auto;
   padding: 18px;
 }
@@ -1244,14 +1248,14 @@ button:disabled:hover {
 .document-preview.preview-live {
   background: #f9fbfc;
   display: block;
-  min-height: 540px;
+  min-height: 0;
   padding: 0;
 }
 
 .document-preview.preview-document-mode {
   align-content: start;
   background: #dfe7ee;
-  min-height: 540px;
+  min-height: 0;
 }
 
 .html-template-preview {
@@ -1260,7 +1264,7 @@ button:disabled:hover {
 }
 
 .birth-certificate-document {
-  background: #ffffff;
+  background: transparent;
   color: #000000;
   font-family: var(--font-main);
   width: min(100%, 794px);
@@ -1446,7 +1450,7 @@ button:disabled:hover {
 
 .preview-frame,
 .pdf-preview-canvas {
-  background: #ffffff;
+  background: transparent;
   border: 0;
   display: block;
   height: 560px;
@@ -1454,7 +1458,7 @@ button:disabled:hover {
 }
 
 .preview-media {
-  background: #ffffff;
+  background: transparent;
   display: block;
   height: 560px;
   object-fit: contain;
@@ -1503,10 +1507,10 @@ button:disabled:hover {
 }
 
 .form-preview-page {
-  background: #ffffff;
+  background: transparent;
   border: 1px solid #cbd5e1;
   box-shadow: 0 10px 22px rgba(31, 41, 55, 0.12);
-  min-height: 430px;
+  min-height: 0;
   padding: 24px;
   width: min(100%, 560px);
 }
@@ -1600,7 +1604,7 @@ button:disabled:hover {
 }
 
 .page-thumb {
-  background: #ffffff;
+  background: transparent;
   border: 1px solid #cbd5e1;
   border-radius: 4px;
   box-shadow: 0 10px 20px rgba(31, 41, 55, 0.08);
@@ -2205,7 +2209,7 @@ button:disabled:hover {
 }
 
 .segmented button.active {
-  background: #ffffff;
+  background: transparent;
   color: var(--blue);
   box-shadow: 0 3px 10px rgba(31, 41, 55, 0.08);
 }
@@ -2287,7 +2291,7 @@ button:disabled:hover {
 
 .qr-box {
   align-items: center;
-  background: #ffffff;
+  background: transparent;
   border: 1px solid var(--line);
   border-radius: 8px;
   display: grid;
@@ -2392,7 +2396,7 @@ button:disabled:hover {
 }
 
 .admin-nav button.active {
-  background: #ffffff;
+  background: transparent;
   color: var(--surface-ink);
   box-shadow: 0 10px 22px rgba(0, 0, 0, 0.12);
 }
@@ -3074,7 +3078,7 @@ img[data-no-visual-search] {
 }
 
 .electron-required section {
-  background: #ffffff;
+  background: transparent;
   border: 1px solid var(--line);
   border-radius: 8px;
   box-shadow: var(--shadow);
@@ -3884,7 +3888,7 @@ td {
 }
 
 .preview-layout-bar span {
-  background: #ffffff;
+  background: transparent;
   border: 1px solid #d7e1ed;
   border-radius: 999px;
   color: var(--muted);
@@ -4047,7 +4051,7 @@ td {
 
 .uploaded-image-paper {
   aspect-ratio: var(--paper-ratio, 210 / 297);
-  background: #ffffff;
+  background: transparent;
   border: 1px solid #cbd5e1;
   box-shadow: 0 12px 28px rgba(31, 41, 55, 0.14);
   display: grid;
@@ -4334,7 +4338,7 @@ body {
 }
 
 .brand-mark {
-  background: #ffffff;
+  background: transparent;
   border: 1px solid rgba(11, 120, 255, 0.18);
   border-radius: 8px;
   box-shadow: 0 12px 28px rgba(8, 51, 132, 0.14);
@@ -4354,7 +4358,7 @@ body {
 }
 
 .admin-topbar .brand-mark {
-  background: #ffffff;
+  background: transparent;
   border-color: rgba(255, 255, 255, 0.52);
   color: transparent;
 }
@@ -4510,7 +4514,7 @@ body {
 }
 
 .admin-nav button.active {
-  background: #ffffff;
+  background: transparent;
   color: var(--surface-ink);
   box-shadow: 0 14px 26px rgba(0, 0, 0, 0.16);
 }
@@ -4812,7 +4816,7 @@ textarea {
 }
 
 .topbar {
-  background: #ffffff;
+  background: transparent;
   border-bottom: 1px solid var(--line);
   box-shadow: none;
   min-height: 84px;
@@ -4835,10 +4839,10 @@ textarea {
 
 .brand-mark,
 .admin-topbar .brand-mark {
-  background: #ffffff;
-  border: 1px solid rgba(255, 255, 255, 0.88);
+  background: transparent;
+  border: none;
   border-radius: 10px;
-  box-shadow: 0 8px 20px rgba(0, 12, 44, 0.2);
+  box-shadow: none;
   height: 54px;
   padding: 6px;
   width: 54px;
@@ -4912,7 +4916,7 @@ textarea {
 }
 
 .topbar-logout {
-  background: #ffffff;
+  background: transparent;
   border-color: #bfd2f4;
   box-shadow: 0 5px 14px rgba(4, 19, 50, 0.16);
   color: #102652;
@@ -4957,7 +4961,7 @@ textarea {
 }
 
 .ghost-button {
-  background: #ffffff;
+  background: transparent;
   border: 1px solid #cddbef;
   color: #174d9d;
 }
@@ -5134,7 +5138,7 @@ textarea {
 
 .admin-live-status button {
   align-items: center;
-  background: #ffffff;
+  background: transparent;
   border: 1px solid #d7e3f3;
   border-radius: 7px;
   color: #2d70e7;
@@ -5173,7 +5177,7 @@ textarea {
 .source-button,
 .template-editor-card,
 .hierarchy-service {
-  background: #ffffff;
+  background: transparent;
   border: 1px solid var(--line);
   border-radius: 9px;
   box-shadow: var(--shadow);
@@ -5322,11 +5326,11 @@ textarea {
   box-shadow: 0 22px 54px rgba(15, 45, 93, 0.1);
   display: grid;
   gap: 14px;
-  min-height: 430px;
+  min-height: 0;
 }
 
 .support-panel {
-  min-height: 430px;
+  min-height: 0;
 }
 
 .revenue-title {
@@ -5434,7 +5438,7 @@ textarea {
 }
 
 .revenue-summary span {
-  background: #ffffff;
+  background: transparent;
   border: 1px solid #dfe8f4;
   border-radius: 7px;
   color: #536381;
@@ -5489,7 +5493,7 @@ textarea {
 .health-row,
 .info-row,
 .timeline-row {
-  background: #ffffff;
+  background: transparent;
   border: 1px solid #dde7f4;
   border-radius: 7px;
   min-height: 49px;
@@ -5525,7 +5529,7 @@ textarea {
 
 .panel-link {
   align-items: center;
-  background: #ffffff;
+  background: transparent;
   border: 1px solid #d8e4f4;
   border-radius: 7px;
   color: #2368ed;
@@ -5588,7 +5592,7 @@ tbody tr:hover {
 }
 
 .filters {
-  background: #ffffff;
+  background: transparent;
   border: 1px solid var(--line);
   border-radius: 9px;
   padding: 12px;
@@ -5600,7 +5604,7 @@ tbody tr:hover {
 .setting-field select,
 .setting-field textarea,
 .login-panel input {
-  background: #ffffff;
+  background: transparent;
   border: 1px solid #cfdced;
   border-radius: 7px;
   color: var(--text);
@@ -5712,7 +5716,7 @@ tbody tr:hover {
 }
 
 .right-panel {
-  background: #ffffff;
+  background: transparent;
   border-left: 1px solid var(--line);
 }
 
@@ -5786,7 +5790,7 @@ tbody tr:hover {
 }
 
 .upload-area {
-  background: #ffffff;
+  background: transparent;
   border-color: #a9bfdd;
 }
 
@@ -5815,7 +5819,7 @@ tbody tr:hover {
 }
 
 .electron-required section {
-  background: #ffffff;
+  background: transparent;
   border: 1px solid var(--line);
   border-radius: 12px;
   box-shadow: var(--shadow-strong);
@@ -6102,7 +6106,7 @@ body {
 }
 
 .topbar {
-  background: #ffffff;
+  background: transparent;
   border-bottom: 1px solid var(--line);
   box-shadow: 0 4px 14px rgba(9, 35, 80, 0.04);
   min-height: 84px;
@@ -6124,7 +6128,7 @@ body {
 
 .brand-mark,
 .admin-topbar .brand-mark {
-  background: #ffffff;
+  background: transparent;
   border: 1px solid rgba(255, 255, 255, 0.72);
   border-radius: 10px;
   box-shadow: 0 6px 16px rgba(1, 14, 42, 0.18);
@@ -6199,7 +6203,7 @@ body {
 }
 
 .topbar-logout {
-  background: #ffffff;
+  background: transparent;
   border-color: #d4e2f7;
   box-shadow: 0 4px 12px rgba(2, 17, 47, 0.12);
   color: #132a52;
@@ -6242,7 +6246,7 @@ body {
 }
 
 .ghost-button {
-  background: #ffffff;
+  background: transparent;
   border-color: #d1def0;
   color: #234c83;
 }
@@ -6405,7 +6409,7 @@ body {
 
 .admin-live-status button {
   align-items: center;
-  background: #ffffff;
+  background: transparent;
   border: 1px solid #d6e2f2;
   border-radius: 6px;
   color: var(--blue);
@@ -6447,7 +6451,7 @@ body {
 .simple-service-card,
 .hierarchy-service,
 .template-editor-card {
-  background: #ffffff;
+  background: transparent;
   border-color: var(--line);
   border-radius: 10px;
   box-shadow: var(--shadow);
@@ -6563,11 +6567,11 @@ body {
   box-shadow: 0 22px 54px rgba(15, 45, 93, 0.1);
   display: grid;
   gap: 14px;
-  min-height: 430px;
+  min-height: 0;
 }
 
 .support-panel {
-  min-height: 430px;
+  min-height: 0;
 }
 
 .revenue-title {
@@ -6664,7 +6668,7 @@ body {
 }
 
 .health-row {
-  background: #ffffff;
+  background: transparent;
   border-color: #dce6f3;
   border-radius: 7px;
   min-height: 52px;
@@ -6783,7 +6787,7 @@ tbody tr:hover {
 .setting-field select,
 .setting-field textarea,
 .login-panel input {
-  background: #ffffff;
+  background: transparent;
   border: 1px solid #cfdaea;
   border-radius: 7px;
   color: #172b50;
@@ -6867,7 +6871,7 @@ tbody tr:hover {
 }
 
 .right-panel {
-  background: #ffffff;
+  background: transparent;
   border-left-color: var(--line);
 }
 
@@ -7454,7 +7458,7 @@ tbody tr:hover {
 .admin-language-control select,
 .customer-language-control select {
   appearance: auto;
-  background: #ffffff;
+  background: transparent;
   border: 1px solid rgba(255, 255, 255, 0.7);
   border-radius: 8px;
   color: #08245a;
@@ -7904,7 +7908,7 @@ tbody tr:hover {
 
 .copies-stepper output {
   align-items: center;
-  background: #ffffff;
+  background: transparent;
   border: 1px solid var(--line);
   border-radius: 8px;
   color: #081e48;
@@ -8941,7 +8945,7 @@ tbody tr:hover {
   color: #536983;
   cursor: pointer;
   font: inherit;
-  font-size: 16px;
+  font-size: 14px;
   padding: 0;
   text-decoration: underline;
   text-underline-offset: 2px;
@@ -8963,7 +8967,7 @@ tbody tr:hover {
 }
 
 .privacy-policy-card {
-  background: #ffffff;
+  background: transparent;
   border: 1px solid #cfdcec;
   border-radius: 8px;
   box-shadow: 0 18px 42px rgba(7, 27, 63, 0.08);
@@ -9148,7 +9152,7 @@ tbody tr:hover {
 
 .customer-shell .preview-stage .preview-frame,
 .customer-shell .preview-stage .pdf-preview-canvas {
-  background: #ffffff;
+  background: transparent;
   border: 0;
   display: block;
   width: 100%;
@@ -9171,7 +9175,7 @@ tbody tr:hover {
 .customer-shell .preview-stage .document-preview.preview-document-mode,
 .customer-shell .preview-stage .document-preview:has(.uploaded-image-paper) {
   aspect-ratio: var(--paper-ratio, 210 / 297);
-  background: #ffffff;
+  background: transparent;
   border-color: #cbd8e8;
   box-shadow: 0 12px 26px rgba(7, 27, 63, 0.1);
   height: 100%;
@@ -9181,7 +9185,7 @@ tbody tr:hover {
 
 .customer-shell .preview-stage .document-preview.preview-live:has(.preview-frame),
 .customer-shell .preview-stage .document-preview.preview-live:has(.pdf-preview-canvas) {
-  background: #ffffff;
+  background: transparent;
 }
 
 .customer-shell .preview-stage .preview-frame,
@@ -9629,7 +9633,7 @@ tbody tr:hover {
   align-items: stretch;
   display: grid;
   gap: 12px;
-  grid-template-columns: minmax(640px, 1fr) 250px 400px;
+  grid-template-columns: minmax(640px, 1fr) 400px;
   height: 100%;
   min-height: 0;
 }
@@ -9641,7 +9645,7 @@ tbody tr:hover {
 }
 
 .preview-document-panel {
-  background: #ffffff;
+  background: transparent;
   border: 1px solid #d7e3f2;
   border-radius: 8px;
   box-shadow: 0 14px 34px rgba(7, 27, 63, 0.08);
@@ -9704,7 +9708,7 @@ tbody tr:hover {
 
 .preview-toolbar {
   align-self: center;
-  background: #ffffff;
+  background: transparent;
   border: 1px solid #d8e4f4;
   border-radius: 8px;
   box-shadow: 0 8px 20px rgba(7, 27, 63, 0.08);
@@ -9716,7 +9720,7 @@ tbody tr:hover {
 
 .preview-toolbar button {
   align-items: center;
-  background: #ffffff;
+  background: transparent;
   border: 1px solid #dbe5f2;
   border-radius: 6px;
   color: #0d5de8;
@@ -9741,7 +9745,7 @@ tbody tr:hover {
 .customer-shell .preview-stage .document-preview.preview-document-mode,
 .customer-shell .preview-stage .document-preview:has(.uploaded-image-paper) {
   aspect-ratio: var(--paper-ratio, 210 / 297);
-  background: #ffffff;
+  background: transparent;
   border: 1px solid #d9e3f0;
   border-radius: 0;
   box-shadow: 0 12px 28px rgba(7, 27, 63, 0.16);
@@ -9755,7 +9759,7 @@ tbody tr:hover {
 
 .customer-shell .preview-stage .preview-frame,
 .customer-shell .preview-stage .pdf-preview-canvas {
-  background: #ffffff;
+  background: transparent;
   border: 0;
   display: block;
   height: 100%;
@@ -9763,12 +9767,12 @@ tbody tr:hover {
 }
 
 .customer-shell .preview-stage .document-preview.preview-live:has(.pdf-preview-shell) {
-  background: #ffffff;
+  background: transparent;
   overflow: hidden;
 }
 
 .pdf-preview-shell {
-  background: #ffffff;
+  background: transparent;
   height: 100%;
   overflow: hidden;
   position: relative;
@@ -9776,7 +9780,7 @@ tbody tr:hover {
 }
 
 .pdf-preview-shell .pdf-preview-canvas {
-  background: #ffffff;
+  background: transparent;
   height: auto;
   left: 50%;
   max-width: 100%;
@@ -9810,7 +9814,7 @@ tbody tr:hover {
 
 .preview-page-nav {
   align-items: center;
-  background: #ffffff;
+  background: transparent;
   border: 1px solid #dce6f3;
   border-radius: 8px;
   bottom: 10px;
@@ -9845,7 +9849,7 @@ tbody tr:hover {
 }
 
 .preview-mini-card {
-  background: #ffffff;
+  background: transparent;
   border: 1px solid #dbe5f2;
   border-radius: 8px;
   box-shadow: 0 10px 24px rgba(7, 27, 63, 0.06);
@@ -9915,7 +9919,7 @@ tbody tr:hover {
 
 .quick-actions-card button {
   align-items: center;
-  background: #ffffff;
+  background: transparent;
   border: 1px solid #dbe5f2;
   border-radius: 6px;
   color: #174d9d;
@@ -9930,7 +9934,7 @@ tbody tr:hover {
 }
 
 .customer-shell .preview-control-panel {
-  background: #ffffff;
+  background: transparent;
   border: 1px solid #dbe5f2;
   border-radius: 8px;
   box-shadow: 0 10px 24px rgba(7, 27, 63, 0.08);
@@ -10169,7 +10173,7 @@ tbody tr:hover {
 .nmc-brand-logo {
   width: 46px;
   height: 46px;
-  background: #ffffff;
+  background: transparent;
   border-radius: 8px;
   padding: 4px;
   overflow: hidden;
@@ -10822,7 +10826,7 @@ tbody tr:hover {
   }
 
   .customer-shell .template-selection-stage .template-stage-header {
-    background: #ffffff;
+    background: transparent;
     border: 1px solid #d9e5f4;
     border-radius: 12px;
     box-shadow: 0 10px 24px rgba(9, 30, 66, 0.06);
@@ -10859,7 +10863,7 @@ tbody tr:hover {
 
   .customer-shell .template-selection-stage .template-card {
     align-items: start;
-    background: #ffffff;
+    background: transparent;
     border: 1px solid #d7e4f5;
     border-radius: 12px;
     box-shadow: 0 12px 26px rgba(8, 30, 72, 0.08);
@@ -11408,7 +11412,7 @@ tbody tr:hover {
 }
 
 .customer-shell:has(.service-stage) .customer-language-control select {
-  background: #ffffff;
+  background: transparent;
   border: 0;
   border-radius: 8px;
   color: var(--nmc-ink);
@@ -11420,7 +11424,7 @@ tbody tr:hover {
 }
 
 .customer-shell:has(.service-stage) .topbar-actions [data-action="reset-session"] {
-  background: #ffffff;
+  background: transparent;
   border: 0;
   border-radius: 7px;
   color: var(--nmc-ink);
@@ -11431,7 +11435,7 @@ tbody tr:hover {
 }
 
 .customer-shell:has(.service-stage) .timer-widget {
-  background: #ffffff;
+  background: transparent;
   border: 0;
   border-radius: 7px;
   color: #1d5acb;
@@ -11967,7 +11971,7 @@ tbody tr:hover {
 
 .customer-shell .template-selection-stage .template-key {
   align-items: center;
-  background: #ffffff;
+  background: transparent;
   border: 1px solid #cdddf1;
   border-radius: 6px;
   box-shadow: 0 6px 14px rgba(7, 27, 63, 0.04);
@@ -12338,7 +12342,7 @@ tbody tr:hover {
   gap: 10px;
   padding: 12px 14px;
   border-top: 1px solid #f1f5f9;
-  background: #ffffff;
+  background: transparent;
 }
 
 .forms-v2-price {
@@ -12783,7 +12787,7 @@ tbody tr:hover {
 .nmc-brand-logo {
   width: 46px;
   height: 46px;
-  background: #ffffff;
+  background: transparent;
   border-radius: 8px;
   padding: 4px;
   overflow: hidden;
@@ -12841,7 +12845,7 @@ tbody tr:hover {
 }
 
 .powered-by-label {
-  font-size: 11px;
+  font-size: 14px;
   font-weight: 500;
   color: #94a3b8;
   text-transform: uppercase;
@@ -12850,7 +12854,7 @@ tbody tr:hover {
 }
 
 .powered-by-logo {
-  height: 32px;
+  height: 48px;
   width: auto;
   object-fit: contain;
   display: block;
@@ -12864,7 +12868,7 @@ tbody tr:hover {
 }
 
 .powered-by-company {
-  font-size: 13px;
+  font-size: 18px;
   font-weight: 700;
   color: #1e3a5f;
   line-height: 1.2;
@@ -13724,5 +13728,33 @@ tbody tr:hover {
   .customer-shell .customer-language-control,
   .customer-shell .timer-widget {
     display: none !important;
+  }
+}
+
+@media (max-width: 1180px) {
+  .customer-shell .preview-stage .preview-grid {
+    grid-template-columns: minmax(0, 1fr) 340px;
+  }
+}
+@media (max-width: 800px) {
+  .customer-shell .preview-stage .preview-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
+
+@media (max-width: 1024px) {
+  .preview-grid {
+    grid-template-columns: 1fr !important;
+  }
+}
+@media (max-width: 768px) {
+  .preview-toolbar {
+    flex-direction: row !important;
+    width: 100% !important;
+    overflow-x: auto;
+  }
+  .preview-control-actions {
+    flex-direction: column !important;
   }
 }

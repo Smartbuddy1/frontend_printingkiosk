@@ -1,0 +1,461 @@
+[
+  {
+    "route": "template-preview",
+    "viewport": "desktop",
+    "pageOverflow": false,
+    "visibleOverflow": [],
+    "actionOverlap": 0,
+    "railSteps": [
+      "1 Services",
+      "2 Forms",
+      "3 Preview",
+      "4 Payment"
+    ],
+    "cards": [
+      "Document Information",
+      "Print Settings",
+      "Order Summary"
+    ],
+    "hasTips": false,
+    "hasPolicyFooter": true,
+    "hasContinue": true,
+    "hasBack": true,
+    "hasStatic": true,
+    "hasCanvas": false,
+    "hasFallback": false,
+    "hasImage": true,
+    "previewRect": {
+      "left": 306,
+      "top": 191,
+      "width": 293,
+      "height": 415,
+      "right": 600,
+      "bottom": 606
+    },
+    "sideRect": {
+      "left": 672,
+      "top": 84,
+      "width": 340,
+      "height": 624,
+      "right": 1012,
+      "bottom": 708
+    },
+    "primaryRect": {
+      "left": 834,
+      "top": 603,
+      "width": 178,
+      "height": 40,
+      "right": 1012,
+      "bottom": 643
+    },
+    "footerTop": 720
+  },
+  {
+    "route": "uploaded-pdf-preview",
+    "viewport": "desktop",
+    "pageOverflow": false,
+    "visibleOverflow": [],
+    "actionOverlap": 0,
+    "railSteps": [
+      "1 Services",
+      "2 Upload",
+      "3 Preview",
+      "4 Payment"
+    ],
+    "cards": [
+      "Document Information",
+      "Print Settings",
+      "Order Summary"
+    ],
+    "hasTips": false,
+    "hasPolicyFooter": true,
+    "hasContinue": true,
+    "hasBack": true,
+    "hasStatic": false,
+    "hasCanvas": true,
+    "hasFallback": false,
+    "hasImage": false,
+    "previewRect": {
+      "left": 306,
+      "top": 191,
+      "width": 293,
+      "height": 415,
+      "right": 600,
+      "bottom": 606
+    },
+    "sideRect": {
+      "left": 672,
+      "top": 84,
+      "width": 340,
+      "height": 624,
+      "right": 1012,
+      "bottom": 708
+    },
+    "primaryRect": {
+      "left": 834,
+      "top": 603,
+      "width": 178,
+      "height": 40,
+      "right": 1012,
+      "bottom": 643
+    },
+    "footerTop": 720
+  },
+  {
+    "route": "uploaded-image-preview",
+    "viewport": "desktop",
+    "pageOverflow": false,
+    "visibleOverflow": [],
+    "actionOverlap": 0,
+    "railSteps": [
+      "1 Services",
+      "2 Upload",
+      "3 Preview",
+      "4 Payment"
+    ],
+    "cards": [
+      "Document Information",
+      "Print Settings",
+      "Order Summary"
+    ],
+    "hasTips": false,
+    "hasPolicyFooter": true,
+    "hasContinue": true,
+    "hasBack": true,
+    "hasStatic": false,
+    "hasCanvas": false,
+    "hasFallback": false,
+    "hasImage": true,
+    "previewRect": {
+      "left": 306,
+      "top": 191,
+      "width": 293,
+      "height": 415,
+      "right": 600,
+      "bottom": 606
+    },
+    "sideRect": {
+      "left": 672,
+      "top": 84,
+      "width": 340,
+      "height": 624,
+      "right": 1012,
+      "bottom": 708
+    },
+    "primaryRect": {
+      "left": 834,
+      "top": 603,
+      "width": 178,
+      "height": 40,
+      "right": 1012,
+      "bottom": 643
+    },
+    "footerTop": 720
+  },
+  {
+    "route": "template-preview",
+    "viewport": "tablet",
+    "pageOverflow": false,
+    "visibleOverflow": [],
+    "actionOverlap": 0,
+    "railSteps": [
+      "1 Services",
+      "2 Forms",
+      "3 Preview",
+      "4 Payment"
+    ],
+    "cards": [
+      "Document Information",
+      "Print Settings",
+      "Order Summary"
+    ],
+    "hasTips": false,
+    "hasPolicyFooter": true,
+    "hasContinue": true,
+    "hasBack": true,
+    "hasStatic": true,
+    "hasCanvas": false,
+    "hasFallback": false,
+    "hasImage": true,
+    "previewRect": {
+      "left": 239,
+      "top": 283,
+      "width": 340,
+      "height": 520,
+      "right": 579,
+      "bottom": 803
+    },
+    "sideRect": {
+      "left": 12,
+      "top": 871,
+      "width": 729,
+      "height": 606,
+      "right": 741,
+      "bottom": 1477
+    },
+    "primaryRect": {
+      "left": 355,
+      "top": 1437,
+      "width": 386,
+      "height": 40,
+      "right": 741,
+      "bottom": 1477
+    },
+    "footerTop": 976
+  },
+  {
+    "route": "uploaded-pdf-preview",
+    "viewport": "tablet",
+    "pageOverflow": false,
+    "visibleOverflow": [],
+    "actionOverlap": 0,
+    "railSteps": [
+      "1 Services",
+      "2 Upload",
+      "3 Preview",
+      "4 Payment"
+    ],
+    "cards": [
+      "Document Information",
+      "Print Settings",
+      "Order Summary"
+    ],
+    "hasTips": false,
+    "hasPolicyFooter": true,
+    "hasContinue": true,
+    "hasBack": true,
+    "hasStatic": false,
+    "hasCanvas": true,
+    "hasFallback": false,
+    "hasImage": false,
+    "previewRect": {
+      "left": 239,
+      "top": 283,
+      "width": 340,
+      "height": 520,
+      "right": 579,
+      "bottom": 803
+    },
+    "sideRect": {
+      "left": 12,
+      "top": 871,
+      "width": 729,
+      "height": 606,
+      "right": 741,
+      "bottom": 1477
+    },
+    "primaryRect": {
+      "left": 355,
+      "top": 1437,
+      "width": 386,
+      "height": 40,
+      "right": 741,
+      "bottom": 1477
+    },
+    "footerTop": 976
+  },
+  {
+    "route": "uploaded-image-preview",
+    "viewport": "tablet",
+    "pageOverflow": false,
+    "visibleOverflow": [],
+    "actionOverlap": 0,
+    "railSteps": [
+      "1 Services",
+      "2 Upload",
+      "3 Preview",
+      "4 Payment"
+    ],
+    "cards": [
+      "Document Information",
+      "Print Settings",
+      "Order Summary"
+    ],
+    "hasTips": false,
+    "hasPolicyFooter": true,
+    "hasContinue": true,
+    "hasBack": true,
+    "hasStatic": false,
+    "hasCanvas": false,
+    "hasFallback": false,
+    "hasImage": true,
+    "previewRect": {
+      "left": 239,
+      "top": 283,
+      "width": 340,
+      "height": 520,
+      "right": 579,
+      "bottom": 803
+    },
+    "sideRect": {
+      "left": 12,
+      "top": 871,
+      "width": 729,
+      "height": 606,
+      "right": 741,
+      "bottom": 1477
+    },
+    "primaryRect": {
+      "left": 355,
+      "top": 1437,
+      "width": 386,
+      "height": 40,
+      "right": 741,
+      "bottom": 1477
+    },
+    "footerTop": 976
+  },
+  {
+    "route": "template-preview",
+    "viewport": "mobile",
+    "pageOverflow": false,
+    "visibleOverflow": [],
+    "actionOverlap": 0,
+    "railSteps": [
+      "1 Services",
+      "2 Forms",
+      "3 Preview",
+      "4 Payment"
+    ],
+    "cards": [
+      "Document Information",
+      "Print Settings",
+      "Order Summary"
+    ],
+    "hasTips": false,
+    "hasPolicyFooter": true,
+    "hasContinue": true,
+    "hasBack": true,
+    "hasStatic": true,
+    "hasCanvas": false,
+    "hasFallback": false,
+    "hasImage": true,
+    "previewRect": {
+      "left": 40,
+      "top": 304,
+      "width": 310,
+      "height": 440,
+      "right": 350,
+      "bottom": 744
+    },
+    "sideRect": {
+      "left": 10,
+      "top": 890,
+      "width": 370,
+      "height": 765,
+      "right": 380,
+      "bottom": 1655
+    },
+    "primaryRect": {
+      "left": 10,
+      "top": 1615,
+      "width": 370,
+      "height": 40,
+      "right": 380,
+      "bottom": 1655
+    },
+    "footerTop": 1665
+  },
+  {
+    "route": "uploaded-pdf-preview",
+    "viewport": "mobile",
+    "pageOverflow": false,
+    "visibleOverflow": [],
+    "actionOverlap": 0,
+    "railSteps": [
+      "1 Services",
+      "2 Upload",
+      "3 Preview",
+      "4 Payment"
+    ],
+    "cards": [
+      "Document Information",
+      "Print Settings",
+      "Order Summary"
+    ],
+    "hasTips": false,
+    "hasPolicyFooter": true,
+    "hasContinue": true,
+    "hasBack": true,
+    "hasStatic": false,
+    "hasCanvas": true,
+    "hasFallback": false,
+    "hasImage": false,
+    "previewRect": {
+      "left": 40,
+      "top": 304,
+      "width": 310,
+      "height": 440,
+      "right": 350,
+      "bottom": 744
+    },
+    "sideRect": {
+      "left": 10,
+      "top": 890,
+      "width": 370,
+      "height": 765,
+      "right": 380,
+      "bottom": 1655
+    },
+    "primaryRect": {
+      "left": 10,
+      "top": 1615,
+      "width": 370,
+      "height": 40,
+      "right": 380,
+      "bottom": 1655
+    },
+    "footerTop": 1665
+  },
+  {
+    "route": "uploaded-image-preview",
+    "viewport": "mobile",
+    "pageOverflow": false,
+    "visibleOverflow": [],
+    "actionOverlap": 0,
+    "railSteps": [
+      "1 Services",
+      "2 Upload",
+      "3 Preview",
+      "4 Payment"
+    ],
+    "cards": [
+      "Document Information",
+      "Print Settings",
+      "Order Summary"
+    ],
+    "hasTips": false,
+    "hasPolicyFooter": true,
+    "hasContinue": true,
+    "hasBack": true,
+    "hasStatic": false,
+    "hasCanvas": false,
+    "hasFallback": false,
+    "hasImage": true,
+    "previewRect": {
+      "left": 40,
+      "top": 304,
+      "width": 310,
+      "height": 440,
+      "right": 350,
+      "bottom": 744
+    },
+    "sideRect": {
+      "left": 10,
+      "top": 890,
+      "width": 370,
+      "height": 765,
+      "right": 380,
+      "bottom": 1655
+    },
+    "primaryRect": {
+      "left": 10,
+      "top": 1615,
+      "width": 370,
+      "height": 40,
+      "right": 380,
+      "bottom": 1655
+    },
+    "footerTop": 1665
+  }
+]
