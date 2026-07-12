@@ -1480,8 +1480,12 @@ function storeCustomerLanguage() {
 
 function customerTranslateText(value) {
   const text = String(value || "").trim();
+  if (!text) return text;
+
+  return text;
+
   const language = state.customerLanguage;
-  if (!text || language === "en") return text;
+  if (language === "en") return text;
 
   const translations = CUSTOMER_TRANSLATIONS[language] || {};
   if (translations[text]) return translations[text];
