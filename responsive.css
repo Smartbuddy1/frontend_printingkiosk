@@ -1337,6 +1337,24 @@ td {
     grid-column: 1 / -1;
   }
 
+  .powered-by-brand {
+    justify-content: center;
+    margin-right: 0;
+    max-width: 100%;
+  }
+
+  .powered-by-name,
+  .powered-by-company {
+    min-width: 0;
+    max-width: 100%;
+  }
+
+  .powered-by-company {
+    overflow-wrap: anywhere;
+    text-align: center;
+    white-space: normal;
+  }
+
   .footer-link,
   .new-session-footer-btn,
   .service-action-btn,
@@ -3579,6 +3597,28 @@ td {
 
   .customer-shell:has(.preview-stage) .preview-control-actions .primary-button {
     grid-column: auto !important;
+  }
+}
+
+@media (max-width: 900px) and (max-height: 480px) and (orientation: landscape) {
+  .customer-shell:has(.preview-stage).app-shell {
+    overflow: hidden !important;
+  }
+
+  .customer-shell:has(.preview-stage) > .main,
+  .customer-shell:has(.preview-stage) .customer-layout,
+  .customer-shell:has(.preview-stage) .content {
+    min-height: 0 !important;
+    overflow: auto !important;
+  }
+
+  .customer-shell:has(.preview-stage) .content {
+    padding-bottom: 60px !important;
+  }
+
+  .customer-shell:has(.preview-stage) .customer-footer {
+    position: relative;
+    z-index: 2;
   }
 }
 

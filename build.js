@@ -14,19 +14,38 @@ const config = {
 
 const skip = new Set([
   ".git",
+  ".gitignore",
+  ".env",
   "dist",
   "node_modules",
+  "responsive-checks",
+  ".vercel",
   "package.json",
   "package-lock.json",
-  "build.js"
+  "build.js",
+  "dev-server.js",
+  "vercel.json"
 ]);
+
+const skipPatterns = [
+  /^\.env(?:\..*)?$/,
+  /^\.tmp-.*\.log$/,
+  /^dev-server-.*\.log$/,
+  /^app_(?:fixed|old|original|transliterated|transliterated_safe)\.js$/,
+  /^transliterate(?:_safe)?\.js$/,
+  /^(?:admin|cust)_rows\.json$/
+];
+
+function shouldSkipBuildItem(item) {
+  return skip.has(item) || skipPatterns.some((pattern) => pattern.test(item));
+}
 
 function copyFrontend() {
   fs.rmSync(distDir, { recursive: true, force: true });
   fs.mkdirSync(distDir, { recursive: true });
 
   for (const item of fs.readdirSync(rootDir)) {
-    if (skip.has(item)) continue;
+    if (shouldSkipBuildItem(item)) continue;
     fs.cpSync(path.join(rootDir, item), path.join(distDir, item), { recursive: true });
   }
 }

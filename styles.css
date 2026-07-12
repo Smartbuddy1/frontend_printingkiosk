@@ -12842,6 +12842,7 @@ tbody tr:hover {
   display: flex;
   align-items: center;
   gap: 8px;
+  margin-right: auto;
 }
 
 .powered-by-label {

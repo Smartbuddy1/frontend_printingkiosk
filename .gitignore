@@ -1,5 +1,13 @@
 dist/
 node_modules/
 .vercel/
-
-.vercel
+.env
+*.log
+.tmp-*.log
+dev-server-*.log
+admin_rows.json
+cust_rows.json
+app_*.js
+transliterate*.js
+responsive-checks/*.png
+responsive-checks/last-*.json
