@@ -384,7 +384,7 @@ const CUSTOMER_TRANSLATIONS = {
 const CUSTOMER_CLEAN_TRANSLATIONS = {
   hi: {
     "Government of Maharashtra": "महाराष्ट्र शासन",
-    "Choose Service": "सेवा चुनें",
+    "Printing Kiosk": "सेवा चुनें",
     "Print My Document": "मेरा दस्तावेज़ प्रिंट करें",
     "Print your PDF, Word, or photo file.": "अपनी PDF, Word या फोटो फ़ाइल प्रिंट करें.",
     "Government Forms": "सरकारी फॉर्म",
@@ -545,7 +545,7 @@ const CUSTOMER_CLEAN_TRANSLATIONS = {
   },
   mr: {
     "Government of Maharashtra": "महाराष्ट्र शासन",
-    "Choose Service": "सेवा निवडा",
+    "Printing Kiosk": "सेवा निवडा",
     "Print My Document": "माझे दस्तऐवज प्रिंट करा",
     "Print your PDF, Word, or photo file.": "तुमची PDF, Word किंवा फोटो फाइल प्रिंट करा.",
     "Government Forms": "शासकीय फॉर्म",
@@ -5689,17 +5689,18 @@ function renderServicesStep() {
   }
 
   const printerReady = printerReadyForCustomerFlow();
-  const printServiceId = services.find(s => s.id === 'demo-documents' || s.id === 'print')?.id || 'print';
-  const govtServiceId = services.find(s => s.id === 'demo-existing-documents' || s.id === 'govt-form')?.id || 'govt-form';
+  const availableServices = customerServices();
+  const printServiceId = availableServices.find(s => s.id === 'demo-documents' || s.id === 'print')?.id || 'print';
+  const govtServiceId = availableServices.find(s => s.id === 'demo-existing-documents' || s.id === 'govt-form')?.id || 'govt-form';
   const usedServiceIds = new Set([printServiceId, govtServiceId]);
-  const extraServices = services.filter((service) => service.enabled !== false && !usedServiceIds.has(service.id));
+  const extraServices = availableServices.filter((service) => !usedServiceIds.has(service.id));
   const totalServiceCards = 2 + extraServices.length;
   const serviceGridClass = totalServiceCards > 2 ? "services-count-many" : "services-count-2";
 
   return `
     <div class="stage service-stage custom-home-stage">
       <div class="stage-header custom-home-header">
-        <h1>Choose Service</h1>
+        <h1>Printing Kiosk</h1>
       </div>
       ${state.configStatus ? `<div class="save-note">${escapeHtml(state.configStatus)}</div>` : ""}
       
