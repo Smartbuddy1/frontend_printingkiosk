@@ -25,13 +25,28 @@ const PUBLIC_FRONTEND_URL = (
 const RAZORPAY_CHECKOUT_URL = "https://checkout.razorpay.com/v1/checkout.js";
 const PRINTER_STATUS_TIMEOUT_MS = 15000;
 const MAX_FILES_PER_JOB = 10;
-const RECEIPT_REDIRECT_SECONDS = 15;
+const RECEIPT_REDIRECT_SECONDS = 20;
+const CUSTOMER_INACTIVITY_TIMEOUTS = Object.freeze({
+  uploadQr: 3 * 60 * 1000,
+  governmentFormsList: 90 * 1000,
+  formDetails: 2 * 60 * 1000,
+  documentPreview: 2 * 60 * 1000,
+  printSettings: 90 * 1000,
+  payment: 5 * 60 * 1000,
+  error: 30 * 1000
+});
+const CUSTOMER_ACTIVITY_EVENTS = ["pointerdown", "keydown", "wheel", "touchstart", "input", "change"];
 const UNASSIGNED_KIOSK_ID = "UNASSIGNED-KIOSK";
 const ADMIN_SESSION_KEY = "printingKioskAdminSession";
 const ADMIN_LANGUAGE_KEY = "printingKioskAdminLanguage";
 const CUSTOMER_LANGUAGE_KEY = "printingKioskCustomerLanguage";
 const ADMIN_LANGUAGES = new Set(["en", "hi", "mr"]);
 const CUSTOMER_LANGUAGES = ADMIN_LANGUAGES;
+const CUSTOMER_LANGUAGE_OPTIONS = [
+  { value: "en", label: "English", shortLabel: "EN", lang: "en" },
+  { value: "hi", label: "हिंदी", shortLabel: "HI", lang: "hi" },
+  { value: "mr", label: "मराठी", shortLabel: "MR", lang: "mr" }
+];
 const TEST_HOOKS_ENABLED = frontendConfig.testHooks === true ||
   runtimeConfig.get("testHooks") === "true";
 const KIOSK_ID = readConfiguredKioskId();
@@ -39,7 +54,14 @@ const HAS_EXPLICIT_LOCAL_AGENT = Boolean(runtimeConfig.get("localAgentUrl") || f
 const DEMO_KIOSK_MODE = runtimeConfig.get("demo") === "true" ||
   runtimeConfig.get("kioskDemo") === "true" ||
   (KIOSK_ID === "LOCAL-KIOSK" && runtimeConfig.get("demo") !== "false");
+const DEFAULT_KIOSK_BRAND = Object.freeze({
+  title: "Nashik Municipal Corporation",
+  subtitle: "Printing Kiosk",
+  logoUrl: "./assets/nashik-municipal-logo.jpg"
+});
 let localJobSequence = 0;
+let customerInactivityEventsBound = false;
+let lastCustomerRenderedStep = null;
 
 const ADMIN_TRANSLATION_ROWS = [
   ["Language", "लैंग्वेज", "लैंग्वेज"],
@@ -77,7 +99,7 @@ const ADMIN_TRANSLATION_ROWS = [
   ["Sign in", "सिग्न इन", "सिग्न इन"],
   ["Enter admin email and password.", "एंटर एडमिन ईमेल एंड पासवर्ड.", "एंटर एडमिन ईमेल एंड पासवर्ड."],
   ["Admin login failed.", "एडमिन लॉगिन फेल्ड.", "एडमिन लॉगिन फेल्ड."],
-  ["Manage your assigned projects, kiosks, services, and pricing.", "मैनेज योर एसाइन्ड प्रोजेक्ट्स, किओस्कस, सर्विसेज, एंड प्राइसिंग.", "मैनेज योर एसाइन्ड प्रोजेक्ट्स, किओस्कस, सर्विसेज, एंड प्राइसिंग."],
+  ["Manage your assigned projects, kiosks, and services.", "मैनेज योर एसाइन्ड प्रोजेक्ट्स, किओस्कस, एंड सर्विसेज.", "मैनेज योर एसाइन्ड प्रोजेक्ट्स, किओस्कस, एंड सर्विसेज."],
   ["Live backend data.", "लाइव बैकेंड डाटा.", "लाइव बैकेंड डाटा."],
   ["Loading live backend data...", "लोडिंग लाइव बैकेंड डाटा...", "लोडिंग लाइव बैकेंड डाटा..."],
   ["Last updated", "लास्ट अपडेटेड", "लास्ट अपडेटेड"],
@@ -176,8 +198,6 @@ const ADMIN_TRANSLATION_ROWS = [
   ["Add Form", "ऐड फॉर्म", "ऐड फॉर्म"],
   ["Remove Form", "रिमूव फॉर्म", "रिमूव फॉर्म"],
   ["Form Name", "फॉर्म नाम", "फॉर्म नाम"],
-  ["Default Paper Size", "डिफ़ॉल्ट पेपर साइज", "डिफ़ॉल्ट पेपर साइज"],
-  ["Printer default (recommended)", "प्रिंटर डिफ़ॉल्ट (रेकमेंडेड)", "प्रिंटर डिफ़ॉल्ट (रेकमेंडेड)"],
   ["Default Orientation", "डिफ़ॉल्ट ओरिएंटेशन", "डिफ़ॉल्ट ओरिएंटेशन"],
   ["Portrait", "पोर्ट्रेट", "पोर्ट्रेट"],
   ["Landscape", "लैंडस्केप", "लैंडस्केप"],
@@ -359,6 +379,331 @@ const CUSTOMER_TRANSLATION_ROWS = [
 const CUSTOMER_TRANSLATIONS = {
   hi: Object.fromEntries(CUSTOMER_TRANSLATION_ROWS.map(([english, hindi]) => [english, hindi])),
   mr: Object.fromEntries(CUSTOMER_TRANSLATION_ROWS.map(([english, , marathi]) => [english, marathi]))
+};
+
+const CUSTOMER_CLEAN_TRANSLATIONS = {
+  hi: {
+    "Government of Maharashtra": "महाराष्ट्र शासन",
+    "Choose Service": "सेवा चुनें",
+    "Print My Document": "मेरा दस्तावेज़ प्रिंट करें",
+    "Print your PDF, Word, or photo file.": "अपनी PDF, Word या फोटो फ़ाइल प्रिंट करें.",
+    "Government Forms": "सरकारी फॉर्म",
+    "Select a ready form and print it.": "तैयार फॉर्म चुनें और प्रिंट करें.",
+    "Add File": "फ़ाइल जोड़ें",
+    "Use phone QR": "फोन QR इस्तेमाल करें",
+    "Secure Document": "सुरक्षित दस्तावेज़",
+    "Safe upload": "सुरक्षित अपलोड",
+    "Forms": "फॉर्म",
+    "Ready to print": "प्रिंट के लिए तैयार",
+    "Quick Print": "जल्दी प्रिंट",
+    "Fast service": "तेज़ सेवा",
+    "Start": "शुरू करें",
+    "Home": "होम",
+    "Search forms by name, department or keyword...": "नाम, विभाग या शब्द से फॉर्म खोजें...",
+    "B/W per page": "B/W प्रति पेज",
+    "Color per page": "रंगीन प्रति पेज",
+    "Per Page (B/W)": "प्रति पेज (B/W)",
+    "Total Forms": "कुल फॉर्म",
+    "Printing": "प्रिंटिंग",
+    "Find and print official forms in seconds.": "सरकारी फॉर्म जल्दी खोजें और प्रिंट करें.",
+    "Preview": "Preview",
+    "Details": "विवरण",
+    "Document": "दस्तावेज़",
+    "Documents": "दस्तावेज़",
+    "Pages": "पेज",
+    "Print Settings": "प्रिंट सेटिंग",
+    "Print Type": "प्रिंट प्रकार",
+    "Copies": "कॉपी",
+    "Orientation": "दिशा",
+    "Portrait": "पोर्ट्रेट",
+    "Landscape": "लैंडस्केप",
+    "One Side": "एक तरफ",
+    "Both Sides": "दोनों तरफ",
+    "Total payable": "कुल भुगतान",
+    "Payment": "भुगतान",
+    "Back": "वापस",
+    "Ready to Print": "प्रिंट के लिए तैयार",
+    "All documents shown together": "सभी दस्तावेज़ साथ दिखाए गए हैं",
+    "No file selected": "कोई फ़ाइल नहीं चुनी गई",
+    "Upload a file to see the preview.": "पूर्वावलोकन देखने के लिए फ़ाइल जोड़ें.",
+    "Preview unavailable": "पूर्वावलोकन उपलब्ध नहीं है",
+    "This file type cannot be previewed.": "इस फ़ाइल का पूर्वावलोकन नहीं दिखाया जा सकता.",
+    "Scan QR to Add Files": "फ़ाइल जोड़ने के लिए QR स्कैन करें",
+    "Use your phone": "अपना फोन इस्तेमाल करें",
+    "Use your phone camera. Scan this code, choose your document, then tap Send.": "फोन कैमरा खोलें. यह कोड स्कैन करें, दस्तावेज़ चुनें, फिर Send दबाएं.",
+    "Open phone camera": "फोन कैमरा खोलें",
+    "Choose files": "फ़ाइलें चुनें",
+    "Tap Send": "Send दबाएं",
+    "Scan this QR code": "यह QR कोड स्कैन करें",
+    "Keep this screen open": "यह स्क्रीन खुली रखें",
+    "Getting QR ready": "QR तैयार हो रहा है",
+    "Please wait a moment.": "कृपया थोड़ा इंतज़ार करें.",
+    "QR not ready": "QR तैयार नहीं है",
+    "Ask staff to start the kiosk service.": "कियोस्क सेवा शुरू करने के लिए कर्मचारी से कहें.",
+    "After sending files, look back at this kiosk.": "फ़ाइल भेजने के बाद इस कियोस्क स्क्रीन को देखें.",
+    "Scan this QR code to add files from your phone": "फोन से फ़ाइल जोड़ने के लिए यह QR कोड स्कैन करें",
+    "Scan to pay": "भुगतान के लिए स्कैन करें",
+    "Tracking": "ट्रैकिंग",
+    "Scan the QR code with any UPI app. Confirm when payment is done.": "किसी भी UPI ऐप से QR कोड स्कैन करें. भुगतान पूरा होने पर पुष्टि करें.",
+    "The kiosk shows only the QR. Complete payment on the phone; live tracking stays on this screen.": "कियोस्क केवल QR दिखाता है. फोन पर भुगतान पूरा करें; लाइव ट्रैकिंग इसी स्क्रीन पर रहेगी.",
+    "Scan with the phone camera or any UPI app.": "फोन कैमरा या किसी भी UPI ऐप से स्कैन करें.",
+    "Scan with the phone camera or any UPI app to open Razorpay.": "Razorpay खोलने के लिए फोन कैमरा या UPI ऐप से स्कैन करें.",
+    "Payment received": "भुगतान प्राप्त हुआ",
+    "Paid on phone": "फोन पर भुगतान हुआ",
+    "Payment is verified. Watch print tracking on the kiosk.": "भुगतान सत्यापित हो गया है. प्रिंट ट्रैकिंग कियोस्क पर देखें.",
+    "Waiting for payment": "भुगतान की प्रतीक्षा है",
+    "Waiting for phone payment": "फोन भुगतान की प्रतीक्षा है",
+    "Waiting for payment from the customer phone.": "ग्राहक फोन से भुगतान की प्रतीक्षा है.",
+    "Preparing the secure payment QR.": "सुरक्षित भुगतान QR तैयार हो रहा है.",
+    "Creating payment QR...": "भुगतान QR बन रहा है...",
+    "Live tracking": "लाइव ट्रैकिंग",
+    "QR ready on kiosk": "कियोस्क पर QR तैयार है",
+    "Creating payment QR": "भुगतान QR बन रहा है",
+    "Print completed": "प्रिंट पूरा हुआ",
+    "Printing on kiosk": "कियोस्क पर प्रिंट हो रहा है",
+    "Kiosk print tracking": "कियोस्क प्रिंट ट्रैकिंग",
+    "Done": "पूरा",
+    "Active": "चालू",
+    "Pending": "लंबित",
+    "Payment Done": "भुगतान पूरा",
+    "Printing needs attention": "प्रिंटिंग में ध्यान चाहिए",
+    "Recovery Options": "सुधार विकल्प",
+    "Print": "प्रिंट",
+    "Failed": "विफल",
+    "Queue": "कतार",
+    "Saved for retry": "दोबारा प्रयास के लिए सहेजा गया",
+    "Refund": "रिफंड",
+    "Available if retry fails": "दोबारा प्रयास विफल होने पर उपलब्ध",
+    "Retry Print": "प्रिंट फिर से करें",
+    "Request Refund": "रिफंड मांगें",
+    "Payment Successful!": "भुगतान सफल!",
+    "Payment Confirmed": "भुगतान पुष्टि हुआ",
+    "Please wait while we send your document to the printer": "दस्तावेज़ प्रिंटर को भेजते समय कृपया इंतज़ार करें",
+    "Print job in progress": "प्रिंट कार्य चालू है",
+    "Printing Your Document": "आपका दस्तावेज़ प्रिंट हो रहा है",
+    "Please stay near the kiosk while your pages are printing.": "पेज प्रिंट होते समय कृपया कियोस्क के पास रहें.",
+    "Sending pages to printer...": "पेज प्रिंटर को भेजे जा रहे हैं...",
+    "Payment verified": "भुगतान सत्यापित",
+    "Document queued": "दस्तावेज़ कतार में है",
+    "Printer active": "प्रिंटर चालू है",
+    "Thank You!": "धन्यवाद!",
+    "Your document has been printed successfully.": "आपका दस्तावेज़ सफलतापूर्वक प्रिंट हो गया है.",
+    "We hope to see you again!": "फिर मिलेंगे!",
+    "Return Home Now": "अभी होम पर जाएं",
+    "Need Help? Call Us": "मदद चाहिए? कॉल करें",
+    "(Toll Free)": "(टोल फ्री)",
+    "Select language": "भाषा चुनें",
+    "Current date and time": "वर्तमान तारीख और समय",
+    "Property Tax Assessment": "संपत्ति कर निर्धारण",
+    "Property tax assessment application.": "संपत्ति कर निर्धारण आवेदन.",
+    "Electricity NOC": "बिजली NOC",
+    "NOC for electricity connection.": "बिजली कनेक्शन के लिए NOC.",
+    "Death Certificate": "मृत्यु प्रमाणपत्र",
+    "Death certificate request form.": "मृत्यु प्रमाणपत्र अनुरोध फॉर्म.",
+    "Birth Certificate": "जन्म प्रमाणपत्र",
+    "Birth certificate request form.": "जन्म प्रमाणपत्र अनुरोध फॉर्म.",
+    "Request For New Connection": "नए कनेक्शन के लिए आवेदन",
+    "Request For Change Of Water Rate": "पानी दर बदलने के लिए आवेदन",
+    "Request For Change In Name": "नाम बदलने के लिए आवेदन",
+    "Request For Bill At Residential Rate": "आवासीय दर पर बिल के लिए आवेदन",
+    "Request For Change In Location Of Connection": "कनेक्शन स्थान बदलने के लिए आवेदन",
+    "Registration Of Property On Demand Register": "डिमांड रजिस्टर में संपत्ति पंजीकरण",
+    "Reduction Of Property Tax": "संपत्ति कर में कमी",
+    "Tax On Property": "संपत्ति कर",
+    "No Objection Certificate (N.O.C.)": "अनापत्ति प्रमाणपत्र (N.O.C.)",
+    "No Objection Certifi hucate (N.O.C.)": "अनापत्ति प्रमाणपत्र (N.O.C.)",
+    "Architect Registration Application": "आर्किटेक्ट पंजीकरण आवेदन",
+    "Structural Engineer / Engineer Supervisor New License Application": "स्ट्रक्चरल इंजीनियर / इंजीनियर सुपरवाइज़र नया लाइसेंस आवेदन",
+    "Structural Engineer / Engineer Supervisor License Renewal Application": "स्ट्रक्चरल इंजीनियर / इंजीनियर सुपरवाइज़र लाइसेंस नवीनीकरण आवेदन",
+    "Tentative Layout": "प्रारंभिक लेआउट",
+    "Final Layout": "अंतिम लेआउट",
+    "Building Permission (B.P.)": "भवन अनुमति (B.P.)",
+    "Occupancy Certificate": "उपयोग प्रमाणपत्र",
+    "Hospital/ Nursing Home/ Maternity Homes Inspection Form": "अस्पताल / नर्सिंग होम / मातृत्व गृह निरीक्षण फॉर्म",
+    "Doctor Registration Form": "डॉक्टर पंजीकरण फॉर्म",
+    "Sisters Registration Form": "नर्स पंजीकरण फॉर्म",
+    "Hospital Owner Registration": "अस्पताल मालिक पंजीकरण",
+    "Hospital Registration or Renewal Document List": "अस्पताल पंजीकरण या नवीनीकरण दस्तावेज़ सूची",
+    "Pre Natal Diagnostics Registration": "प्रसव पूर्व निदान पंजीकरण",
+    "Lokshahi Din Application Form": "लोकशाही दिन आवेदन फॉर्म",
+    "Marriage Registration": "विवाह पंजीकरण",
+    "Annual Return Form (Marathi)": "वार्षिक रिटर्न फॉर्म (मराठी)",
+    "Annual Return Form (English)": "वार्षिक रिटर्न फॉर्म (अंग्रेज़ी)",
+    "Category: Water Supply Department": "विभाग: जल आपूर्ति विभाग",
+    "Category: Tax Department": "विभाग: कर विभाग",
+    "Category: Electrical Department": "विभाग: विद्युत विभाग",
+    "Category: Business & Shop Registration": "विभाग: व्यवसाय और दुकान पंजीकरण",
+    "Category: Town Planning Department": "विभाग: नगर नियोजन विभाग",
+    "Category: Birth & Death Certificate": "विभाग: जन्म और मृत्यु प्रमाणपत्र",
+    "Category: Medical Department": "विभाग: चिकित्सा विभाग",
+    "Category: Health Department": "विभाग: स्वास्थ्य विभाग",
+    "Category: Garden Department": "विभाग: उद्यान विभाग",
+    "Category: Advertisement & License Department": "विभाग: विज्ञापन और लाइसेंस विभाग",
+    "Category: Local Body Tax Department (LBT)": "विभाग: स्थानीय निकाय कर विभाग (LBT)",
+    "Official government form for processing.": "प्रक्रिया के लिए सरकारी फॉर्म.",
+    "No forms match this search.": "इस खोज से कोई फॉर्म नहीं मिला."
+  },
+  mr: {
+    "Government of Maharashtra": "महाराष्ट्र शासन",
+    "Choose Service": "सेवा निवडा",
+    "Print My Document": "माझे दस्तऐवज प्रिंट करा",
+    "Print your PDF, Word, or photo file.": "तुमची PDF, Word किंवा फोटो फाइल प्रिंट करा.",
+    "Government Forms": "शासकीय फॉर्म",
+    "Select a ready form and print it.": "तयार फॉर्म निवडा आणि प्रिंट करा.",
+    "Add File": "फाइल जोडा",
+    "Use phone QR": "फोन QR वापरा",
+    "Secure Document": "सुरक्षित दस्तऐवज",
+    "Safe upload": "सुरक्षित अपलोड",
+    "Forms": "फॉर्म",
+    "Ready to print": "प्रिंटसाठी तयार",
+    "Quick Print": "जलद प्रिंट",
+    "Fast service": "जलद सेवा",
+    "Start": "सुरू करा",
+    "Home": "होम",
+    "Search forms by name, department or keyword...": "नाव, विभाग किंवा शब्दाने फॉर्म शोधा...",
+    "B/W per page": "B/W प्रति पान",
+    "Color per page": "रंगीत प्रति पान",
+    "Per Page (B/W)": "प्रति पान (B/W)",
+    "Total Forms": "एकूण फॉर्म",
+    "Printing": "प्रिंटिंग",
+    "Find and print official forms in seconds.": "शासकीय फॉर्म लगेच शोधा आणि प्रिंट करा.",
+    "Preview": "Preview",
+    "Details": "तपशील",
+    "Document": "दस्तऐवज",
+    "Documents": "दस्तऐवज",
+    "Pages": "पाने",
+    "Print Settings": "प्रिंट सेटिंग",
+    "Print Type": "प्रिंट प्रकार",
+    "Copies": "कॉपी",
+    "Orientation": "दिशा",
+    "Portrait": "पोर्ट्रेट",
+    "Landscape": "लँडस्केप",
+    "One Side": "एक बाजू",
+    "Both Sides": "दोन्ही बाजू",
+    "Total payable": "एकूण देय",
+    "Payment": "पेमेंट",
+    "Back": "मागे",
+    "Ready to Print": "प्रिंटसाठी तयार",
+    "All documents shown together": "सर्व दस्तऐवज एकत्र दाखवले आहेत",
+    "No file selected": "कोणतीही फाइल निवडलेली नाही",
+    "Upload a file to see the preview.": "पूर्वावलोकन पाहण्यासाठी फाइल जोडा.",
+    "Preview unavailable": "पूर्वावलोकन उपलब्ध नाही",
+    "This file type cannot be previewed.": "या फाइलचे पूर्वावलोकन दाखवता येत नाही.",
+    "Scan QR to Add Files": "फाइल जोडण्यासाठी QR स्कॅन करा",
+    "Use your phone": "तुमचा फोन वापरा",
+    "Use your phone camera. Scan this code, choose your document, then tap Send.": "फोन कॅमेरा उघडा. हा कोड स्कॅन करा, दस्तऐवज निवडा, मग Send दाबा.",
+    "Open phone camera": "फोन कॅमेरा उघडा",
+    "Choose files": "फाइल निवडा",
+    "Tap Send": "Send दाबा",
+    "Scan this QR code": "हा QR कोड स्कॅन करा",
+    "Keep this screen open": "ही स्क्रीन उघडी ठेवा",
+    "Getting QR ready": "QR तयार होत आहे",
+    "Please wait a moment.": "कृपया थोडा वेळ थांबा.",
+    "QR not ready": "QR तयार नाही",
+    "Ask staff to start the kiosk service.": "कियोस्क सेवा सुरू करण्यासाठी कर्मचारीला सांगा.",
+    "After sending files, look back at this kiosk.": "फाइल पाठवल्यानंतर या कियोस्क स्क्रीनकडे पहा.",
+    "Scan this QR code to add files from your phone": "फोनमधून फाइल जोडण्यासाठी हा QR कोड स्कॅन करा",
+    "Scan to pay": "पेमेंटसाठी स्कॅन करा",
+    "Tracking": "ट्रॅकिंग",
+    "Scan the QR code with any UPI app. Confirm when payment is done.": "कोणत्याही UPI अॅपने QR कोड स्कॅन करा. पेमेंट झाल्यावर पुष्टी करा.",
+    "The kiosk shows only the QR. Complete payment on the phone; live tracking stays on this screen.": "कियोस्क फक्त QR दाखवतो. फोनवर पेमेंट पूर्ण करा; लाईव्ह ट्रॅकिंग याच स्क्रीनवर दिसेल.",
+    "Scan with the phone camera or any UPI app.": "फोन कॅमेरा किंवा कोणत्याही UPI अॅपने स्कॅन करा.",
+    "Scan with the phone camera or any UPI app to open Razorpay.": "Razorpay उघडण्यासाठी फोन कॅमेरा किंवा UPI अॅपने स्कॅन करा.",
+    "Payment received": "पेमेंट प्राप्त झाले",
+    "Paid on phone": "फोनवर पेमेंट झाले",
+    "Payment is verified. Watch print tracking on the kiosk.": "पेमेंट पडताळले गेले आहे. प्रिंट ट्रॅकिंग कियोस्कवर पाहा.",
+    "Waiting for payment": "पेमेंटची प्रतीक्षा आहे",
+    "Waiting for phone payment": "फोन पेमेंटची प्रतीक्षा आहे",
+    "Waiting for payment from the customer phone.": "ग्राहकाच्या फोनवरून पेमेंटची प्रतीक्षा आहे.",
+    "Preparing the secure payment QR.": "सुरक्षित पेमेंट QR तयार होत आहे.",
+    "Creating payment QR...": "पेमेंट QR तयार होत आहे...",
+    "Live tracking": "लाईव्ह ट्रॅकिंग",
+    "QR ready on kiosk": "कियोस्कवर QR तयार आहे",
+    "Creating payment QR": "पेमेंट QR तयार होत आहे",
+    "Print completed": "प्रिंट पूर्ण झाले",
+    "Printing on kiosk": "कियोस्कवर प्रिंट होत आहे",
+    "Kiosk print tracking": "कियोस्क प्रिंट ट्रॅकिंग",
+    "Done": "पूर्ण",
+    "Active": "चालू",
+    "Pending": "प्रलंबित",
+    "Payment Done": "पेमेंट पूर्ण",
+    "Printing needs attention": "प्रिंटिंगकडे लक्ष द्या",
+    "Recovery Options": "पुनर्प्राप्ती पर्याय",
+    "Print": "प्रिंट",
+    "Failed": "अयशस्वी",
+    "Queue": "रांग",
+    "Saved for retry": "पुन्हा प्रयत्नासाठी जतन",
+    "Refund": "परतावा",
+    "Available if retry fails": "पुन्हा प्रयत्न अयशस्वी झाल्यास उपलब्ध",
+    "Retry Print": "प्रिंट पुन्हा करा",
+    "Request Refund": "परतावा मागा",
+    "Payment Successful!": "पेमेंट यशस्वी!",
+    "Payment Confirmed": "पेमेंट पुष्टी झाले",
+    "Please wait while we send your document to the printer": "दस्तऐवज प्रिंटरकडे पाठवत असताना कृपया थांबा",
+    "Print job in progress": "प्रिंट काम चालू आहे",
+    "Printing Your Document": "तुमचा दस्तऐवज प्रिंट होत आहे",
+    "Please stay near the kiosk while your pages are printing.": "पाने प्रिंट होत असताना कृपया कियोस्कजवळ थांबा.",
+    "Sending pages to printer...": "पाने प्रिंटरकडे पाठवली जात आहेत...",
+    "Payment verified": "पेमेंट पडताळले",
+    "Document queued": "दस्तऐवज रांगेत आहे",
+    "Printer active": "प्रिंटर चालू आहे",
+    "Thank You!": "धन्यवाद!",
+    "Your document has been printed successfully.": "तुमचा दस्तऐवज यशस्वीरित्या प्रिंट झाला आहे.",
+    "We hope to see you again!": "पुन्हा भेटू!",
+    "Return Home Now": "आता होमवर जा",
+    "Need Help? Call Us": "मदत हवी? कॉल करा",
+    "(Toll Free)": "(टोल फ्री)",
+    "Select language": "भाषा निवडा",
+    "Current date and time": "सध्याची तारीख आणि वेळ",
+    "Property Tax Assessment": "मिळकत कर आकारणी",
+    "Property tax assessment application.": "मिळकत कर आकारणी अर्ज.",
+    "Electricity NOC": "वीज NOC",
+    "NOC for electricity connection.": "वीज कनेक्शनसाठी NOC.",
+    "Death Certificate": "मृत्यू प्रमाणपत्र",
+    "Death certificate request form.": "मृत्यू प्रमाणपत्र विनंती फॉर्म.",
+    "Birth Certificate": "जन्म प्रमाणपत्र",
+    "Birth certificate request form.": "जन्म प्रमाणपत्र विनंती फॉर्म.",
+    "Request For New Connection": "नवीन कनेक्शनसाठी अर्ज",
+    "Request For Change Of Water Rate": "पाणी दर बदलण्यासाठी अर्ज",
+    "Request For Change In Name": "नाव बदलण्यासाठी अर्ज",
+    "Request For Bill At Residential Rate": "निवासी दराने बिलासाठी अर्ज",
+    "Request For Change In Location Of Connection": "कनेक्शनचे ठिकाण बदलण्यासाठी अर्ज",
+    "Registration Of Property On Demand Register": "डिमांड रजिस्टरमध्ये मिळकत नोंदणी",
+    "Reduction Of Property Tax": "मिळकत कर कमी करणे",
+    "Tax On Property": "मिळकत कर",
+    "No Objection Certificate (N.O.C.)": "ना हरकत प्रमाणपत्र (N.O.C.)",
+    "No Objection Certifi hucate (N.O.C.)": "ना हरकत प्रमाणपत्र (N.O.C.)",
+    "Architect Registration Application": "आर्किटेक्ट नोंदणी अर्ज",
+    "Structural Engineer / Engineer Supervisor New License Application": "स्ट्रक्चरल इंजिनिअर / इंजिनिअर सुपरवायझर नवीन परवाना अर्ज",
+    "Structural Engineer / Engineer Supervisor License Renewal Application": "स्ट्रक्चरल इंजिनिअर / इंजिनिअर सुपरवायझर परवाना नूतनीकरण अर्ज",
+    "Tentative Layout": "प्रारंभिक लेआउट",
+    "Final Layout": "अंतिम लेआउट",
+    "Building Permission (B.P.)": "बांधकाम परवानगी (B.P.)",
+    "Occupancy Certificate": "भोगवटा प्रमाणपत्र",
+    "Hospital/ Nursing Home/ Maternity Homes Inspection Form": "रुग्णालय / नर्सिंग होम / प्रसूतीगृह तपासणी फॉर्म",
+    "Doctor Registration Form": "डॉक्टर नोंदणी फॉर्म",
+    "Sisters Registration Form": "नर्स नोंदणी फॉर्म",
+    "Hospital Owner Registration": "रुग्णालय मालक नोंदणी",
+    "Hospital Registration or Renewal Document List": "रुग्णालय नोंदणी किंवा नूतनीकरण दस्तऐवज सूची",
+    "Pre Natal Diagnostics Registration": "प्रसवपूर्व निदान नोंदणी",
+    "Lokshahi Din Application Form": "लोकशाही दिन अर्ज फॉर्म",
+    "Marriage Registration": "विवाह नोंदणी",
+    "Annual Return Form (Marathi)": "वार्षिक रिटर्न फॉर्म (मराठी)",
+    "Annual Return Form (English)": "वार्षिक रिटर्न फॉर्म (इंग्रजी)",
+    "Category: Water Supply Department": "विभाग: पाणीपुरवठा विभाग",
+    "Category: Tax Department": "विभाग: कर विभाग",
+    "Category: Electrical Department": "विभाग: विद्युत विभाग",
+    "Category: Business & Shop Registration": "विभाग: व्यवसाय आणि दुकान नोंदणी",
+    "Category: Town Planning Department": "विभाग: नगररचना विभाग",
+    "Category: Birth & Death Certificate": "विभाग: जन्म आणि मृत्यू प्रमाणपत्र",
+    "Category: Medical Department": "विभाग: वैद्यकीय विभाग",
+    "Category: Health Department": "विभाग: आरोग्य विभाग",
+    "Category: Garden Department": "विभाग: उद्यान विभाग",
+    "Category: Advertisement & License Department": "विभाग: जाहिरात आणि परवाना विभाग",
+    "Category: Local Body Tax Department (LBT)": "विभाग: स्थानिक संस्था कर विभाग (LBT)",
+    "Official government form for processing.": "प्रक्रियेसाठी शासकीय फॉर्म.",
+    "No forms match this search.": "या शोधाशी जुळणारे फॉर्म नाहीत."
+  }
 };
 
 function readStoredAdminLanguage() {
@@ -1205,17 +1550,25 @@ const customerSteps = [
 
 const allowedUploadExtensions = ["PDF", "DOC", "DOCX", "JPG", "JPEG", "PNG"];
 const customerUploadExtensions = ["PDF", "JPG", "JPEG", "PNG"];
-const PRINT_PAPER_SIZES = ["A4", "A3", "Letter", "Legal"];
+const PRINT_PAPER_SIZES = ["A4"];
 const DEFAULT_KIOSK_CUSTOMER_SETTINGS = Object.freeze({
   bw: true,
   color: true,
   copies: true,
-  paperSize: true,
+  paperSize: false,
   sides: true,
   orientation: true,
   pageRange: true
 });
-const CUSTOMER_VISIBLE_SETTING_KEYS = new Set(["bw", "color", "copies", "paperSize", "sides", "orientation", "pageRange"]);
+const KIOSK_CUSTOMER_OPTION_FIELDS = Object.freeze([
+  ["bw", "B/W printing"],
+  ["color", "Color printing"],
+  ["copies", "Copies"],
+  ["sides", "Single / both sides"],
+  ["orientation", "Orientation"],
+  ["pageRange", "Page range"]
+]);
+const CUSTOMER_VISIBLE_SETTING_KEYS = new Set(["bw", "color", "copies", "sides", "orientation", "pageRange"]);
 const DEFAULT_SERVICE_PRINT_DEFAULTS = Object.freeze({
   colorMode: "bw",
   copies: 1,
@@ -1324,8 +1677,11 @@ const state = {
   uploadError: "",
   uploadSession: null,
   uploadPoller: null,
+  customerInactivityTimer: null,
   previewZoom: 1,
+  previewActivityArea: "document",
   previewFileIndex: 0,
+  previewPage: 1,
   settings: {
     colorMode: "bw",
     copies: 1,
@@ -1393,6 +1749,7 @@ const state = {
   },
   adminPoller: null,
   adminPagination: {},
+  adminPermissionStatus: "",
   projectDraft: {
     projectId: "",
     name: "",
@@ -1419,12 +1776,15 @@ const state = {
     projectId: "",
     status: ""
   },
+  clientBrand: readStoredClientBrand(),
   kioskCustomerSettings: { ...DEFAULT_KIOSK_CUSTOMER_SETTINGS },
   pricing: readStoredPricing(),
   pricingSaveStatus: "",
   servicesDirty: false,
   serviceEditor: null,
   adminSelectedServiceId: "",
+  adminSelectedServiceKioskId: "",
+  adminPricingKioskId: "",
   templateSearchQuery: "",
   templateSearchKeyboardActive: false,
   imageUploadBusy: false,
@@ -1452,6 +1812,12 @@ function qs(selector) {
 
 function uiIcon(name, size = 20) {
   return window.PrintKioskUI?.icon(name, size) || "";
+}
+
+function languageTypographyClass(language) {
+  if (language === "hi") return "hindi devanagari";
+  if (language === "mr") return "marathi devanagari";
+  return "";
 }
 
 function adminLocale() {
@@ -1482,13 +1848,56 @@ function customerTranslateText(value) {
   const text = String(value || "").trim();
   if (!text) return text;
 
-  return text;
-
   const language = state.customerLanguage;
   if (language === "en") return text;
 
-  const translations = CUSTOMER_TRANSLATIONS[language] || {};
+  const translations = CUSTOMER_CLEAN_TRANSLATIONS[language] || {};
   if (translations[text]) return translations[text];
+
+  const pageWord = language === "hi" ? "पेज" : "पाने";
+  const copyWord = "कॉपी";
+  const formWord = "फॉर्म";
+  const documentWord = translations.Documents || "Documents";
+  const safePatterns = [
+    [/^(\d+) pages?$/, (match) => `${match[1]} ${pageWord}`],
+    [/^(\d+) page(s?)$/, (match) => `${match[1]} ${pageWord}`],
+    [/^(\d+) pages? shown$/, (match) => language === "hi" ? `${match[1]} पेज दिखाए गए` : `${match[1]} पाने दाखवली`],
+    [/^(\d+) forms?$/, (match) => `${match[1]} ${formWord}`],
+    [/^(\d+) matching forms?$/, (match) => language === "hi" ? `${match[1]} मिलते-जुलते फॉर्म` : `${match[1]} जुळणारे फॉर्म`],
+    [/^(\d+) documents?$/, (match) => `${match[1]} ${documentWord}`],
+    [/^(\d+) documents? \/ (\d+) pages?$/, (match) => `${match[1]} ${documentWord} / ${match[2]} ${pageWord}`],
+    [/^(\d+) cop(?:y|ies)$/, (match) => `${match[1]} ${copyWord}`],
+    [/^Page (\d+) \/ (\d+)$/, (match) => `${translations.Pages || "Pages"} ${match[1]} / ${match[2]}`],
+    [/^Page (\d+) of (\d+)$/, (match) => `${translations.Pages || "Pages"} ${match[1]} / ${match[2]}`],
+    [/^Page (\d+)$/, (match) => `${translations.Pages || "Pages"} ${match[1]}`],
+    [/^Document (\d+)$/, (match) => `${translations.Document || "Document"} ${match[1]}`],
+    [/^Order (.+)$/, (match) => `${language === "hi" ? "ऑर्डर" : "ऑर्डर"} ${match[1]}`],
+    [/^Returning home in (\d+)s$/, (match) => language === "hi" ? `${match[1]} सेकंड में होम पर जा रहे हैं` : `${match[1]} सेकंदात होमवर जात आहे`],
+    [/^You can send up to (\d+) files\.$/, (match) => language === "hi" ? `आप ${match[1]} फ़ाइलें तक भेज सकते हैं.` : `तुम्ही ${match[1]} फाइल्सपर्यंत पाठवू शकता.`],
+    [/^Pay (Rs\. .+)$/, (match) => `${language === "hi" ? "भुगतान करें" : "पेमेंट करा"} ${match[1]}`],
+    [/^(Rs\. .+) \/ page$/, (match) => `${match[1]} / ${pageWord}`],
+    [/^(Rs\. .+) B\/W per page$/, (match) => `${match[1]} ${translations["B/W per page"] || "B/W per page"}`],
+    [/^(Rs\. .+) Color per page$/, (match) => `${match[1]} ${translations["Color per page"] || "Color per page"}`],
+    [/^No services are enabled for (.+)\. Open Admin Services to enable or assign services\.$/, (match) => language === "hi"
+      ? `${match[1]} के लिए कोई सेवा चालू नहीं है. सेवा चालू या असाइन करने के लिए Admin Services खोलें.`
+      : `${match[1]} साठी कोणतीही सेवा चालू नाही. सेवा चालू किंवा असाइन करण्यासाठी Admin Services उघडा.`],
+    [/^(.+) selected\. Pick a form template to preview and print\.$/, (match) => language === "hi"
+      ? `${match[1]} चुना गया. पूर्वावलोकन और प्रिंट के लिए फॉर्म चुनें.`
+      : `${match[1]} निवडले. पूर्वावलोकन आणि प्रिंटसाठी फॉर्म निवडा.`],
+    [/^Printing completed successfully\. Returning to the home page in (\d+) seconds\.$/, (match) => language === "hi"
+      ? `प्रिंटिंग सफलतापूर्वक पूरी हुई. ${match[1]} सेकंड में होम पेज पर लौटेंगे.`
+      : `प्रिंटिंग यशस्वीरित्या पूर्ण झाली. ${match[1]} सेकंदात होम पेजवर परत जाईल.`],
+    [/^(.+) The paid job is saved in admin history and can be retried without charging again\.$/, (match) => language === "hi"
+      ? `${match[1]} भुगतान किया गया काम admin history में सेव है और बिना फिर से शुल्क लिए दोबारा प्रिंट किया जा सकता है.`
+      : `${match[1]} पेमेंट झालेले काम admin history मध्ये सेव आहे आणि पुन्हा शुल्क न घेता प्रिंट करता येईल.`]
+  ];
+
+  for (const [pattern, formatter] of safePatterns) {
+    const match = text.match(pattern);
+    if (match) return formatter(match);
+  }
+
+  return text;
 
   const translated = (english) => translations[english] || english;
   const patterns = [
@@ -1594,6 +2003,7 @@ function applyCustomerTranslations(root) {
   });
 
   root.querySelectorAll("[placeholder], [aria-label], [title], [alt]").forEach((element) => {
+    if (element.closest("[data-no-customer-translation]")) return;
     ["placeholder", "aria-label", "title", "alt"].forEach((attribute) => {
       if (!element.hasAttribute(attribute)) return;
       const source = element.getAttribute(attribute);
@@ -1686,6 +2096,16 @@ function normalizeKioskId(value) {
   return String(value || "").trim().toUpperCase();
 }
 
+function normalizeKioskCode(value, maxLength = 32) {
+  return String(value || "")
+    .trim()
+    .toUpperCase()
+    .replace(/[^A-Z0-9-]/g, "")
+    .replace(/-+/g, "-")
+    .replace(/^-+|-+$/g, "")
+    .slice(0, maxLength);
+}
+
 function generateKioskSetupCode() {
   const alphabet = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
   const bytes = new Uint8Array(8);
@@ -1699,6 +2119,52 @@ function generateKioskSetupCode() {
   }
 
   return Array.from(bytes, (byte) => alphabet[byte % alphabet.length]).join("");
+}
+
+function adminKioskIdExists(kioskId = "", ignoreKioskId = "") {
+  const normalized = normalizeKioskCode(kioskId);
+  const ignored = normalizeKioskCode(ignoreKioskId);
+  if (!normalized) return false;
+  return (state.adminData.kiosks || []).some((kiosk) => {
+    const existingId = normalizeKioskCode(kiosk.kioskId);
+    return existingId === normalized && existingId !== ignored;
+  });
+}
+
+function adminSetupCodeExists(setupCode = "", ignoreKioskId = "") {
+  const normalized = normalizeKioskCode(setupCode, 16);
+  const ignored = normalizeKioskCode(ignoreKioskId);
+  if (!normalized) return false;
+  return (state.adminData.kiosks || []).some((kiosk) => {
+    const existingId = normalizeKioskCode(kiosk.kioskId);
+    return existingId !== ignored && normalizeKioskCode(kiosk.setupCode, 16) === normalized;
+  });
+}
+
+function nextAdminKioskId() {
+  const used = new Set((state.adminData.kiosks || []).map((kiosk) => normalizeKioskCode(kiosk.kioskId)).filter(Boolean));
+  const numericSuffixes = [...used]
+    .map((kioskId) => /^KIOSK-(\d+)$/i.exec(kioskId)?.[1])
+    .filter(Boolean)
+    .map((value) => Number(value))
+    .filter(Number.isFinite);
+  let nextNumber = numericSuffixes.length ? Math.max(...numericSuffixes) + 1 : used.size + 1;
+
+  for (let attempt = 0; attempt < 10000; attempt += 1) {
+    const candidate = `KIOSK-${String(nextNumber + attempt).padStart(2, "0")}`;
+    if (!used.has(candidate)) return candidate;
+  }
+
+  return `KIOSK-${Date.now().toString().slice(-8)}`;
+}
+
+function uniqueAdminSetupCode(ignoreKioskId = "") {
+  for (let attempt = 0; attempt < 100; attempt += 1) {
+    const candidate = generateKioskSetupCode();
+    if (!adminSetupCodeExists(candidate, ignoreKioskId)) return candidate;
+  }
+
+  return Math.random().toString(36).slice(2, 10).toUpperCase();
 }
 
 function readConfiguredKioskId() {
@@ -1830,6 +2296,223 @@ function templateHasStaticPdfPreview(template) {
   if (template?.hasStaticPreview === true) return true;
   if (template?.hasStaticPreview === false) return false;
   return false;
+}
+
+const FORM_THUMBNAIL_STORAGE_PREFIX = "printingKioskFormThumbnail:";
+const FORM_THUMBNAIL_COLORS = ["#2563eb", "#0f766e", "#b45309", "#7c3aed", "#be123c", "#15803d", "#0369a1", "#9333ea"];
+const formThumbnailCache = new Map();
+const formThumbnailJobs = new Map();
+let formThumbnailObserver = null;
+
+function formTemplateAccentColor(index = 0) {
+  return FORM_THUMBNAIL_COLORS[index % FORM_THUMBNAIL_COLORS.length];
+}
+
+function formTemplateDocumentUrl(template) {
+  return normalizeTemplateImageUrl(template?.imageUrl || "");
+}
+
+function formTemplateStaticThumbnailUrl(template) {
+  const explicit = normalizeTemplateImageUrl(template?.thumbnailUrl || template?.previewImageUrl || "");
+  if (explicit) return explicit;
+
+  const imageUrl = formTemplateDocumentUrl(template);
+  if (!imageUrl) return "";
+
+  const documentKind = templateDocumentKind(template?.documentType || imageUrl);
+  if (documentKind !== "pdf") return imageUrl;
+
+  if (templateHasStaticPdfPreview(template) || /^\/assets\/forms\/[^/]+\.pdf$/i.test(imageUrl)) {
+    return imageUrl.replace(/\.pdf(?:$|[?#])/i, ".png");
+  }
+
+  return "";
+}
+
+function formThumbnailSourceHash(value = "") {
+  const text = String(value || "");
+  let hash = 0;
+  for (let index = 0; index < text.length; index += 1) {
+    hash = ((hash << 5) - hash + text.charCodeAt(index)) | 0;
+  }
+  return Math.abs(hash).toString(36) || "0";
+}
+
+function formThumbnailCacheKey(template, sourceUrl = "") {
+  const templateId = String(template?.id || template?.title || "form");
+  return `${FORM_THUMBNAIL_STORAGE_PREFIX}${templateId}:${formThumbnailSourceHash(sourceUrl || formTemplateDocumentUrl(template))}`;
+}
+
+function readFormThumbnailCache(key) {
+  if (!key) return "";
+  if (formThumbnailCache.has(key)) return formThumbnailCache.get(key);
+
+  try {
+    const cached = localStorage.getItem(key) || sessionStorage.getItem(key) || "";
+    if (cached) formThumbnailCache.set(key, cached);
+    return cached;
+  } catch {
+    return "";
+  }
+}
+
+function writeFormThumbnailCache(key, value) {
+  if (!key || !value) return;
+  formThumbnailCache.set(key, value);
+
+  try {
+    localStorage.setItem(key, value);
+  } catch {
+    // Persistent thumbnail cache is best-effort; session cache still avoids repeat work now.
+  }
+
+  try {
+    sessionStorage.setItem(key, value);
+  } catch {
+    // Thumbnail cache is an optimization; keep the UI working if storage is full.
+  }
+}
+
+function renderFormTemplateIcon(template, index = 0) {
+  const color = formTemplateAccentColor(index);
+  const documentUrl = formTemplateDocumentUrl(template);
+  const documentKind = templateDocumentKind(template?.documentType || documentUrl);
+  const staticThumbnailUrl = formTemplateStaticThumbnailUrl(template);
+  const cacheKey = formThumbnailCacheKey(template, documentUrl || staticThumbnailUrl);
+  const cachedThumbnail = documentKind === "pdf" ? readFormThumbnailCache(cacheKey) : "";
+  const thumbnailUrl = cachedThumbnail || staticThumbnailUrl;
+  const canGeneratePdfThumbnail = documentKind === "pdf" && documentUrl && !cachedThumbnail && !staticThumbnailUrl;
+
+  return `
+      <div
+        class="forms-v2-card-icon forms-v2-card-thumbnail ${thumbnailUrl ? "has-thumbnail" : "is-loading"}"
+        style="--form-thumb-accent: ${color}; color: ${color}; background: ${color}1A;"
+        ${canGeneratePdfThumbnail ? `data-template-thumbnail-url="${escapeHtml(documentUrl)}" data-template-thumbnail-key="${escapeHtml(cacheKey)}"` : ""}
+      >
+        ${thumbnailUrl
+          ? `<img class="form-thumbnail-image" src="${escapeHtml(thumbnailUrl)}" alt="" draggable="false" data-no-visual-search />`
+          : `<span class="form-thumbnail-placeholder">${uiIcon("pages", 32)}</span>`}
+      </div>
+    `;
+}
+
+function applyFormThumbnail(node, dataUrl) {
+  if (!node || !dataUrl) return;
+  let image = node.querySelector(".form-thumbnail-image");
+  if (!image) {
+    image = document.createElement("img");
+    image.className = "form-thumbnail-image";
+    image.alt = "";
+    image.draggable = false;
+    image.setAttribute("data-no-visual-search", "");
+    node.prepend(image);
+  }
+  image.src = dataUrl;
+  node.classList.add("has-thumbnail");
+  node.classList.remove("is-loading", "is-error");
+}
+
+function applyFormThumbnailByKey(key, dataUrl) {
+  document.querySelectorAll("[data-template-thumbnail-key]").forEach((node) => {
+    if (node.dataset.templateThumbnailKey === key) {
+      applyFormThumbnail(node, dataUrl);
+    }
+  });
+}
+
+async function createPdfFormThumbnail(pdfUrl) {
+  const pdfjsLib = await import("./assets/vendor/pdfjs/pdf.min.mjs");
+  pdfjsLib.GlobalWorkerOptions.workerSrc = "./assets/vendor/pdfjs/pdf.worker.min.mjs";
+  const pdf = await pdfjsLib.getDocument({ url: pdfUrl, enableXfa: true }).promise;
+  const page = await pdf.getPage(1);
+  const baseViewport = page.getViewport({ scale: 1 });
+  const scale = Math.min(150 / baseViewport.width, 200 / baseViewport.height);
+  const viewport = page.getViewport({ scale: Math.max(0.16, scale) });
+  const canvas = document.createElement("canvas");
+  const context = canvas.getContext("2d");
+
+  if (!context) return "";
+  canvas.width = Math.ceil(viewport.width);
+  canvas.height = Math.ceil(viewport.height);
+  await page.render({ canvasContext: context, viewport }).promise;
+  return canvas.toDataURL("image/jpeg", 0.72);
+}
+
+function hydrateFormThumbnailNode(node) {
+  const key = node?.dataset?.templateThumbnailKey || "";
+  const pdfUrl = node?.dataset?.templateThumbnailUrl || "";
+  const cached = readFormThumbnailCache(key);
+
+  if (cached) {
+    applyFormThumbnail(node, cached);
+    return;
+  }
+
+  if (!key || !pdfUrl) return;
+
+  if (!formThumbnailJobs.has(key)) {
+    formThumbnailJobs.set(
+      key,
+      createPdfFormThumbnail(pdfUrl)
+        .then((dataUrl) => {
+          if (dataUrl) {
+            writeFormThumbnailCache(key, dataUrl);
+            applyFormThumbnailByKey(key, dataUrl);
+          }
+          return dataUrl;
+        })
+        .catch((error) => {
+          console.error("Form thumbnail error:", error);
+          document.querySelectorAll("[data-template-thumbnail-key]").forEach((item) => {
+            if (item.dataset.templateThumbnailKey === key) {
+              item.classList.remove("is-loading");
+              item.classList.add("is-error");
+            }
+          });
+          return "";
+        })
+        .finally(() => {
+          formThumbnailJobs.delete(key);
+        })
+    );
+  }
+
+  formThumbnailJobs.get(key).then((dataUrl) => applyFormThumbnail(node, dataUrl));
+}
+
+function hydrateFormThumbnails(root = document) {
+  if (formThumbnailObserver) {
+    formThumbnailObserver.disconnect();
+    formThumbnailObserver = null;
+  }
+
+  const nodes = Array.from(root.querySelectorAll("[data-template-thumbnail-url]"));
+  if (!nodes.length) return;
+
+  const hydrateNode = (node) => hydrateFormThumbnailNode(node);
+
+  if ("IntersectionObserver" in window) {
+    const scrollRoot = root.querySelector("[data-forms-list-grid='true']") || root.querySelector(".forms-v2-grid");
+    formThumbnailObserver = new IntersectionObserver((entries) => {
+      entries.forEach((entry) => {
+        if (!entry.isIntersecting) return;
+        formThumbnailObserver?.unobserve(entry.target);
+        hydrateNode(entry.target);
+      });
+    }, { root: scrollRoot || null, rootMargin: "180px" });
+
+    nodes.forEach((node) => {
+      const cached = readFormThumbnailCache(node.dataset.templateThumbnailKey || "");
+      if (cached) {
+        applyFormThumbnail(node, cached);
+      } else {
+        formThumbnailObserver.observe(node);
+      }
+    });
+    return;
+  }
+
+  nodes.forEach(hydrateNode);
 }
 
 function uploadedTemplateTitle(file, fallback = "Template Document") {
@@ -1981,9 +2664,14 @@ function normalizeServicePrintDefaults(defaults = {}) {
   };
 }
 
-function customerSettingEnabled(key) {
+function customerSettingEnabled(key, service = selectedService()) {
+  const serviceSettings = service && typeof service === "object"
+    ? normalizeKioskCustomerSettings(service.customerSettings || {})
+    : normalizeKioskCustomerSettings({});
+
   return CUSTOMER_VISIBLE_SETTING_KEYS.has(key)
-    && state.kioskCustomerSettings?.[key] !== false;
+    && state.kioskCustomerSettings?.[key] !== false
+    && serviceSettings[key] !== false;
 }
 
 function enforceCustomerSettings(service = selectedService()) {
@@ -1993,10 +2681,13 @@ function enforceCustomerSettings(service = selectedService()) {
     state.settings.colorMode = "bw";
   }
   if (!customerSettingEnabled("bw", service) && state.settings.colorMode === "bw") {
-    state.settings.colorMode = "color";
+    state.settings.colorMode = customerSettingEnabled("color", service) ? "color" : "bw";
   }
   if (!customerSettingEnabled("copies", service)) {
     state.settings.copies = 1;
+  }
+  if (!customerSettingEnabled("sides", service) || state.printer?.supportsDuplex === false) {
+    state.settings.sides = "single";
   }
 }
 
@@ -2133,6 +2824,13 @@ function createDefaultPricing() {
   }, {});
 }
 
+function normalizedPricingPair(rates, fallback = { bw: 0, color: 0 }) {
+  return {
+    bw: numericPrice(rates?.bw, fallback.bw),
+    color: numericPrice(rates?.color, fallback.color)
+  };
+}
+
 function normalizePricing(pricing) {
   const nextPricing = createDefaultPricing();
 
@@ -2169,6 +2867,31 @@ function normalizePricing(pricing) {
     };
   });
 
+  const kioskPricingSource = pricing.__kiosks || pricing.kiosks || pricing.byKiosk || {};
+  const nextKioskPricing = {};
+
+  if (kioskPricingSource && typeof kioskPricingSource === "object") {
+    Object.entries(kioskPricingSource).forEach(([rawKioskId, kioskPricing]) => {
+      const kioskId = normalizeKioskId(rawKioskId);
+      if (!kioskId || !kioskPricing || typeof kioskPricing !== "object") return;
+
+      const scopedPricing = {};
+      services.forEach((service) => {
+        const rates = kioskPricing[service.id];
+        if (!rates || typeof rates !== "object") return;
+        scopedPricing[service.id] = normalizedPricingPair(rates, nextPricing[service.id]);
+      });
+
+      if (Object.keys(scopedPricing).length) {
+        nextKioskPricing[kioskId] = scopedPricing;
+      }
+    });
+  }
+
+  if (Object.keys(nextKioskPricing).length) {
+    nextPricing.__kiosks = nextKioskPricing;
+  }
+
   return nextPricing;
 }
 
@@ -2186,6 +2909,29 @@ function storePricing() {
   } catch {
     // Local storage can be unavailable in hardened kiosk shells.
   }
+}
+
+function setPricingRate(serviceId, priceKey, value, kioskId = "") {
+  const normalizedServiceId = String(serviceId || "");
+  const normalizedPriceKey = priceKey === "color" ? "color" : "bw";
+  const normalizedKioskId = normalizeKioskId(kioskId === "__default" ? "" : kioskId);
+
+  state.pricing = normalizePricing(state.pricing);
+
+  if (!normalizedKioskId) {
+    if (state.pricing[normalizedServiceId]) {
+      state.pricing[normalizedServiceId][normalizedPriceKey] = numericPrice(value, 0);
+    }
+    return;
+  }
+
+  state.pricing.__kiosks = state.pricing.__kiosks || {};
+  state.pricing.__kiosks[normalizedKioskId] = state.pricing.__kiosks[normalizedKioskId] || {};
+  const baseRates = state.pricing[normalizedServiceId] || defaultServicePricing[normalizedServiceId] || defaultServicePricing.print;
+  state.pricing.__kiosks[normalizedKioskId][normalizedServiceId] = {
+    ...normalizedPricingPair(state.pricing.__kiosks[normalizedKioskId][normalizedServiceId], baseRates),
+    [normalizedPriceKey]: numericPrice(value, 0)
+  };
 }
 
 function readStoredServices() {
@@ -2209,6 +2955,47 @@ function readStoredConfigVersion() {
     return Number(window.localStorage.getItem("kioskConfigVersion") || 0);
   } catch {
     return 0;
+  }
+}
+
+function normalizeClientBrand(brand = {}) {
+  const source = brand && typeof brand === "object" ? brand : {};
+  const logoUrl = String(source.logoUrl || source.clientLogoUrl || source.logo || "").trim();
+  const title = String(source.title || source.kioskTitle || source.name || "").trim();
+  const subtitle = String(source.subtitle || source.kioskSubtitle || source.description || "").trim();
+
+  if (!logoUrl && !title && !subtitle) {
+    return {};
+  }
+
+  return {
+    clientId: String(source.clientId || source.adminId || "").trim(),
+    kioskId: normalizeKioskId(source.kioskId || ""),
+    name: String(source.name || "").trim(),
+    logoUrl,
+    title,
+    subtitle
+  };
+}
+
+function readStoredClientBrand() {
+  try {
+    const brand = normalizeClientBrand(JSON.parse(window.localStorage.getItem("kioskClientBrand") || "null"));
+    if (brand.kioskId && brand.kioskId !== normalizeKioskId(KIOSK_ID)) return {};
+    return brand;
+  } catch {
+    return {};
+  }
+}
+
+function storeClientBrand() {
+  try {
+    window.localStorage.setItem("kioskClientBrand", JSON.stringify({
+      ...(state.clientBrand || {}),
+      kioskId: normalizeKioskId(state.kiosk?.kioskId || KIOSK_ID)
+    }));
+  } catch {
+    // Local storage can be unavailable in hardened kiosk shells.
   }
 }
 
@@ -2323,7 +3110,7 @@ function renderTemplateSearchKeyboard() {
       <div class="template-keyboard-row template-keyboard-controls">
         <button type="button" class="template-key" data-template-search-action="space">Space</button>
         <button type="button" class="template-key" data-template-search-action="backspace">Back</button>
-        <button type="button" class="template-key" data-template-search-action="clear">Clear</button>
+        <button type="button" class="template-key template-key-go" data-template-search-action="go">Go</button>
       </div>
     </div>
   `;
@@ -2364,19 +3151,40 @@ function setTemplateSearchQuery(value, { focus = true } = {}) {
 
 function serviceAvailableForKiosk(service, kioskId = KIOSK_ID) {
   const projectIds = Array.isArray(service.projectIds) ? service.projectIds : [];
+  const kioskIds = Array.isArray(service.kioskIds) ? service.kioskIds.map((item) => normalizeKioskId(item)).filter(Boolean) : [];
+
+  if (kioskIds.length) {
+    return service.enabled !== false && kioskIds.includes(normalizeKioskId(kioskId));
+  }
+
   if (projectIds.length) {
     return service.enabled !== false && Boolean(state.kiosk.projectId && projectIds.includes(state.kiosk.projectId));
   }
-  return service.enabled !== false && (!service.kioskIds?.length || service.kioskIds.includes(kioskId));
+
+  return service.enabled !== false;
 }
 
 function customerServices() {
   return services.filter((service) => serviceAvailableForKiosk(service));
 }
 
-function serviceRates(serviceId = state.selectedService) {
+function currentPricingKioskId() {
+  if (state.mode === "admin") {
+    return normalizeKioskId(state.adminSelectedServiceKioskId || "");
+  }
+
+  return normalizeKioskId(KIOSK_ID);
+}
+
+function serviceRates(serviceId = state.selectedService, kioskId = currentPricingKioskId()) {
   const service = services.find((item) => item.id === serviceId) || services[0];
-  const rates = state.pricing?.[service.id] || service?.pricing || defaultServicePricing[service.id] || defaultServicePricing.print;
+  const baseRates = normalizedPricingPair(
+    state.pricing?.[service.id] || service?.pricing || defaultServicePricing[service.id] || defaultServicePricing.print,
+    defaultServicePricing[service.id] || defaultServicePricing.print
+  );
+  const scopedKioskId = normalizeKioskId(kioskId);
+  const kioskRates = scopedKioskId ? state.pricing?.__kiosks?.[scopedKioskId]?.[service.id] : null;
+  const rates = kioskRates ? normalizedPricingPair(kioskRates, baseRates) : baseRates;
 
   return {
     bw: numericPrice(rates.bw, 0),
@@ -2465,6 +3273,7 @@ function setJobFiles(files) {
   state.files = nextFiles;
   state.file = nextFiles[0] || null;
   state.previewFileIndex = 0;
+  state.previewPage = 1;
   enforceJobColorMode(nextFiles[0] || null);
 }
 
@@ -2504,6 +3313,8 @@ function applyDemoKioskConfig({ rerender = false } = {}) {
     projectId: "",
     status: "active"
   };
+  state.clientBrand = {};
+  storeClientBrand();
   state.kioskCustomerSettings = { ...DEFAULT_KIOSK_CUSTOMER_SETTINGS };
   state.configStatus = "";
   setDemoPrinterReady({ rerender: false });
@@ -2557,13 +3368,19 @@ function paymentQrMarkup(paymentUrl) {
 }
 
 function priceDetails() {
+  const file = activePreviewFile();
+  const service = services.find((item) => item.id === file?.serviceId)
+    || selectedService();
   const pages = Math.max(1, effectivePageCount());
   const copies = Math.max(1, Number(state.settings.copies) || 1);
-  const rates = serviceRates();
-  const rate = state.settings.colorMode === "color" ? rates.color : rates.bw;
+  const rates = serviceRates(service?.id);
+  const colorMode = state.settings.colorMode === "color" && customerSettingEnabled("color", service)
+    ? "color"
+    : "bw";
+  const rate = colorMode === "color" ? rates.color : rates.bw;
   const total = pages * copies * rate;
 
-  return { pages, copies, rate, rates, total };
+  return { pages, copies, rate, rates, total, colorMode, serviceId: service?.id || "" };
 }
 
 function applyPrinterPaperDefault(printer = state.printer) {
@@ -2984,6 +3801,7 @@ function createTemplateFile(template) {
       previewKind: "html-template",
       previewUrl: "",
       source: localizedTitle,
+      serviceId: service?.id || state.selectedService || "",
       templateId: template.id,
       templatePaperSize: normalizePaperSize(template.paperSize, "Auto", true),
       templateOrientation: normalizeOrientation(template.orientation),
@@ -3008,6 +3826,7 @@ function createTemplateFile(template) {
       previewUrl: imageUrl,
       staticPreviewUrl,
       source: localizedTitle,
+      serviceId: service?.id || state.selectedService || "",
       templateId: template.id,
       templatePaperSize: normalizePaperSize(template.paperSize, "Auto", true),
       templateOrientation: normalizeOrientation(template.orientation),
@@ -3024,6 +3843,7 @@ function createTemplateFile(template) {
     previewKind: "html-template",
     previewUrl: "",
     source: localizedTitle,
+    serviceId: service?.id || state.selectedService || "",
     templateId: template.id,
     templatePaperSize: normalizePaperSize(template.paperSize, "Auto", true),
     templateOrientation: normalizeOrientation(template.orientation),
@@ -3047,6 +3867,7 @@ function clearCurrentFile() {
   jobFiles().forEach(revokePreviewUrl);
   setJobFiles([]);
   state.previewZoom = 1;
+  state.previewPage = 1;
   state.uploadError = "";
 }
 
@@ -3395,8 +4216,13 @@ function applyServiceConfig(payload, { rerender = true, source = "backend" } = {
       projectId: String(payload.kiosk.projectId || "").trim(),
       status: String(payload.kiosk.status || "").trim()
     };
+    state.clientBrand = normalizeClientBrand(payload.clientBrand || payload.kiosk.clientBrand || {});
+    storeClientBrand();
     state.kioskCustomerSettings = normalizeKioskCustomerSettings(payload.kiosk.customerSettings);
     enforceCustomerSettings();
+  } else if (payload.clientBrand) {
+    state.clientBrand = normalizeClientBrand(payload.clientBrand);
+    storeClientBrand();
   }
   services = normalizeServicesConfig(payload.services);
   state.pricing = normalizePricing(payload.pricing || state.pricing);
@@ -3616,20 +4442,25 @@ function localAgentFileUrl(file) {
 }
 
 function paymentRequestBody() {
-  const service = selectedService();
   const details = priceDetails();
   const files = jobFiles();
+  const file = activePreviewFile();
+  const service = services.find((item) => item.id === details.serviceId) || selectedService();
 
   return {
     jobId: ensureActiveJobId(),
     kioskId: KIOSK_ID,
-    service: service?.id || "print",
+    service: details.serviceId || service?.id || "print",
     fileName: files.length === 1 ? files[0].name : `${files.length} documents`,
     fileType: files.length === 1 ? files[0].type : "MULTIPLE",
+    templateId: file?.templateId || "",
     pageCount: details.pages,
     copies: details.copies,
-    colorMode: state.settings.colorMode,
+    colorMode: details.colorMode,
     paperSize: state.settings.paperSize,
+    sides: state.settings.sides,
+    orientation: state.settings.orientation,
+    pageRange: state.settings.range,
     amount: details.total
   };
 }
@@ -4167,6 +4998,7 @@ function goToNextStep() {
 
 function openAdmin(page = "dashboard") {
   stopReceiptRedirect();
+  stopCustomerInactivityTimer();
   state.mode = "admin";
   state.adminPage = page;
   render();
@@ -4193,6 +5025,108 @@ function openCustomer(reset = false) {
   render();
 }
 
+function stopCustomerInactivityTimer() {
+  if (state.customerInactivityTimer) {
+    window.clearTimeout(state.customerInactivityTimer);
+    state.customerInactivityTimer = null;
+  }
+}
+
+function paymentVerificationInProgress() {
+  const status = String(state.paymentStatus || "").toLowerCase();
+  return state.paymentBusy || ["checking", "creating"].includes(status);
+}
+
+function printingInProgress() {
+  const printStatus = String(state.printJob?.status || "").toLowerCase();
+  return state.paymentStatus === "Success" && (
+    Number(state.printProgress || 0) > 0 ||
+    Boolean(state.printStatusMessage) ||
+    ["starting", "printing", "queued"].includes(printStatus)
+  );
+}
+
+function customerInactivityScreenKey() {
+  if (isMobilePaymentEntry || state.mode !== "customer" || state.showPrivacyPolicy) {
+    return "";
+  }
+
+  if (state.printError || state.paymentError || state.uploadError) {
+    return "error";
+  }
+
+  if (state.step === 1 || (state.step > 1 && !jobFiles().length)) {
+    return isFormTemplateService() ? "governmentFormsList" : "uploadQr";
+  }
+
+  if (state.step === 2) {
+    if (state.previewActivityArea === "settings") {
+      return "printSettings";
+    }
+
+    return isFormTemplateService() ? "formDetails" : "documentPreview";
+  }
+
+  if (state.step === 3) {
+    if (paymentVerificationInProgress() || printingInProgress()) {
+      return "";
+    }
+
+    return "payment";
+  }
+
+  return "";
+}
+
+function scheduleCustomerInactivityTimer() {
+  stopCustomerInactivityTimer();
+  const screenKey = customerInactivityScreenKey();
+  const timeoutMs = CUSTOMER_INACTIVITY_TIMEOUTS[screenKey] || 0;
+
+  if (!timeoutMs) {
+    return;
+  }
+
+  state.customerInactivityTimer = window.setTimeout(() => {
+    state.customerInactivityTimer = null;
+
+    if (!customerInactivityScreenKey()) {
+      return;
+    }
+
+    resetCustomer();
+    render();
+    refreshPrinterStatus();
+  }, timeoutMs);
+}
+
+function noteCustomerActivity(event) {
+  if (isMobilePaymentEntry || state.mode !== "customer") {
+    return;
+  }
+
+  if (state.step === 2 && event?.target?.closest) {
+    if (event.target.closest(".preview-right-sidebar, .preview-settings-card, .preview-control-actions")) {
+      state.previewActivityArea = "settings";
+    } else if (event.target.closest(".preview-document-panel, .document-preview, .preview-toolbar")) {
+      state.previewActivityArea = "document";
+    }
+  }
+
+  scheduleCustomerInactivityTimer();
+}
+
+function bindCustomerInactivityEvents() {
+  if (customerInactivityEventsBound) {
+    return;
+  }
+
+  CUSTOMER_ACTIVITY_EVENTS.forEach((eventName) => {
+    window.addEventListener(eventName, noteCustomerActivity, { capture: true, passive: true });
+  });
+  customerInactivityEventsBound = true;
+}
+
 function setPrivacyPolicyVisible(visible, page = "privacy") {
   state.showPrivacyPolicy = Boolean(visible);
   state.policyPage = page || "privacy";
@@ -4206,12 +5140,23 @@ function setPrivacyPolicyVisible(visible, page = "privacy") {
 
 function render() {
   if (isMobilePaymentEntry) {
+    stopCustomerInactivityTimer();
     const app = qs("#app");
     if (app) {
       app.innerHTML = renderMobilePaymentShell();
       bindEvents();
     }
     return;
+  }
+
+  if (state.mode === "customer") {
+    if (state.step !== lastCustomerRenderedStep) {
+      state.previewActivityArea = state.step === 2 ? "document" : state.previewActivityArea;
+      lastCustomerRenderedStep = state.step;
+    }
+  } else {
+    lastCustomerRenderedStep = null;
+    stopCustomerInactivityTimer();
   }
 
   if (state.mode === "admin" && !state.adminAuthed) {
@@ -4224,6 +5169,8 @@ function render() {
   applyAdminTranslations(app);
   bindEvents();
   updateKioskClock();
+  hydrateFormThumbnails(app);
+  scheduleCustomerInactivityTimer();
 
   try {
     if (state.mode === "customer" && state.step !== undefined) {
@@ -4291,21 +5238,27 @@ function renderMobilePaymentShell() {
 }
 
 function renderCustomerShell() {
-  const showFooter = !state.showPrivacyPolicy;
+  const showFooter = !state.showPrivacyPolicy && KIOSK_ID !== UNASSIGNED_KIOSK_ID;
+  const useClassicHomeShell = showFooter && state.step === 0;
+  const useFormsReferenceShell = showFooter
+    && isFormTemplateService()
+    && (state.step === 1 || (state.step > 1 && !jobFiles().length));
+  const languageClass = languageTypographyClass(state.customerLanguage);
   return `
-    <div class="app-shell customer-shell ${showFooter ? "" : "no-customer-footer"}">
-      ${renderCustomerTopbar()}
+    <div class="app-shell customer-shell ${languageClass} ${showFooter ? "" : "no-customer-footer"} ${useClassicHomeShell ? "classic-home-shell" : ""} ${useFormsReferenceShell ? "forms-reference-shell forms-list-shell" : ""}" lang="${escapeHtml(state.customerLanguage)}">
+      ${renderCustomerTopbarClassicHome()}
       <main class="main">
         ${renderCustomer()}
       </main>
-      ${showFooter ? renderCustomerFooter() : ""}
+      ${showFooter ? renderCustomerFooterFormsReference() : ""}
     </div>
   `;
 }
 
 function renderAdminShell() {
+  const languageClass = languageTypographyClass(state.adminLanguage);
   return `
-    <div class="app-shell admin-shell">
+    <div class="app-shell admin-shell ${languageClass}" lang="${escapeHtml(state.adminLanguage)}">
       ${renderAdminTopbar()}
       <main class="main admin-screen">
         ${renderAdmin()}
@@ -4314,19 +5267,83 @@ function renderAdminShell() {
   `;
 }
 
+function renderCustomerLanguageControl() {
+  return `
+    <div class="customer-language-control kiosk-language-control" aria-label="Select language" data-no-customer-translation>
+      <span class="kiosk-language-icon" aria-hidden="true">${uiIcon("language", 18)}</span>
+      <div class="kiosk-language-buttons" role="group" aria-label="Select language">
+        ${CUSTOMER_LANGUAGE_OPTIONS.map((option) => `
+          <button
+            type="button"
+            class="kiosk-language-button ${state.customerLanguage === option.value ? "is-active" : ""}"
+            data-customer-language-button="${escapeHtml(option.value)}"
+            aria-pressed="${state.customerLanguage === option.value ? "true" : "false"}"
+            lang="${escapeHtml(option.lang)}"
+          >
+            <span class="kiosk-language-label">${escapeHtml(option.label)}</span>
+            <span class="kiosk-language-short">${escapeHtml(option.shortLabel)}</span>
+          </button>
+        `).join("")}
+      </div>
+    </div>
+  `;
+}
+
+function currentCustomerBrand(defaultSubtitle = DEFAULT_KIOSK_BRAND.subtitle) {
+  const brand = normalizeClientBrand(state.clientBrand);
+  return {
+    title: brand.title || DEFAULT_KIOSK_BRAND.title,
+    subtitle: brand.subtitle || defaultSubtitle || DEFAULT_KIOSK_BRAND.subtitle,
+    logoUrl: brand.logoUrl || DEFAULT_KIOSK_BRAND.logoUrl,
+    alt: brand.title || brand.name || DEFAULT_KIOSK_BRAND.title
+  };
+}
+
+function renderCustomerBrandMark(className = "brand-mark nmc-kiosk-mark", defaultSubtitle = DEFAULT_KIOSK_BRAND.subtitle) {
+  const brand = currentCustomerBrand(defaultSubtitle);
+  return `<div class="${escapeHtml(className)}"><img src="${escapeHtml(brand.logoUrl)}" alt="${escapeHtml(brand.alt)}" draggable="false" data-no-visual-search /></div>`;
+}
+
+function renderCustomerBrandCopy(copyClass = "classic-home-brand-copy", defaultSubtitle = DEFAULT_KIOSK_BRAND.subtitle, titleClass = "brand-title", subtitleClass = "brand-subtitle") {
+  const brand = currentCustomerBrand(defaultSubtitle);
+  return `
+    <div class="${escapeHtml(copyClass)}">
+      <div class="${escapeHtml(titleClass)}">${escapeHtml(brand.title)}</div>
+      <div class="${escapeHtml(subtitleClass)}">${escapeHtml(brand.subtitle)}</div>
+    </div>
+  `;
+}
+
 function renderCustomerTopbar() {
   return `
     <header class="topbar">
       <div class="brand">
-        <div class="brand-mark"><img src="./assets/nashik-municipal-logo.jpg" alt="Printing Kiosk" draggable="false" data-no-visual-search /></div>
-        <div>
-          <div class="brand-title nmc-devanagari-title">नाशिक महानगर पालिका</div>
-          <div class="brand-subtitle nmc-devanagari-subtitle">21 व्या शतकातील शहर</div>
-        </div>
+        ${renderCustomerBrandMark("brand-mark", "Printing Kiosk")}
+        ${renderCustomerBrandCopy("classic-home-brand-copy", "Printing Kiosk", "brand-title", "brand-subtitle")}
       </div>
       <div class="topbar-actions">
-        
-        
+        ${renderCustomerLanguageControl()}
+        <div class="timer-widget" aria-label="Current date and time">
+          ${uiIcon("clock", 18)}
+          <div class="time-container">
+            <div class="time-text" id="kiosk-time">--:--:-- --</div>
+            <div class="date-text" id="kiosk-date">---, -- ---, ----</div>
+          </div>
+        </div>
+      </div>
+    </header>
+  `;
+}
+
+function renderCustomerTopbarClassicHome() {
+  return `
+    <header class="topbar nmc-kiosk-topbar classic-home-topbar standard-kiosk-topbar">
+      <div class="brand nmc-kiosk-brand">
+        ${renderCustomerBrandMark("brand-mark nmc-kiosk-mark", "Printing Kiosk")}
+        ${renderCustomerBrandCopy("classic-home-brand-copy", "Printing Kiosk")}
+      </div>
+      <div class="topbar-actions">
+        ${renderCustomerLanguageControl()}
         <div class="timer-widget" aria-label="Current date and time">
           ${uiIcon("clock", 18)}
           <div class="time-container">
@@ -4343,20 +5360,121 @@ function renderCustomerFooter() {
   return `
     <footer class="customer-footer" aria-label="Kiosk links">
       <div class="powered-by-brand">
-        <span class="powered-by-label">Powered by</span>
-        <img src="./assets/aarya-innovtech-logo.png" alt="Aarya Innovtech" class="powered-by-logo" draggable="false" data-no-visual-search />
-        <div class="powered-by-name">
-          <div class="powered-by-company">Aarya Innovtech Pvt. Ltd.</div>
+        <img src="./assets/aarya-innovtech-logo-transparent.png" alt="Aarya Innovtech" class="powered-by-logo" draggable="false" data-no-visual-search />
+        <span class="powered-by-name">
+          <span class="powered-by-label">Powered by</span>
+          <strong class="powered-by-company" aria-label="Aarya Innovtech Pvt. Ltd.">
+            <span class="powered-by-company-main">AARYA INNOVTECH</span>
+            <span class="powered-by-company-suffix">PVT. LTD.</span>
+          </strong>
+        </span>
+      </div>
+      ${renderFooterHelpCall()}
+    </footer>
+  `;
+}
+
+function renderFooterHelpCall() {
+  return `
+    <div class="kiosk-footer-help" aria-label="Need help call us">
+      <span class="kiosk-footer-help-icon">${uiIcon("headset", 30)}</span>
+      <span class="kiosk-footer-help-copy">
+        <small>Need Help? Call Us</small>
+        <strong>1800 123 4567</strong>
+      </span>
+      <span class="kiosk-footer-help-note">(Toll Free)</span>
+    </div>
+  `;
+}
+
+function renderCustomerTopbarNmc() {
+  return `
+    <header class="topbar nmc-kiosk-topbar standard-kiosk-topbar">
+      <div class="brand nmc-kiosk-brand">
+        ${renderCustomerBrandMark("brand-mark nmc-kiosk-mark", "Print & Pay Self-Service Kiosk")}
+        <div class="nmc-kiosk-brand-copy">
+          <div class="nmc-government-label">Government of Maharashtra</div>
+          ${renderCustomerBrandCopy("nmc-kiosk-brand-main", "Print & Pay Self-Service Kiosk")}
         </div>
       </div>
-      
-      <button type="button" class="footer-link" data-policy-page="terms">Terms &amp; Conditions</button>
-      <span aria-hidden="true">|</span>
-      <button type="button" class="footer-link" data-policy-page="privacy">Privacy Policy</button>
-      <span aria-hidden="true">|</span>
-      <button type="button" class="footer-link" data-policy-page="refund">Refund Policy</button>
-      <span aria-hidden="true">|</span>
-      <button type="button" class="footer-link" data-policy-page="contact">Contact Us</button>
+      <div class="topbar-actions">
+        <div class="nmc-kiosk-status ${state.printer.online ? "is-online" : "is-offline"}">
+          <span aria-hidden="true"></span>
+          ${state.printer.online ? "Online" : "Printer Offline"}
+        </div>
+        ${renderCustomerLanguageControl()}
+        <div class="timer-widget" aria-label="Current date and time">
+          ${uiIcon("clock", 18)}
+          <div class="time-container">
+            <div class="time-text" id="kiosk-time">--:--:-- --</div>
+            <div class="date-text" id="kiosk-date">---, -- ---, ----</div>
+          </div>
+        </div>
+      </div>
+    </header>
+  `;
+}
+
+function renderCustomerTopbarFormsReference() {
+  return `
+    <header class="topbar forms-kiosk-topbar standard-kiosk-topbar" aria-label="Government forms kiosk header">
+      <div class="forms-kiosk-nmc-brand">
+        ${renderCustomerBrandMark("forms-kiosk-nmc-mark", "Print & Pay Self-Service Kiosk")}
+        <div class="forms-kiosk-nmc-copy">
+          <div class="forms-kiosk-government-label">Government of Maharashtra</div>
+          ${renderCustomerBrandCopy("forms-kiosk-brand-main", "Print & Pay Self-Service Kiosk", "forms-kiosk-title", "forms-kiosk-subtitle")}
+        </div>
+      </div>
+      <div class="forms-kiosk-topbar-actions">
+        <div class="nmc-kiosk-status forms-kiosk-status ${state.printer.online ? "is-online" : "is-offline"}">
+          <span aria-hidden="true"></span>
+          ${state.printer.online ? "Online" : "Printer Offline"}
+        </div>
+        ${renderCustomerLanguageControl()}
+        <div class="timer-widget forms-kiosk-timer" aria-label="Current date and time">
+          ${uiIcon("clock", 18)}
+          <div class="time-container">
+            <div class="time-text" id="kiosk-time">--:--:-- --</div>
+            <div class="date-text" id="kiosk-date">---, -- ---, ----</div>
+          </div>
+        </div>
+      </div>
+    </header>
+  `;
+}
+
+function renderCustomerFooterNmc() {
+  return `
+    <footer class="customer-footer nmc-kiosk-footer" aria-label="Kiosk links">
+      <div class="powered-by-brand">
+        <img src="./assets/aarya-innovtech-logo-transparent.png" alt="Aarya Innovtech" class="powered-by-logo" draggable="false" data-no-visual-search />
+        <span class="powered-by-name">
+          <span class="powered-by-label">Powered by</span>
+          <strong class="powered-by-company" aria-label="Aarya Innovtech Pvt. Ltd.">
+            <span class="powered-by-company-main">AARYA INNOVTECH</span>
+            <span class="powered-by-company-suffix">PVT. LTD.</span>
+          </strong>
+        </span>
+      </div>
+      ${renderFooterHelpCall()}
+    </footer>
+  `;
+}
+
+function renderCustomerFooterFormsReference() {
+  return `
+    <footer class="forms-kiosk-footer" aria-label="Kiosk links">
+      <div class="forms-kiosk-footer-brand">
+        <img src="./assets/aarya-innovtech-logo-transparent.png" alt="Aarya Innovtech" draggable="false" data-no-visual-search />
+        <span>
+          <small>Powered by</small>
+          <strong class="powered-by-company" aria-label="Aarya Innovtech Pvt. Ltd.">
+            <span class="powered-by-company-main">AARYA INNOVTECH</span>
+            <span class="powered-by-company-suffix">PVT. LTD.</span>
+          </strong>
+        </span>
+      </div>
+      ${renderFooterHelpCall()}
     </footer>
   `;
 }
@@ -4404,27 +5522,8 @@ function renderCustomer() {
     `;
   }
 
-  const showPanels = state.step > 0 && Boolean(state.selectedService);
-  const railSteps = state.step === 2
-    ? ["Home", isFormTemplateService() ? "Forms" : "Upload", "Preview", "Payment"]
-    : customerSteps;
   return `
-    <div class="customer-layout ${showPanels ? "" : "upload-focused"}">
-      ${showPanels ? `
-        <aside class="rail">
-          <div class="stepper">
-            ${railSteps.map((step, index) => renderStepItem(step, index)).join("")}
-          </div>
-          ${state.step === 2 ? `
-            <div class="customer-support-card">
-              ${uiIcon("support", 22)}
-              <strong>Need Help?</strong>
-              <p>Our support team is available to assist you.</p>
-              <button type="button" data-policy-page="contact">Contact Support</button>
-            </div>
-          ` : ""}
-        </aside>
-      ` : ""}
+    <div class="customer-layout nmc-kiosk-layout upload-focused no-step-rail">
       <section class="content">
         ${renderCustomerStep()}
       </section>
@@ -4535,13 +5634,46 @@ function renderStepItem(step, index) {
   `;
 }
 
+function renderStepItemNmc(step, index) {
+  const label = index === 1 && isFormTemplateService() ? "Forms" : step;
+  const status = index === state.step ? "active" : index < state.step ? "done" : "";
+  const homeAction = index === 0 ? 'data-action="reset-session" style="cursor: pointer;"' : "";
+  const iconName = index === 0 ? "dashboard" : index === 1 ? (isFormTemplateService() ? "pages" : "upload") : index === 2 ? "printer" : "payments";
+  return `
+    <div class="step-item nmc-step-item ${status}" ${homeAction}>
+      <span class="step-number">${status === "done" ? "&#10003;" : index + 1}</span>
+      <span class="nmc-step-icon" aria-hidden="true">${uiIcon(iconName, 18)}</span>
+      <span class="nmc-step-copy">
+        <small>${index === 0 ? "Start" : `Stage ${index}`}</small>
+        <strong>${escapeHtml(label)}</strong>
+      </span>
+    </div>
+  `;
+}
+
 function renderCustomerStep() {
-  if (state.step === 0 || !state.selectedService) return renderServicesStep();
-  if (state.step > 1 && !state.file) return isFormTemplateService() ? renderFormTemplateStep() : renderUploadStep();
+  if (state.step === 0 || !state.selectedService) return renderServicesStepNmc();
+  if (state.step > 1 && !jobFiles().length) return isFormTemplateService() ? renderFormTemplateStep() : renderUploadStep();
   if (state.step === 1) return isFormTemplateService() ? renderFormTemplateStep() : renderUploadStep();
   if (state.step === 2) return renderPreviewStep();
   if (state.step === 3) return state.printError ? renderPrintFailureStep() : renderPaymentStep();
   return renderThankYouStep();
+}
+
+function renderServicesStepNmc() {
+  if (KIOSK_ID === UNASSIGNED_KIOSK_ID) {
+    return `
+      <div class="stage service-stage is-empty nmc-home-stage">
+        <div class="stage-header nmc-home-header">
+          <span class="nmc-kicker">Setup required</span>
+          <h1>Kiosk setup required</h1>
+          <p class="stage-intro">Ask the client for this machine's kiosk ID and setup code.</p>
+        </div>
+      </div>
+    `;
+  }
+
+  return renderServicesStep();
 }
 
 function renderServicesStep() {
@@ -4559,31 +5691,27 @@ function renderServicesStep() {
   const printerReady = printerReadyForCustomerFlow();
   const printServiceId = services.find(s => s.id === 'demo-documents' || s.id === 'print')?.id || 'print';
   const govtServiceId = services.find(s => s.id === 'demo-existing-documents' || s.id === 'govt-form')?.id || 'govt-form';
-  const printRates = serviceRates(printServiceId);
-  const govtRates = serviceRates(govtServiceId);
-
-  // Safe fallbacks if not configured
-  const pBw = printRates.bw || 2;
-  const pCol = printRates.color || 10;
-  const gBw = govtRates.bw || 3;
-  const gCol = govtRates.color || 12;
+  const usedServiceIds = new Set([printServiceId, govtServiceId]);
+  const extraServices = services.filter((service) => service.enabled !== false && !usedServiceIds.has(service.id));
+  const totalServiceCards = 2 + extraServices.length;
+  const serviceGridClass = totalServiceCards > 2 ? "services-count-many" : "services-count-2";
 
   return `
     <div class="stage service-stage custom-home-stage">
       <div class="stage-header custom-home-header">
-        <h1>Printing Kiosk</h1>
+        <h1>Choose Service</h1>
       </div>
       ${state.configStatus ? `<div class="save-note">${escapeHtml(state.configStatus)}</div>` : ""}
       
-      <div class="premium-services-grid">
+      <div class="premium-services-grid ${serviceGridClass}" data-service-count="${totalServiceCards}">
         
         <!-- Upload & Print Card -->
         <div class="premium-service-card card-blue" data-service="${printServiceId}" style="cursor: pointer;">
           <div class="premium-card-header">
             <div class="premium-icon-box bg-blue" aria-hidden="true">${uiIcon("upload", 28)}</div>
             <div class="premium-header-text">
-              <h2>Upload & Print</h2>
-              <p>Upload PDF, Word, or image documents.</p>
+              <h2>Print My Document</h2>
+              <p>Print your PDF, Word, or photo file.</p>
             </div>
           </div>
           
@@ -4623,45 +5751,20 @@ function renderServicesStep() {
             <div class="premium-feature">
               <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#2563EB" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="17 8 12 3 7 8"></polyline><line x1="12" y1="3" x2="12" y2="15"></line></svg>
               <div>
-                <strong>Upload PDF / Word / Images</strong>
-                <span>Easy & secure upload</span>
+                <strong>Add File</strong>
+                <span>Use phone QR</span>
               </div>
             </div>
             <div class="premium-feature border-left">
-              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#2563EB" stroke-width="2"><polyline points="6 9 6 2 18 2 18 9"></polyline><path d="M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2"></path><rect x="6" y="14" width="12" height="8"></rect></svg>
+              ${uiIcon("system", 20)}
               <div>
-                <strong>High Quality Print</strong>
-                <span>Crisp & clear output</span>
-              </div>
-            </div>
-            <div class="premium-feature border-left">
-              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#2563EB" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path><polyline points="14 2 14 8 20 8"></polyline></svg>
-              <div>
-                <strong>A4 & Legal Size</strong>
-                <span>Multiple page options</span>
+                <strong>Secure Document</strong>
+                <span>Safe upload</span>
               </div>
             </div>
           </div>
-          
-          <div class="premium-pricing">
-            <div class="premium-price-row">
-              <span class="price-label">
-                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#64748B" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path><polyline points="14 2 14 8 20 8"></polyline></svg>
-                B/W per page
-              </span>
-              <span class="price-value text-blue">Rs. ${pBw}</span>
-            </div>
-            <div class="premium-price-row">
-              <span class="price-label">
-                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#64748B" stroke-width="2"><circle cx="12" cy="12" r="10"></circle><circle cx="12" cy="12" r="4"></circle><line x1="4.93" y1="4.93" x2="9.17" y2="9.17"></line><line x1="14.83" y1="14.83" x2="19.07" y2="19.07"></line><line x1="14.83" y1="9.17" x2="19.07" y2="4.93"></line><line x1="14.83" y1="9.17" x2="18.36" y2="5.64"></line><line x1="4.93" y1="19.07" x2="9.17" y2="14.83"></line></svg>
-                Color per page
-              </span>
-              <span class="price-value text-blue">Rs. ${pCol}</span>
-            </div>
-          </div>
-          
           <button class="premium-btn bg-blue" data-service="${printServiceId}" ${printerReady ? "" : "disabled"}>
-            Select & Proceed 
+            Start
             <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="5" y1="12" x2="19" y2="12"></line><polyline points="12 5 19 12 12 19"></polyline></svg>
           </button>
         </div>
@@ -4672,7 +5775,7 @@ function renderServicesStep() {
             <div class="premium-icon-box bg-green" aria-hidden="true">${uiIcon("pages", 28)}</div>
             <div class="premium-header-text">
               <h2>Government Forms</h2>
-              <p>Print ready-made forms and documents.</p>
+              <p>Select a ready form and print it.</p>
             </div>
           </div>
           
@@ -4713,55 +5816,89 @@ function renderServicesStep() {
             <div class="premium-feature">
               <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#10B981" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path><polyline points="14 2 14 8 20 8"></polyline><line x1="16" y1="13" x2="8" y2="13"></line><line x1="16" y1="17" x2="8" y2="17"></line><polyline points="10 9 9 9 8 9"></polyline></svg>
               <div>
-                <strong>Official Forms</strong>
-                <span>Trusted & verified</span>
-              </div>
-            </div>
-            <div class="premium-feature border-left-green">
-              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#10B981" stroke-width="2"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"></path><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"></path></svg>
-              <div>
-                <strong>Updated Formats</strong>
-                <span>Latest templates</span>
+                <strong>Forms</strong>
+                <span>Ready to print</span>
               </div>
             </div>
             <div class="premium-feature border-left-green">
               <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#10B981" stroke-width="2"><circle cx="12" cy="12" r="10"></circle><polyline points="12 6 12 12 16 14"></polyline></svg>
               <div>
                 <strong>Quick Print</strong>
-                <span>Save time & effort</span>
+                <span>Fast service</span>
               </div>
             </div>
           </div>
-          
-          <div class="premium-pricing">
-            <div class="premium-price-row">
-              <span class="price-label">
-                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#64748B" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path><polyline points="14 2 14 8 20 8"></polyline></svg>
-                B/W per page
-              </span>
-              <span class="price-value text-green">Rs. ${gBw}</span>
-            </div>
-            <div class="premium-price-row">
-              <span class="price-label">
-                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#64748B" stroke-width="2"><circle cx="12" cy="12" r="10"></circle><circle cx="12" cy="12" r="4"></circle><line x1="4.93" y1="4.93" x2="9.17" y2="9.17"></line><line x1="14.83" y1="14.83" x2="19.07" y2="19.07"></line><line x1="14.83" y1="9.17" x2="19.07" y2="4.93"></line><line x1="14.83" y1="9.17" x2="18.36" y2="5.64"></line><line x1="4.93" y1="19.07" x2="9.17" y2="14.83"></line></svg>
-                Color per page
-              </span>
-              <span class="price-value text-green">Rs. ${gCol}</span>
-            </div>
-          </div>
-          
           <button class="premium-btn bg-green" data-service="${govtServiceId}" ${printerReady ? "" : "disabled"}>
-            Select & Proceed 
+            Start
             <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="5" y1="12" x2="19" y2="12"></line><polyline points="12 5 19 12 12 19"></polyline></svg>
           </button>
         </div>
 
+        ${extraServices.map((service, index) => renderAdditionalPremiumServiceCard(service, index, printerReady)).join("")}
       </div>
     </div>
   `;
 }
 
-function renderFormTemplateStep() {
+function renderAdditionalPremiumServiceCard(service, index, printerReady) {
+  const isTemplate = isFormTemplateService(service.id);
+  const accent = isTemplate ? "green" : "blue";
+  const icon = isTemplate ? "pages" : "upload";
+  const title = localizedServiceText(service, "title") || service.title || `Service ${index + 1}`;
+  const description = localizedServiceText(service, "description") || service.description || (isTemplate ? "Select a ready form and print it." : "Send files from your phone and print.");
+  const templateCount = formTemplatesForService(service.id).length;
+  const featureLabel = isTemplate ? "Forms" : "Add File";
+  const featureText = isTemplate
+    ? `${templateCount || "Ready"} form${templateCount === 1 ? "" : "s"}`
+    : "Use phone QR";
+  const secondFeature = "Secure Document";
+  const secondText = "Safe upload";
+  const secondFeatureMarkup = isTemplate ? "" : `
+            <div class="premium-feature ${accent === "green" ? "border-left-green" : "border-left"}">
+              ${uiIcon("system", 20)}
+              <div>
+                <strong>${escapeHtml(secondFeature)}</strong>
+                <span>${escapeHtml(secondText)}</span>
+              </div>
+            </div>`;
+
+  return `
+        <div class="premium-service-card premium-service-card-extra card-${accent}" data-service="${escapeHtml(service.id)}" style="cursor: pointer;">
+          <div class="premium-card-header">
+            <div class="premium-icon-box bg-${accent}" aria-hidden="true">${uiIcon(icon, 28)}</div>
+            <div class="premium-header-text">
+              <h2>${escapeHtml(title)}</h2>
+              <p>${escapeHtml(description)}</p>
+            </div>
+          </div>
+
+          <div class="premium-features bg-light-${accent}">
+            <div class="premium-feature">
+              ${uiIcon(icon, 20)}
+              <div>
+                <strong>${escapeHtml(featureLabel)}</strong>
+                <span>${escapeHtml(featureText)}</span>
+              </div>
+            </div>
+            ${secondFeatureMarkup}
+            <div class="premium-feature ${accent === "green" ? "border-left-green" : "border-left"}">
+              ${uiIcon("clock", 20)}
+              <div>
+                <strong>Quick Print</strong>
+                <span>Fast service</span>
+              </div>
+            </div>
+          </div>
+
+          <button class="premium-btn bg-${accent}" data-service="${escapeHtml(service.id)}" ${printerReady ? "" : "disabled"}>
+            Start
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="5" y1="12" x2="19" y2="12"></line><polyline points="12 5 19 12 12 19"></polyline></svg>
+          </button>
+        </div>
+  `;
+}
+
+function renderFormTemplateStepLegacy() {
   const service = selectedService();
   const templates = formTemplatesForService(service.id);
   const filteredTemplates = templates;
@@ -4796,14 +5933,12 @@ function renderFormTemplateStep() {
     const templateTitle = localizedTemplateText(template, "title");
     const templateDescription = localizedTemplateText(template, "description");
     const pages = Math.max(1, Number(template.pages) || 1);
-    const paperSize = normalizePaperSize(template.paperSize, "A4", true);
     const orientation = String(template.orientation || "portrait").toLowerCase();
     const documentKind = templateDocumentKind(template.documentType || template.imageUrl) === "pdf" ? "PDF" : "DOC";
     const categoryText = template.category || template.department
       ? `Category: ${[template.category, template.department].filter(Boolean).join(" ")}`
       : "Official form for print.";
     const description = templateDescription || categoryText;
-    const cost = classicBwRate * pages;
 
     return `
           <div class="classic-template-card" data-template="${escapeHtml(template.id)}">
@@ -4813,11 +5948,7 @@ function renderFormTemplateStep() {
               <p>${escapeHtml(description)}</p>
             </div>
             <div class="classic-template-side">
-              <div class="classic-template-meta">${pages} page${pages > 1 ? "s" : ""} &middot; ${escapeHtml(paperSize)} &middot; ${escapeHtml(orientation)}</div>
-              <div class="classic-template-price">
-                <strong>Rs. ${cost}</strong>
-                <span>${escapeHtml(classicPrintModeLabel)}</span>
-              </div>
+              <div class="classic-template-meta">${pages} page${pages > 1 ? "s" : ""} &middot; ${escapeHtml(orientation)}</div>
               <button class="classic-template-btn" data-template="${escapeHtml(template.id)}">Print</button>
             </div>
           </div>
@@ -4912,8 +6043,8 @@ function renderFormTemplateStep() {
           />
           <button type="button" style="display:none" data-template-search-action="toggle-keyboard"></button>
           ${templateSearchQuery ? `
-            <button type="button" onclick="state.templateSearchQuery=''; state.templatePage=1; render();" title="Clear search" style="position: absolute; right: 12px; top: 50%; transform: translateY(-50%); background: transparent; border: none; padding: 4px; display: flex; align-items: center; justify-content: center; cursor: pointer; color: #94a3b8;">
-              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>
+            <button type="button" data-template-search-action="clear" title="Clear search" style="position: absolute; right: 12px; top: 50%; transform: translateY(-50%); background: #eaf2ff; border: 1px solid #c8dbf5; border-radius: 8px; padding: 4px 10px; display: flex; align-items: center; justify-content: center; cursor: pointer; color: #075bd7; font-weight: 800;">
+              Clear
             </button>
           ` : ""}
         </div>
@@ -4946,39 +6077,24 @@ function renderFormTemplateStep() {
         ${paginatedTemplates.length ? paginatedTemplates.map((template, idx) => {
     const templateTitle = localizedTemplateText(template, "title");
     const templateDescription = localizedTemplateText(template, "description");
-    const pages = Math.max(1, Number(template.pages) || 1);
-    const color = getDeptColor(idx);
-    const cost = rates.bw ? rates.bw * pages : 3 * pages;
-
+    const documentKind = templateDocumentKind(template.documentType || template.imageUrl) === "pdf" ? "PDF" : "DOC";
     return `
             <div class="forms-v2-card">
               <div class="forms-v2-card-body" data-template="${escapeHtml(template.id)}" style="cursor: pointer;">
                 <div class="forms-v2-card-icon-container">
-                  <div class="forms-v2-card-icon" style="color: ${color}; background: ${color}1A;">
-                    ${getDeptIcon(idx)}
-                  </div>
+                  ${renderFormTemplateIcon(template, idx)}
+                  <span class="forms-v2-pdf-badge">${escapeHtml(documentKind)}</span>
                 </div>
                 <div class="forms-v2-card-content">
-                  <div class="forms-v2-pdf-badge" style="color: ${color};">${templateDocumentKind(template.documentType || template.imageUrl) === 'pdf' ? 'PDF' : 'DOC'}</div>
                   <h3>${escapeHtml(templateTitle)}</h3>
                   <p>${escapeHtml(templateDescription) || "Official government form for processing."}</p>
-                  
-                  <div class="forms-v2-tags">
-                    <span class="tag-dept" style="color: #6366f1; background: #e0e7ff;">
-                      <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M3 21h18"></path><path d="M5 21V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2v16"></path><path d="M9 21v-4a2 2 0 0 1 2-2h2a2 2 0 0 1 2 2v4"></path></svg>
-                      ${escapeHtml(template.department || "Govt. Dept.")}
-                    </span>
-                    <span class="tag-meta">${escapeHtml(normalizePaperSize(template.paperSize, "A4", true))}</span>
-                    <span class="tag-meta">${customerSettingEnabled("bw", service) ? "B/W" : "Color"}</span>
-                  </div>
                 </div>
               </div>
-              <div class="forms-v2-card-footer">
-                <div class="forms-v2-price">₹${cost} per page</div>
+              <div class="forms-v2-card-footer forms-v2-card-footer--actions-only">
                 <div class="forms-v2-actions">
                   <button class="forms-v2-btn forms-v2-btn-primary" data-template="${escapeHtml(template.id)}">
                     <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 6 2 18 2 18 9"></polyline><path d="M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2"></path><rect x="6" y="14" width="12" height="8"></rect></svg>
-                    Print
+                    Preview
                   </button>
                 </div>
               </div>
@@ -4992,23 +6108,124 @@ function renderFormTemplateStep() {
   `;
 }
 
+function renderFormTemplateStep() {
+  const service = selectedService();
+  const templates = formTemplatesForService(service.id);
+  const filteredTemplates = filteredFormTemplates(service.id);
+  const rates = serviceRates(service.id);
+  const templateSearchQuery = state.templateSearchQuery || "";
+  const visibleTemplates = filteredTemplates;
+  const printModeLabel = customerSettingEnabled("bw", service) ? "B/W" : "Color";
+  const perPageRate = printModeLabel === "Color" ? rates.color : rates.bw;
+
+  return `
+    <div class="stage template-selection-stage forms-v2-stage forms-v2-compact-list" data-forms-list-center="true" data-visible-count="${visibleTemplates.length}" style="width: min(calc(100vw - 100px), clamp(1120px, 73vw, 1400px)) !important; max-width: 1400px !important; margin-left: auto !important; margin-right: auto !important; align-self: center !important; flex: 0 0 auto !important; height: auto !important; overflow: hidden !important;">
+      <div class="forms-v2-filter-bar">
+        <button type="button" class="forms-v2-back-btn" data-action="prev-step" title="Home">
+          ${uiIcon("dashboard", 18)}
+          Home
+        </button>
+        <div class="forms-v2-search-wrapper">
+          <span class="forms-v2-search-icon" aria-hidden="true">${uiIcon("search", 18)}</span>
+          <input
+            class="forms-v2-search-input"
+            data-template-search-input
+            placeholder="Search forms by name, department or keyword..."
+            value="${escapeHtml(templateSearchQuery)}"
+          />
+          ${templateSearchQuery ? `
+            <button type="button" class="forms-v2-search-clear forms-v2-search-go" data-template-search-action="clear" title="Clear search">
+              Clear
+            </button>
+          ` : ""}
+        </div>
+        <div class="forms-v2-search-summary">
+          <strong>${escapeHtml(money(perPageRate))}</strong>
+          <span>${escapeHtml(printModeLabel)} per page</span>
+        </div>
+      </div>
+
+      ${state.templateSearchKeyboardActive ? `
+        <div class="template-keyboard-popup-container">
+          <div class="template-keyboard-popup-backdrop" data-template-search-action="close"></div>
+          <div class="template-keyboard-popup-content">
+            ${renderTemplateSearchKeyboard()}
+          </div>
+        </div>
+      ` : ""}
+
+      <div class="forms-v2-grid" data-forms-list-grid="true" style="display: grid !important; grid-template-columns: repeat(2, minmax(0, 1fr)) !important; grid-auto-rows: 156px !important; gap: 10px !important; height: min(614px, calc(100dvh - 350px)) !important; max-height: min(614px, calc(100dvh - 350px)) !important; overflow-x: hidden !important; overflow-y: auto !important; align-content: start !important;">
+        ${visibleTemplates.length ? visibleTemplates.map((template, index) => {
+    const templateTitle = localizedTemplateText(template, "title");
+    const templateDescription = localizedTemplateText(template, "description") || "Official government form for processing.";
+    const documentKind = templateDocumentKind(template.documentType || template.imageUrl) === "pdf" ? "PDF" : "DOC";
+
+    return `
+          <article class="forms-v2-card" data-template="${escapeHtml(template.id)}">
+            <div class="forms-v2-card-body" data-template="${escapeHtml(template.id)}">
+              <div class="forms-v2-card-icon-container">
+                ${renderFormTemplateIcon(template, index)}
+                <span class="forms-v2-pdf-badge">${escapeHtml(documentKind)}</span>
+              </div>
+              <div class="forms-v2-card-content">
+                <h3>${escapeHtml(templateTitle)}</h3>
+                <p>${escapeHtml(templateDescription)}</p>
+              </div>
+            </div>
+            <div class="forms-v2-card-footer forms-v2-card-footer--actions-only">
+              <button class="forms-v2-btn forms-v2-btn-primary" data-template="${escapeHtml(template.id)}">
+                ${uiIcon("printer", 16)}
+                Preview
+              </button>
+            </div>
+          </article>
+        `;
+  }).join("") : `
+          <div class="empty-note template-search-empty">No forms match this search.</div>
+        `}
+      </div>
+    </div>
+  `;
+}
+
 function renderUploadStep() {
   const session = state.uploadSession;
   return `
-    <div class="stage upload-stage qr-only-upload-stage">
-      <div class="stage-header">
-        <h1>Upload from phone</h1>
-        <p class="stage-intro">Scan the QR code to send your documents.</p>
-      </div>
-      <div class="qr-only-upload-panel">
-        <div class="qr-upload-card qr-only-upload-card">
-          ${renderQrUploadBox(session)}
-          ${state.uploadError ? `<div class="empty-note" style="margin-top: 14px;">${escapeHtml(state.uploadError)}</div>` : ""}
-          ${session?.error ? `<div class="empty-note" style="margin-top: 14px;">${escapeHtml(session.error)}</div>` : ""}
+    <div class="stage upload-stage qr-only-upload-stage nmc-phone-transfer-stage">
+      <div class="qr-transfer-hero">
+        <div class="qr-transfer-copy">
+          <span class="qr-transfer-eyebrow">Use your phone</span>
+          <h1>Scan QR to Add Files</h1>
+          <p class="stage-intro">Use your phone camera. Scan this code, choose your document, then tap Send.</p>
+          <div class="qr-transfer-steps" aria-label="How to add files from phone">
+            <div class="qr-transfer-step">
+              <strong>1</strong>
+              <span>Open phone camera</span>
+            </div>
+            <div class="qr-transfer-step">
+              <strong>2</strong>
+              <span>Choose files</span>
+            </div>
+            <div class="qr-transfer-step">
+              <strong>3</strong>
+              <span>Tap Send</span>
+            </div>
+          </div>
+          <div class="qr-transfer-actions">
+            <button class="ghost-button" data-action="prev-step">Back</button>
+          </div>
         </div>
-      </div>
-      <div class="flow-actions">
-        <button class="ghost-button" data-action="prev-step">Back to Services</button>
+        <div class="qr-only-upload-panel">
+          <div class="qr-upload-card qr-only-upload-card">
+            <div class="qr-card-heading">
+              <strong>Scan this QR code</strong>
+              <span>Keep this screen open</span>
+            </div>
+            ${renderQrUploadBox(session)}
+            ${state.uploadError ? `<div class="empty-note" style="margin-top: 14px;">${escapeHtml(state.uploadError)}</div>` : ""}
+            ${session?.error ? `<div class="empty-note" style="margin-top: 14px;">${escapeHtml(session.error)}</div>` : ""}
+          </div>
+        </div>
       </div>
     </div>
   `;
@@ -5019,8 +6236,8 @@ function renderQrUploadBox(session) {
     return `
       <div class="qr-placeholder">
         <div class="qr-loading"></div>
-        <h2>Preparing QR code</h2>
-        <p>Starting secure mobile upload session...</p>
+        <h2>Getting QR ready</h2>
+        <p>Please wait a moment.</p>
       </div>
     `;
   }
@@ -5029,17 +6246,20 @@ function renderQrUploadBox(session) {
     return `
       <div class="qr-placeholder">
         <div class="preview-file-icon">QR</div>
-        <h2>QR service offline</h2>
-        <p>Start the backend service, then generate a new QR.</p>
+        <h2>QR not ready</h2>
+        <p>Ask staff to start the kiosk service.</p>
       </div>
     `;
   }
 
   return `
-    <div class="qr-code-box">
+    <div class="qr-code-box" aria-label="Scan this QR code to add files from your phone">
       ${session.qrSvg || `<img alt="Upload QR code" src="https://api.qrserver.com/v1/create-qr-code/?size=230x230&data=${encodeURIComponent(session.uploadUrl)}" draggable="false" data-no-visual-search />`}
     </div>
-    <p class="helper-text">Scan the code, select up to ${MAX_FILES_PER_JOB} files, and send them to this kiosk.</p>
+    <div class="qr-upload-help">
+      <strong>After sending files, look back at this kiosk.</strong>
+      <span>You can send up to ${MAX_FILES_PER_JOB} files.</span>
+    </div>
   `;
 }
 
@@ -5048,14 +6268,18 @@ function renderPreviewStep() {
   const file = activePreviewFile();
   enforceJobColorMode(file);
   const details = priceDetails();
-  const previewClass = file?.previewUrl && ["pdf", "image"].includes(file.previewKind)
+  const hasMultipleFiles = files.length > 1;
+  const previewClass = hasMultipleFiles
+    ? "preview-live multi-document-preview"
+    : file?.previewUrl && ["pdf", "image"].includes(file.previewKind)
     ? "preview-live"
     : "preview-document-mode";
-  const paperClass = `paper-${normalizePaperSize(state.settings.paperSize, "A4").toLowerCase()} orientation-${normalizeOrientation(state.settings.orientation)} color-${state.settings.colorMode === "color" ? "color" : "bw"}`;
+  const orientation = normalizeOrientation(state.settings.orientation);
+  const paperClass = `paper-${normalizePaperSize(state.settings.paperSize, "A4").toLowerCase()} orientation-${orientation} color-${state.settings.colorMode === "color" ? "color" : "bw"}`;
   return `
     <div class="stage preview-stage">
       <div class="preview-grid">
-        ${renderPreviewDocumentPanel(previewClass, paperClass, file)}
+        ${renderPreviewDocumentPanel(previewClass, paperClass, file, files, details)}
         ${renderPreviewInfoPanel(details, files)}
         ${renderPreviewControlPanel(details, files)}
       </div>
@@ -5063,44 +6287,53 @@ function renderPreviewStep() {
   `;
 }
 
-function renderPreviewDocumentPanel(previewClass, paperClass, file) {
-  const pages = Math.max(1, Number(file?.pages) || 1);
+function renderPreviewDocumentPanel(previewClass, paperClass, file, files = jobFiles(), details = priceDetails()) {
+  const hasMultipleFiles = files.length > 1;
+  const pages = hasMultipleFiles ? Math.max(1, Number(details.pages) || pageCount()) : Math.max(1, Number(file?.pages) || 1);
+  const currentPreviewPage = Math.max(1, Math.min(pages, Number(state.previewPage) || 1));
+  const documentName = hasMultipleFiles
+    ? `${files.length} documents selected`
+    : file?.source || file?.name || selectedService()?.title || "Document";
+  const pageLabel = hasMultipleFiles
+    ? `${files.length} documents / ${pages} pages`
+    : `Page ${currentPreviewPage} / ${pages}`;
   return `
     <section class="preview-document-panel">
       <div class="preview-document-head">
-        <div>
-          <h1>Preview &amp; Confirm</h1>
+        <div class="preview-file-summary">
           <span class="ready-pill">
             ${uiIcon("system", 14)}
             Ready to Print
           </span>
+          <strong>${escapeHtml(documentName)}</strong>
         </div>
-        <span>Page 1 of ${pages}</span>
+        <span class="preview-page-count">${escapeHtml(pageLabel)}</span>
       </div>
       <div class="preview-workspace">
         <div class="preview-toolbar" aria-label="Preview tools">
-          <button type="button" data-action="zoom-in" aria-label="Zoom in">+</button>
-          <span>Zoom In</span>
           <button type="button" data-action="zoom-out" aria-label="Zoom out">&minus;</button>
-          <span>Zoom Out</span>
           <strong>${Math.round(state.previewZoom * 100)}%</strong>
-          <span>Actual Size</span>
-          <button type="button" data-action="zoom-out" aria-label="Fit to page">${uiIcon("refresh", 15)}</button>
-          <span>Fit to Page</span>
-          <button type="button" aria-label="Fullscreen">${uiIcon("activity", 15)}</button>
-          <span>Fullscreen</span>
+          <button type="button" data-action="zoom-in" aria-label="Zoom in">+</button>
+          <button type="button" data-action="fit-preview" aria-label="Fit to page">${uiIcon("refresh", 15)}</button>
         </div>
 
-        <div class="document-preview ${previewClass} ${paperClass}" style="--preview-zoom: ${state.previewZoom};">
-          ${renderPreviewContent()}
+        <div class="document-preview ${previewClass} ${paperClass}" data-orientation="${escapeHtml(normalizeOrientation(state.settings.orientation))}" style="--preview-zoom: ${state.previewZoom};">
+          ${hasMultipleFiles ? renderMultiDocumentPreview(files, paperClass) : renderPreviewContent(file, { pageNumber: currentPreviewPage })}
         </div>
 
-        <div class="preview-page-nav" aria-label="Page navigation">
-          <button type="button" aria-label="Previous page">&lsaquo;</button>
-          <strong>1</strong>
+        ${hasMultipleFiles ? `
+          <div class="preview-page-nav preview-job-count" aria-label="Uploaded documents summary">
+            <strong>${files.length}</strong>
+            <span>documents / ${pages} pages</span>
+          </div>
+        ` : `
+          <div class="preview-page-nav" aria-label="Page navigation">
+          <button type="button" data-action="prev-preview-page" aria-label="Previous page" ${currentPreviewPage <= 1 ? "disabled" : ""}>&lsaquo;</button>
+          <strong>${currentPreviewPage}</strong>
           <span>/ ${pages}</span>
-          <button type="button" aria-label="Next page">&rsaquo;</button>
-        </div>
+          <button type="button" data-action="next-preview-page" aria-label="Next page" ${currentPreviewPage >= pages ? "disabled" : ""}>&rsaquo;</button>
+          </div>
+        `}
       </div>
     </section>
   `;
@@ -5110,49 +6343,62 @@ function renderPreviewInfoPanel(details, files) { return ""; }
 
 function renderPreviewControlPanel(details, files) {
   const file = activePreviewFile();
-  const service = selectedService();
-  const rateLabel = state.settings.colorMode === "color" ? "Color" : "B/W";
-  const rateValue = state.settings.colorMode === "color"
-    ? serviceRates(service?.id).color
-    : serviceRates(service?.id).bw;
-  const documentName = file?.source || file?.name || service?.title || "Document";
-  const paperSize = normalizePaperSize(state.settings.paperSize, "A4");
+  const service = services.find((item) => item.id === details.serviceId) || selectedService();
+  const rateLabel = details.colorMode === "color" ? "Color" : "B/W";
+  const rateValue = details.rate;
+  const hasMultipleFiles = files.length > 1;
+  const documentName = hasMultipleFiles
+    ? `${files.length} documents`
+    : file?.source || file?.name || service?.title || "Document";
   const orientation = normalizeOrientation(state.settings.orientation);
-  const backLabel = isFormTemplateService() ? "Back to Forms" : "Back to Upload";
+  const backLabel = "Back";
   const canChooseColor = customerSettingEnabled("color", service) && colorSelectionAvailable(file);
   const canChooseBw = customerSettingEnabled("bw", service);
   const showPrintType = canChooseBw || canChooseColor;
+  const canChooseSides = customerSettingEnabled("sides", service) && state.printer?.supportsDuplex !== false;
+  const sidesLabel = state.settings.sides === "duplex" ? "Both sides" : "One side";
+  const jobLabel = [
+    `${details.pages} page${details.pages === 1 ? "" : "s"}`,
+    customerSettingEnabled("copies", service) ? `${details.copies} cop${details.copies === 1 ? "y" : "ies"}` : "",
+    canChooseSides ? sidesLabel : "",
+    rateLabel
+  ].filter(Boolean).join(" · ");
 
   return `
     <aside class="preview-right-sidebar">
       <section class="preview-side-card preview-document-info-card">
-        <h2>${uiIcon("pages", 16)} Document Information</h2>
+        <h2>${uiIcon("pages", 16)} Details</h2>
         <div class="preview-info-list">
           <div>
-            <span>Document</span>
+            <span>${hasMultipleFiles ? "Documents" : "Document"}</span>
             <strong>${escapeHtml(documentName)}</strong>
-          </div>
-          <div>
-            <span>Paper Size</span>
-            <strong>${escapeHtml(paperSize)} &middot; ${escapeHtml(orientation)}</strong>
           </div>
           <div>
             <span>Pages</span>
             <strong>${details.pages}</strong>
           </div>
         </div>
+        ${hasMultipleFiles ? `
+          <div class="preview-uploaded-list" aria-label="Uploaded document list">
+            ${files.map((item, index) => `
+              <div class="preview-uploaded-row">
+                <span>${index + 1}</span>
+                <strong>${escapeHtml(item.source || item.name || `Document ${index + 1}`)}</strong>
+                <em>${Math.max(1, Number(item.pages) || 1)} page${Math.max(1, Number(item.pages) || 1) === 1 ? "" : "s"}</em>
+              </div>
+            `).join("")}
+          </div>
+        ` : ""}
       </section>
 
       <section class="preview-side-card preview-settings-card">
         <h2>${uiIcon("pricing", 16)} Print Settings</h2>
         <div class="preview-settings-list">
           ${files.length > 1 ? `
-            <label class="preview-setting-row">
-              <span>Document</span>
-              <select data-preview-file-select aria-label="Select document">
-                ${files.map((item, index) => `<option value="${index}" ${index === state.previewFileIndex ? "selected" : ""}>Document ${index + 1} &middot; ${escapeHtml(item.type || "FILE")}</option>`).join("")}
-              </select>
-            </label>
+            <div class="preview-setting-row preview-all-docs-note">
+              <span>Preview</span>
+              <strong>All documents shown together</strong>
+            </div>
           ` : ""}
           ${showPrintType ? `
             <div class="preview-setting-row">
@@ -5160,6 +6406,15 @@ function renderPreviewControlPanel(details, files) {
               <div class="preview-print-type">
                 ${canChooseBw ? `<button class="${state.settings.colorMode === "bw" ? "active" : ""}" data-setting="colorMode" data-value="bw"><i></i>B/W</button>` : ""}
                 ${canChooseColor ? `<button class="${state.settings.colorMode === "color" ? "active" : ""}" data-setting="colorMode" data-value="color"><i></i>Color</button>` : ""}
+              </div>
+            </div>
+          ` : ""}
+          ${canChooseSides ? `
+            <div class="preview-setting-row">
+              <span>Sides</span>
+              <div class="preview-print-type preview-sides-type">
+                <button class="${state.settings.sides !== "duplex" ? "active" : ""}" data-setting="sides" data-value="single"><i></i>One Side</button>
+                <button class="${state.settings.sides === "duplex" ? "active" : ""}" data-setting="sides" data-value="duplex"><i></i>Both Sides</button>
               </div>
             </div>
           ` : ""}
@@ -5173,14 +6428,6 @@ function renderPreviewControlPanel(details, files) {
               </div>
             </div>
           ` : ""}
-          ${customerSettingEnabled("paperSize", service) ? `
-            <label class="preview-setting-row">
-              <span>Paper Size</span>
-              <select data-input="paperSize" aria-label="Paper size">
-                ${PRINT_PAPER_SIZES.map((size) => `<option value="${size}" ${paperSize === size ? "selected" : ""}>${size}</option>`).join("")}
-              </select>
-            </label>
-          ` : ""}
           ${customerSettingEnabled("orientation", service) ? `
             <label class="preview-setting-row">
               <span>Orientation</span>
@@ -5193,6 +6440,10 @@ function renderPreviewControlPanel(details, files) {
       </section>
 
 
+      <section class="preview-side-card preview-total-card">
+        <span>Total payable</span>
+        <strong class="preview-total-amount">${money(details.total)}</strong>
+      </section>
 
       <div class="preview-control-actions">
         <button class="ghost-button" data-action="prev-step">
@@ -5200,7 +6451,7 @@ function renderPreviewControlPanel(details, files) {
           ${backLabel}
         </button>
         <button class="primary-button" data-action="next-step">
-          Continue to Payment
+          Payment
           <span aria-hidden="true">&rarr;</span>
         </button>
       </div>
@@ -5208,13 +6459,12 @@ function renderPreviewControlPanel(details, files) {
   `;
 }
 
-function renderPreviewContent() {
-  const file = activePreviewFile();
-  const pages = Math.max(1, Number(file?.pages) || 1);
-
+function renderPreviewContent(file = activePreviewFile(), options = {}) {
   if (!file) {
-    return renderPreviewFallback("No file selected", "Upload a file to see the preview.");
+    return renderPreviewFallback("No file selected", "Upload a file to see the preview.", file);
   }
+
+  const previewPageNumber = Math.max(1, Number(options.pageNumber) || Number(state.previewPage) || 1);
 
   if (file.previewKind === "html-template" && file.htmlContent) {
     return `
@@ -5226,47 +6476,16 @@ function renderPreviewContent() {
     `;
   }
 
-  if (file.previewKind === "pdf" && file.staticPreviewUrl) {
+  if (file.previewKind === "pdf" && file.staticPreviewUrl && (!file.previewUrl || previewPageNumber <= 1)) {
     return `<img src="${escapeHtml(file.staticPreviewUrl)}" class="preview-media static-pdf-preview" style="max-width: 100%; max-height: 100%; object-fit: contain;" />`;
   }
 
   if (file.previewKind === "pdf" && file.previewUrl) {
-    const canvasId = "pdf-canvas-" + Math.random().toString(36).slice(2, 11);
-    setTimeout(() => {
-      import("./assets/vendor/pdfjs/pdf.min.mjs").then((pdfjsLib) => {
-        pdfjsLib.GlobalWorkerOptions.workerSrc = "./assets/vendor/pdfjs/pdf.worker.min.mjs";
-        return pdfjsLib.getDocument({ url: file.previewUrl, enableXfa: true }).promise.then((pdf) => pdf.getPage(1));
-      }).then((page) => {
-        const canvas = document.getElementById(canvasId);
-        if (!canvas) return;
-        const shell = canvas.closest(".pdf-preview-shell");
-        const bounds = shell?.getBoundingClientRect();
-        const baseViewport = page.getViewport({ scale: 1 });
-        const targetWidth = Math.max(220, bounds?.width || baseViewport.width);
-        const targetHeight = Math.max(300, bounds?.height || baseViewport.height);
-        const deviceScale = Math.max(1, window.devicePixelRatio || 1);
-        const fitScale = Math.min(targetWidth / baseViewport.width, targetHeight / baseViewport.height);
-        const viewport = page.getViewport({ scale: Math.max(0.35, fitScale) * deviceScale });
-        canvas.width = viewport.width;
-        canvas.height = viewport.height;
-        canvas.style.width = `${Math.round(viewport.width / deviceScale)}px`;
-        canvas.style.height = `${Math.round(viewport.height / deviceScale)}px`;
-        page.render({ canvasContext: canvas.getContext("2d"), viewport });
-      }).catch((error) => {
-        console.error("PDF preview error:", error);
-        const canvas = document.getElementById(canvasId);
-        const shell = canvas?.closest(".pdf-preview-shell");
-        if (shell) {
-          shell.innerHTML = '<div class="preview-fallback"><div class="preview-file-icon">PDF</div><h2>PDF preview unavailable</h2><p>The file is valid. Continue after checking file details.</p></div>';
-        }
-      });
-    }, 50);
-
-    return `
-      <div class="pdf-preview-shell" style="width: 100%; height: 100%; display: flex; align-items: center; justify-content: center; overflow: hidden; background: transparent;">
-        <canvas id="${canvasId}" class="pdf-preview-canvas" style="max-width: 100%; max-height: 100%; object-fit: contain;"></canvas>
-      </div>
-    `;
+    return renderPdfPreview(file, {
+      orientation: normalizeOrientation(options.orientation || state.settings.orientation),
+      pageNumber: previewPageNumber,
+      zoom: Number(options.zoom || state.previewZoom || 1)
+    });
   }
 
   if (file.previewKind === "image" && file.previewUrl) {
@@ -5275,8 +6494,102 @@ function renderPreviewContent() {
   return renderPreviewFallback("Preview unavailable", "This file type cannot be previewed.");
 }
 
-function renderPreviewFallback(title, message) {
-  const file = activePreviewFile();
+function renderPdfPreview(file, { orientation = "portrait", pageNumber = 1, zoom = 1 } = {}) {
+  const shellId = "pdf-shell-" + Math.random().toString(36).slice(2, 11);
+  const statusText = "Loading PDF preview...";
+  const requestedOrientation = normalizeOrientation(orientation);
+  const previewZoom = Math.max(0.6, Math.min(2, Number(zoom) || 1));
+
+  setTimeout(() => {
+    import("./assets/vendor/pdfjs/pdf.min.mjs").then(async (pdfjsLib) => {
+      pdfjsLib.GlobalWorkerOptions.workerSrc = "./assets/vendor/pdfjs/pdf.worker.min.mjs";
+      const pdf = await pdfjsLib.getDocument({ url: file.previewUrl, enableXfa: true }).promise;
+      const shell = document.getElementById(shellId);
+      if (!shell) return;
+
+      const totalPages = Math.max(1, Number(pdf.numPages) || Number(file.pages) || 1);
+      const currentPage = Math.max(1, Math.min(totalPages, Number(pageNumber) || 1));
+      const deviceScale = Math.max(1, window.devicePixelRatio || 1);
+      shell.innerHTML = "";
+      shell.classList.add("is-ready");
+      shell.dataset.pageCount = String(totalPages);
+
+      if (!document.getElementById(shellId)) return;
+
+      const page = await pdf.getPage(currentPage);
+      const pageShell = document.createElement("div");
+      pageShell.className = "pdf-preview-page";
+
+      const canvas = document.createElement("canvas");
+      canvas.className = "pdf-preview-canvas";
+      canvas.dataset.pageNumber = String(currentPage);
+      pageShell.appendChild(canvas);
+      shell.appendChild(pageShell);
+
+      const nativeViewport = page.getViewport({ scale: 1 });
+      const nativeLandscape = nativeViewport.width > nativeViewport.height;
+      const shouldRotate = requestedOrientation === "landscape" ? !nativeLandscape : nativeLandscape;
+      const rotation = ((Number(page.rotate) || 0) + (shouldRotate ? 90 : 0)) % 360;
+      const baseViewport = page.getViewport({ scale: 1, rotation });
+      const bounds = shell.getBoundingClientRect();
+      const targetWidth = Math.max(220, bounds?.width || baseViewport.width);
+      const targetHeight = Math.max(300, bounds?.height || baseViewport.height);
+      const fitScale = Math.min(targetWidth / baseViewport.width, targetHeight / baseViewport.height);
+      const viewport = page.getViewport({ scale: Math.max(0.35, fitScale) * previewZoom * deviceScale, rotation });
+      const context = canvas.getContext("2d");
+
+      if (!context) return;
+      canvas.width = viewport.width;
+      canvas.height = viewport.height;
+      canvas.style.width = `${Math.round(viewport.width / deviceScale)}px`;
+      canvas.style.height = `${Math.round(viewport.height / deviceScale)}px`;
+      await page.render({ canvasContext: context, viewport }).promise;
+    }).catch((error) => {
+      console.error("PDF preview error:", error);
+      const shell = document.getElementById(shellId);
+      if (shell) {
+        shell.classList.add("is-error");
+        shell.innerHTML = '<div class="preview-fallback"><div class="preview-file-icon">PDF</div><h2>PDF preview unavailable</h2><p>The file is valid. Continue after checking file details.</p></div>';
+      }
+    });
+  }, 50);
+
+  return `
+    <div id="${shellId}" class="pdf-preview-shell" data-no-visual-search>
+      <div class="pdf-preview-status">${statusText}</div>
+    </div>
+  `;
+}
+
+function renderMultiDocumentPreview(files, paperClass) {
+  return `
+    <div class="multi-preview-stack" aria-label="All uploaded documents">
+      ${files.map((file, index) => renderMultiDocumentPreviewItem(file, index, paperClass)).join("")}
+    </div>
+  `;
+}
+
+function renderMultiDocumentPreviewItem(file, index, paperClass) {
+  const pages = Math.max(1, Number(file?.pages) || 1);
+  const title = file?.source || file?.name || `Document ${index + 1}`;
+  return `
+    <article class="multi-preview-item ${index === state.previewFileIndex ? "is-active" : ""}">
+      <header>
+        <strong>Document ${index + 1}</strong>
+        <span>${pages} page${pages === 1 ? "" : "s"}</span>
+      </header>
+      <div class="multi-preview-paper ${paperClass}">
+        ${renderPreviewContent(file, { pageNumber: 1 })}
+      </div>
+      <footer>
+        <strong>${escapeHtml(title)}</strong>
+        <span>${escapeHtml(file?.type || "FILE")}</span>
+      </footer>
+    </article>
+  `;
+}
+
+function renderPreviewFallback(title, message, file = activePreviewFile()) {
   return `
     <div class="preview-fallback">
       <div class="preview-file-icon">${escapeHtml(file?.type || "FILE")}</div>
@@ -5462,7 +6775,51 @@ function renderThankYouPaymentDone() {
 
 function renderThankYouPrinting() {
   return `
-    <div class="tq-phase tq-phase-in">
+    <div class="tq-phase tq-phase-in tq-printing-scene">
+      <div class="tq-printing-full">
+        <div class="tq-printing-copy">
+          <span class="tq-printing-eyebrow">Print job in progress</span>
+          <h1 class="tq-title">Printing Your Document</h1>
+          <p class="tq-subtitle">Please stay near the kiosk while your pages are printing.</p>
+        </div>
+        <div class="tq-printer-stage" aria-hidden="true">
+          <div class="tq-paper-stack tq-paper-stack-left">
+            <span></span><span></span><span></span>
+          </div>
+          <div class="tq-printer-anim tq-printer-anim-large">
+            <div class="tq-printer-body">
+              <div class="tq-printer-top"></div>
+              <div class="tq-printer-lights">
+                <div class="tq-light tq-light-blink"></div>
+                <div class="tq-light tq-light-blink" style="animation-delay:0.4s"></div>
+                <div class="tq-light tq-light-solid"></div>
+              </div>
+              <div class="tq-printer-slot">
+                <div class="tq-printer-paper"></div>
+              </div>
+              <div class="tq-printer-face"></div>
+              <div class="tq-printer-base"></div>
+            </div>
+            <div class="tq-printer-output">
+              <div class="tq-output-paper">
+                <span></span><span></span><span></span>
+              </div>
+            </div>
+          </div>
+          <div class="tq-paper-stack tq-paper-stack-right">
+            <span></span><span></span><span></span>
+          </div>
+        </div>
+        <div class="tq-print-progress">
+          <div class="tq-progress-bar"><div class="tq-progress-fill"></div></div>
+          <span class="tq-progress-label">Sending pages to printer...</span>
+        </div>
+        <div class="tq-printing-status">
+          <span>Payment verified</span>
+          <span>Document queued</span>
+          <span>Printer active</span>
+        </div>
+      </div>
       <div class="tq-printer-anim">
         <div class="tq-printer-body">
           <div class="tq-printer-slot">
@@ -5639,7 +6996,6 @@ function adminNavGroups() {
         { id: "projects", label: "Projects", icon: "hierarchy" },
         { id: "kiosks", label: "Kiosks", icon: "kiosks" },
         { id: "services", label: "Services", icon: "services" },
-        { id: "pricing", label: "Pricing", icon: "pricing" },
         { id: "revenue", label: "Revenue", icon: "payments" }
       ]
     },
@@ -5663,12 +7019,15 @@ function renderAdminHeader(title, subtitle, action = "") {
         <h1>${title}</h1>
         <p>${subtitle}</p>
       </div>
-      <div class="flow-actions">${action}</div>
+      ${action ? `<div class="flow-actions">${action}</div>` : ""}
     </div>
   `;
 }
 
 function renderAdminPage() {
+  if (state.adminPage === "pricing") {
+    state.adminPage = "services";
+  }
   const page = state.adminPage;
   if (page === "dashboard") return renderDashboard();
   if (page === "history") return renderHistory();
@@ -5677,7 +7036,6 @@ function renderAdminPage() {
   if (page === "reports") return renderReports();
   if (page === "services") return renderServicesAdmin();
   if (page === "service-editor") return renderServiceEditorPage();
-  if (page === "pricing") return renderPricing();
   if (page === "revenue") return renderRevenue();
   if (page === "kiosks") return renderKiosks();
   if (page === "refunds") return renderRefunds();
@@ -5706,13 +7064,47 @@ function serviceTitle(serviceId) {
   return services.find((service) => service.id === serviceId)?.title || serviceId || "Print Document";
 }
 
+function kioskAdminCanManageSetup() {
+  return false;
+}
+
+function blockKioskAdminSetupAction() {
+  state.adminPermissionStatus = "Create, update, and delete actions are available only in Super Admin.";
+  state.projectEditorOpen = false;
+  state.projectEditId = "";
+  state.kioskEditorOpen = false;
+  state.kioskEditId = "";
+  state.serviceEditor = null;
+  render();
+  return false;
+}
+
+function isKioskAdminSetupMutationInput(target) {
+  return Boolean(
+    target?.dataset?.kioskDraftField ||
+    target?.dataset?.projectDraftField ||
+    target?.dataset?.servicePrice ||
+    target?.dataset?.serviceField ||
+    target?.dataset?.serviceDraftField ||
+    target?.dataset?.templateField ||
+    target?.dataset?.templateDraftField ||
+    target?.dataset?.templateImage ||
+    target?.dataset?.draftTemplateImage !== undefined
+  );
+}
+
 function adminNotice() {
+  const permissionNote = state.adminPermissionStatus
+    ? `<div class="save-note" style="margin-bottom: 16px;">${escapeHtml(state.adminPermissionStatus)}</div>`
+    : "";
+
   if (state.adminData.error) {
-    return `<div class="empty-note" style="margin-bottom: 16px;">${escapeHtml(state.adminData.error)} Showing only local session data until backend reconnects.</div>`;
+    return `${permissionNote}<div class="empty-note" style="margin-bottom: 16px;">${escapeHtml(state.adminData.error)} Showing only local session data until backend reconnects.</div>`;
   }
 
   if (state.adminData.lastUpdated) {
     return `
+      ${permissionNote}
       <div class="admin-live-status">
         <span class="live-indicator"></span>
         <strong>Live backend data.</strong>
@@ -5722,7 +7114,7 @@ function adminNotice() {
     `;
   }
 
-  return `<div class="admin-live-status loading"><span class="live-indicator"></span><strong>Loading live backend data...</strong></div>`;
+  return `${permissionNote}<div class="admin-live-status loading"><span class="live-indicator"></span><strong>Loading live backend data...</strong></div>`;
 }
 
 function liveJobs() {
@@ -5767,6 +7159,86 @@ function adminProjectName(projectId) {
 
 function firstAdminServiceProjectId() {
   return adminServiceAssignableProjects()[0]?.projectId || "";
+}
+
+function adminKioskById(kioskId = "") {
+  const id = normalizeKioskId(kioskId);
+  return state.adminData.kiosks.find((kiosk) => normalizeKioskId(kiosk.kioskId) === id) || null;
+}
+
+function sortedAdminKiosks() {
+  return [...state.adminData.kiosks].sort((left, right) => {
+    const leftLabel = left.name || left.kioskId || "";
+    const rightLabel = right.name || right.kioskId || "";
+    return String(leftLabel).localeCompare(String(rightLabel));
+  });
+}
+
+function serviceAppliesToAdminKiosk(service = {}, kiosk = null) {
+  const kioskId = normalizeKioskId(kiosk?.kioskId);
+  const kioskIds = Array.isArray(service.kioskIds) ? service.kioskIds.map((item) => normalizeKioskId(item)).filter(Boolean) : [];
+
+  if (kioskIds.length) {
+    return Boolean(kioskId && kioskIds.includes(kioskId));
+  }
+
+  const projectIds = Array.isArray(service.projectIds) ? service.projectIds.map((item) => slug(item, "")).filter(Boolean) : [];
+  if (projectIds.length) {
+    return Boolean(kiosk?.projectId && projectIds.includes(slug(kiosk.projectId, "")));
+  }
+
+  return true;
+}
+
+function servicesForAdminKiosk(kiosk = null) {
+  if (!kiosk) return [];
+
+  return [...services]
+    .filter((service) => serviceAppliesToAdminKiosk(service, kiosk))
+    .sort((left, right) => String(left.title || left.id).localeCompare(String(right.title || right.id)));
+}
+
+function serviceAssignmentLabel(service = {}) {
+  return Array.isArray(service.kioskIds) && service.kioskIds.length ? "Kiosk service" : "Project service";
+}
+
+function adminKioskCustomerSettings(kiosk = null) {
+  return normalizeKioskCustomerSettings(kiosk?.customerSettings || {});
+}
+
+function renderAdminKioskPrintOptions(kiosk = null, { compact = false } = {}) {
+  const settings = adminKioskCustomerSettings(kiosk);
+  const enabledCount = KIOSK_CUSTOMER_OPTION_FIELDS.filter(([key]) => settings[key]).length;
+
+  return `
+    <section class="admin-print-options-panel ${compact ? "compact" : ""}">
+      <div class="admin-print-options-head">
+        <strong>Customer print options</strong>
+        <span>${enabledCount} of ${KIOSK_CUSTOMER_OPTION_FIELDS.length} enabled by Super Admin</span>
+      </div>
+      <div class="admin-print-option-chips">
+        ${KIOSK_CUSTOMER_OPTION_FIELDS.map(([key, label]) => {
+    const enabled = settings[key];
+    return `<span class="admin-print-option-chip ${enabled ? "is-on" : "is-off"}">${escapeHtml(enabled ? label : `${label} hidden`)}</span>`;
+  }).join("")}
+      </div>
+    </section>
+  `;
+}
+
+function adminKioskServiceMeta(service, kiosk) {
+  const rates = serviceRates(service.id, kiosk?.kioskId);
+  const kioskSettings = adminKioskCustomerSettings(kiosk);
+  const serviceSettings = normalizeKioskCustomerSettings(service.customerSettings || {});
+  const templateCount = service.templates?.length || 0;
+
+  return [
+    `<span>Type <strong>${escapeHtml(serviceModeLabel(service))}</strong></span>`,
+    `<span>Scope <strong>${escapeHtml(serviceAssignmentLabel(service))}</strong></span>`,
+    kioskSettings.bw && serviceSettings.bw ? `<span>B/W <strong>${money(rates.bw)}</strong></span>` : "",
+    kioskSettings.color && serviceSettings.color ? `<span>Color <strong>${money(rates.color)}</strong></span>` : "",
+    `<span>Forms <strong>${templateCount}</strong></span>`
+  ].filter(Boolean).join("");
 }
 
 function renderAdminPagination(key, page) {
@@ -6105,7 +7577,7 @@ function renderDashboard() {
   ];
 
   return `
-    ${renderAdminHeader("Dashboard", "Manage your assigned projects, kiosks, services, and pricing.")}
+    ${renderAdminHeader("Dashboard", "Manage your assigned projects, kiosks, and services.")}
     ${adminNotice()}
     <div class="metrics-grid dashboard-metrics">
       ${dashboardMetrics().map(([label, value, detail, icon, tone]) => `
@@ -6338,6 +7810,7 @@ function renderTemplateEditor(service) {
   const templates = service.templates?.length
     ? service.templates
     : [{ id: "template-document-1", title: "Upload Template Document", description: "Uploaded template document.", pages: 1, paperSize: "Auto", orientation: "portrait", fields: [], imageUrl: "", documentType: "image" }];
+  const canManage = kioskAdminCanManageSetup();
 
   return `
     <div class="template-editor-section">
@@ -6346,7 +7819,7 @@ function renderTemplateEditor(service) {
           <h3>Template documents under ${escapeHtml(service.title)}</h3>
           <p class="helper-text">Upload an image or PDF. The kiosk will show it directly to the customer.</p>
         </div>
-        <button class="secondary-button" data-template-add="${escapeHtml(service.id)}">Add Document</button>
+        ${canManage ? `<button class="secondary-button" data-template-add="${escapeHtml(service.id)}">Add Document</button>` : ""}
       </div>
       <div class="template-editor-list">
         ${templates.map((template, index) => `
@@ -6357,12 +7830,12 @@ function renderTemplateEditor(service) {
                 <h4>Document ${index + 1}: ${escapeHtml(template.title || `Template ${index + 1}`)}</h4>
                 <p class="helper-text">${escapeHtml(templateDocumentKind(template.documentType || template.imageUrl).toUpperCase())} | ${Number(template.pages || 1)} page${Number(template.pages || 1) === 1 ? "" : "s"} | ${escapeHtml(template.imageUrl ? "Ready for kiosk" : "Upload needed")}</p>
               </div>
-              <button class="danger-button" data-template-delete="${escapeHtml(service.id)}" data-template-index="${index}" ${templates.length <= 1 ? "disabled" : ""}>Remove Document</button>
+              ${canManage ? `<button class="danger-button" data-template-delete="${escapeHtml(service.id)}" data-template-index="${index}" ${templates.length <= 1 ? "disabled" : ""}>Remove Document</button>` : ""}
             </div>
-            <label class="template-upload-row">
+            ${canManage ? `<label class="template-upload-row">
               <span>Upload image or PDF</span>
               <input type="file" accept="image/*,application/pdf,.pdf" data-template-image="${escapeHtml(service.id)}" data-template-index="${index}" />
-            </label>
+            </label>` : ""}
           </div>
         `).join("")}
       </div>
@@ -6394,7 +7867,7 @@ function renderSimpleServiceForms(service) {
           </div>
           <span>${Number(template.pages || 1)} page${Number(template.pages || 1) === 1 ? "" : "s"}</span>
         </div>
-      `).join("") : `<div class="simple-form-empty">No forms added yet. Edit this service to create forms.</div>`}
+      `).join("") : `<div class="simple-form-empty">No forms are configured for this service.</div>`}
     </div>
   `;
 }
@@ -6451,64 +7924,142 @@ function renderPricingReadOnly() {
   `;
 }
 
-function renderServicesAdmin() {
-  const sortedServices = [...services].sort((left, right) => String(left.title || left.id).localeCompare(String(right.title || right.id)));
-  const selectedServiceId = sortedServices.some((service) => service.id === state.adminSelectedServiceId)
-    ? state.adminSelectedServiceId
-    : sortedServices[0]?.id || "";
-  const service = sortedServices.find((item) => item.id === selectedServiceId);
-  if (service && state.adminSelectedServiceId !== service.id) {
-    state.adminSelectedServiceId = service.id;
-  }
-  const rates = service ? serviceRates(service.id) : { bw: 0, color: 0 };
+function renderKioskServiceCard(kiosk) {
+  const kioskServices = servicesForAdminKiosk(kiosk);
+  const formCount = kioskServices.reduce((total, service) => total + (service.templates?.length || 0), 0);
+  const uploadCount = kioskServices.filter((service) => service.mode !== "template").length;
+  const enabledCount = kioskServices.filter((service) => service.enabled !== false).length;
+  const canManage = kioskAdminCanManageSetup();
+  const action = `<button class="${canManage ? "primary-button" : "secondary-button"}" data-kiosk-services-open="${escapeHtml(kiosk.kioskId || "")}">${canManage ? "Update" : "View Services"}</button>`;
 
   return `
-    ${renderAdminHeader("Service Management", "Select one service to view its forms. Create services and add forms from the service editor.", `<button class="primary-button" data-action="add-service">Create Service</button><button class="secondary-button" data-action="save-services">Save Changes</button>`)}
-    ${state.servicesDirty ? `<div class="save-note">Unsaved service changes. Use Save Services to publish them to the kiosk backend.</div>` : ""}
+    <article class="module-card kiosk-service-option">
+      <div class="kiosk-service-option-head">
+        <div>
+          <h2>${escapeHtml(kiosk.name || kiosk.kioskId || "Kiosk")}</h2>
+          <p>${escapeHtml(kiosk.kioskId || "")}</p>
+        </div>
+        <span class="badge ${kiosk.status === "online" ? "good" : "warn"}">${escapeHtml(kiosk.status || "Unknown")}</span>
+      </div>
+      <div class="kiosk-service-option-meta">
+        <span>Project <strong>${escapeHtml(adminProjectName(kiosk.projectId))}</strong></span>
+        <span>Services <strong>${kioskServices.length}</strong></span>
+        <span>Forms <strong>${formCount}</strong></span>
+        <span>Uploads <strong>${uploadCount}</strong></span>
+      </div>
+      ${renderAdminKioskPrintOptions(kiosk, { compact: true })}
+      <div class="kiosk-service-option-foot">
+        <span>${enabledCount} enabled service${enabledCount === 1 ? "" : "s"}</span>
+        ${action}
+      </div>
+    </article>
+  `;
+}
+
+function renderKioskServiceRow(service, kiosk) {
+  const actions = kioskAdminCanManageSetup()
+    ? `<button class="secondary-button" data-service-edit="${escapeHtml(service.id)}" data-kiosk-id="${escapeHtml(kiosk.kioskId || "")}">${service.mode === "template" ? "Edit Forms" : "Edit Service"}</button><button class="danger-button" data-service-delete="${escapeHtml(service.id)}">Delete</button>`
+    : "";
+
+  return `
+    <article class="kiosk-service-row">
+      <div class="simple-service-head">
+        <div class="simple-service-title">
+          ${serviceMediaMarkup(service, "simple-service-icon")}
+          <div>
+            <h2>${escapeHtml(service.title)}</h2>
+            <p class="helper-text">${escapeHtml(service.description || serviceModeLabel(service))}</p>
+          </div>
+        </div>
+        <div class="simple-service-actions">
+          <span class="badge ${service.enabled ? "good" : "bad"}">${service.enabled ? "Enabled" : "Off"}</span>
+          ${actions}
+        </div>
+      </div>
+      <div class="simple-service-meta kiosk-service-row-meta">
+        ${adminKioskServiceMeta(service, kiosk)}
+      </div>
+      ${renderSimpleServiceForms(service)}
+    </article>
+  `;
+}
+
+function renderKioskServiceUpdatePage() {
+  const kiosk = adminKioskById(state.adminSelectedServiceKioskId);
+  if (!kiosk) {
+    state.adminSelectedServiceKioskId = "";
+    return renderServicesAdmin();
+  }
+
+  const kioskServices = servicesForAdminKiosk(kiosk);
+  const formCount = kioskServices.reduce((total, service) => total + (service.templates?.length || 0), 0);
+  const canManage = kioskAdminCanManageSetup();
+
+  return `
+    ${renderAdminHeader(canManage ? "Update Services" : "Service Details", `${escapeHtml(kiosk.name || kiosk.kioskId || "Kiosk")} | ${escapeHtml(kiosk.kioskId || "")} | ${escapeHtml(adminProjectName(kiosk.projectId))}`, `<button class="ghost-button" data-action="close-kiosk-service-modal">Back to Services</button>${canManage ? `<button class="primary-button" data-action="save-services">Save Changes</button>` : ""}`)}
+    ${canManage && state.servicesDirty ? `<div class="save-note">Unsaved service changes. Use Save Changes to publish them to the kiosk backend.</div>` : ""}
     ${state.pricingSaveStatus ? `<div class="save-note">${escapeHtml(state.pricingSaveStatus)}</div>` : ""}
     ${adminNotice()}
-    <div class="service-focus-layout">
-      <aside class="module-card service-focus-picker">
-        <label>Service
-          <select data-admin-service-select>
-            ${sortedServices.map((item) => `<option value="${escapeHtml(item.id)}" ${item.id === selectedServiceId ? "selected" : ""}>${escapeHtml(item.title || item.id)}</option>`).join("")}
-          </select>
-        </label>
-        <div class="service-focus-list">
-          ${sortedServices.map((item) => `
-            <button class="${item.id === selectedServiceId ? "active" : ""}" data-admin-service-select="${escapeHtml(item.id)}">
-              <strong>${escapeHtml(item.title || item.id)}</strong>
-              <span>${escapeHtml(serviceModeLabel(item))} | ${(item.templates || []).length} form${(item.templates || []).length === 1 ? "" : "s"}</span>
-            </button>
-          `).join("") || `<div class="empty-note">No services yet. Create your first service.</div>`}
+    <div class="kiosk-service-update-page">
+      <div class="module-card kiosk-service-full-panel">
+        <div class="kiosk-service-action-row kiosk-service-page-summary">
+          <div>
+            <strong>${kioskServices.length} service${kioskServices.length === 1 ? "" : "s"}</strong>
+            <span>${formCount} form${formCount === 1 ? "" : "s"} configured for this kiosk</span>
+          </div>
+          ${canManage ? `<div class="flow-actions">
+            <button class="primary-button" data-kiosk-add-service="${escapeHtml(kiosk.kioskId || "")}">Add Service</button>
+          </div>` : ""}
         </div>
-      </aside>
-      ${service ? `
-        <section class="module-card simple-service-card service-focus-detail">
-          <div class="simple-service-head">
-            <div class="simple-service-title">
-              ${serviceMediaMarkup(service, "simple-service-icon")}
-              <div>
-                <h2>${escapeHtml(service.title)}</h2>
-                <p class="helper-text">${escapeHtml(service.description || serviceModeLabel(service))}</p>
-              </div>
-            </div>
-            <div class="simple-service-actions">
-              <span class="badge ${service.enabled ? "good" : "bad"}">${service.enabled ? "Enabled" : "Off"}</span>
-              <button class="secondary-button" data-service-edit="${escapeHtml(service.id)}">Edit Service / Forms</button>
-              <button class="danger-button" data-service-delete="${escapeHtml(service.id)}">Delete</button>
-            </div>
-          </div>
-          <div class="simple-service-meta">
-            <span>B/W <strong>${money(rates.bw)}</strong></span>
-            <span>Color <strong>${money(rates.color)}</strong></span>
-            <span>Projects <strong>${service.projectIds?.length ? escapeHtml(service.projectIds.map(adminProjectName).join(", ")) : "None"}</strong></span>
-            <span>Forms <strong>${(service.templates || []).length}</strong></span>
-          </div>
-          ${renderSimpleServiceForms(service)}
-        </section>
-      ` : `<div class="empty-note">No service selected.</div>`}
+        ${renderAdminKioskPrintOptions(kiosk)}
+        <div class="kiosk-service-modal-list kiosk-service-page-list">
+          ${kioskServices.length
+      ? kioskServices.map((service) => renderKioskServiceRow(service, kiosk)).join("")
+      : `<div class="empty-note">No services are assigned to this kiosk.</div>`}
+        </div>
+        <div class="flow-actions kiosk-service-page-actions">
+          <button class="ghost-button" data-action="close-kiosk-service-modal">Back to Services</button>
+        </div>
+      </div>
     </div>
+    ${renderServiceEditorModal()}
+  `;
+}
+
+function renderServiceEditorModal() {
+  if (!state.serviceEditor || !kioskAdminCanManageSetup()) return "";
+
+  return `
+    <div class="editor-modal-shell service-editor-modal-shell">
+      <button class="editor-modal-backdrop" data-action="cancel-service-editor" aria-label="Close service editor"></button>
+      <section class="editor-modal-content service-editor-modal-content">
+        <div class="service-editor-modal-surface">
+          ${renderServiceEditorPage()}
+        </div>
+      </section>
+    </div>
+  `;
+}
+
+function renderServicesAdmin() {
+  const kiosks = sortedAdminKiosks();
+  const canManage = kioskAdminCanManageSetup();
+
+  if (state.adminSelectedServiceKioskId) {
+    return renderKioskServiceUpdatePage();
+  }
+
+  return `
+    ${renderAdminHeader("Service Management", "View services and forms assigned to each kiosk.")}
+    ${canManage && state.servicesDirty ? `<div class="save-note">Unsaved service changes. Use Save Changes to publish them to the kiosk backend.</div>` : ""}
+    ${state.pricingSaveStatus && !state.adminSelectedServiceKioskId && !state.serviceEditor ? `<div class="save-note">${escapeHtml(state.pricingSaveStatus)}</div>` : ""}
+    ${adminNotice()}
+    <div class="kiosk-service-board">
+      ${kiosks.length
+      ? kiosks.map((kiosk) => renderKioskServiceCard(kiosk)).join("")
+      : `<div class="empty-note">No kiosks are assigned to this account.</div>`}
+    </div>
+    ${renderServiceEditorModal()}
   `;
 }
 
@@ -6520,7 +8071,7 @@ function renderServiceDraftTemplateEditor(service) {
       <div class="template-editor-header">
         <div>
           <h3>Forms under ${escapeHtml(service.title || "this service")}</h3>
-          <p class="helper-text">Each form can be an image or PDF shown directly on the kiosk.</p>
+          <p class="helper-text">Each form uses the service B/W and color per-page rates above.</p>
         </div>
         <button class="secondary-button" data-draft-template-add>Add Document</button>
       </div>
@@ -6559,15 +8110,27 @@ function renderServiceDraftTemplateEditor(service) {
 }
 
 function renderServiceEditorPage() {
+  if (!kioskAdminCanManageSetup()) {
+    state.serviceEditor = null;
+    state.adminPage = "services";
+    return renderServicesAdmin();
+  }
+
   const editor = state.serviceEditor;
   if (!editor) return renderServicesAdmin();
   const service = editor.draft;
   const rates = service.pricing || { bw: 0, color: 0 };
-  const title = editor.mode === "create" ? "Create Service" : "Edit Service";
+  const title = editor.mode === "create"
+    ? (service.mode === "template" ? "Add Forms" : "Add Service")
+    : (service.mode === "template" ? "Edit Forms" : "Edit Service");
   const assignableProjects = adminServiceAssignableProjects();
+  const contextKiosk = adminKioskById(editor.kioskId);
+  const closeLabel = contextKiosk ? "Back to Kiosk" : "Back to Services";
+  const bwRateLabel = service.mode === "template" ? "Default B/W Rate" : "Phone Upload B/W Rate";
+  const colorRateLabel = service.mode === "template" ? "Default Color Rate" : "Phone Upload Color Rate";
 
   return `
-    ${renderAdminHeader(title, "Keep service setup simple. Add forms below when this is a form service.", `<button class="ghost-button" data-action="cancel-service-editor">Back to Services</button><button class="primary-button" data-action="save-service-editor">Save Service</button>`)}
+    ${renderAdminHeader(title, contextKiosk ? `Updating services for ${escapeHtml(contextKiosk.name || contextKiosk.kioskId || "this kiosk")}.` : "Keep service setup simple. Add forms below when this is a form service.", `<button class="ghost-button" data-action="cancel-service-editor">${escapeHtml(closeLabel)}</button><button class="primary-button" data-action="save-service-editor">Save Service</button>`)}
     ${state.pricingSaveStatus ? `<div class="save-note">${escapeHtml(state.pricingSaveStatus)}</div>` : ""}
     <div class="module-card service-editor-page">
       <div class="service-editor-simple-head">
@@ -6593,15 +8156,18 @@ function renderServiceEditorPage() {
         <label class="setting-field">Description
           <input value="${escapeHtml(service.description || "")}" data-service-draft-field="description" />
         </label>
+        ${contextKiosk ? `<div class="setting-field readonly-setting">Kiosk
+          <strong>${escapeHtml(contextKiosk.name || contextKiosk.kioskId || "")}</strong>
+        </div>` : ""}
         ${assignableProjects.length ? `<label class="setting-field">Project
           <select data-service-draft-field="projectIds">
             ${assignableProjects.map((project) => `<option value="${escapeHtml(project.projectId)}" ${(service.projectIds || []).includes(project.projectId) ? "selected" : ""}>${escapeHtml(project.name || project.projectId)}</option>`).join("")}
           </select>
         </label>` : `<div class="empty-note">Ask the super admin to allocate a project before assigning services.</div>`}
-        <label class="setting-field">B/W Rate
+        <label class="setting-field">${escapeHtml(bwRateLabel)}
           <input type="number" min="0" value="${rates.bw || 0}" data-service-draft-field="bw" />
         </label>
-        <label class="setting-field">Color Rate
+        <label class="setting-field">${escapeHtml(colorRateLabel)}
           <input type="number" min="0" value="${rates.color || 0}" data-service-draft-field="color" />
         </label>
       </div>
@@ -6610,7 +8176,7 @@ function renderServiceEditorPage() {
           <div class="template-editor-header">
             <div>
               <h3>Upload Service</h3>
-              <p class="helper-text">This service will show QR upload to customers. Change mode to Form templates if it should contain forms.</p>
+              <p class="helper-text">This service will show QR upload to customers. The phone upload price uses the B/W and color rates above.</p>
             </div>
           </div>
         </div>
@@ -6624,12 +8190,50 @@ function renderServiceEditorPage() {
 }
 
 function renderPricing() {
+  if (!kioskAdminCanManageSetup()) {
+    return renderPricingReadOnly();
+  }
+
+  const kiosks = sortedAdminKiosks();
+  if (!state.adminPricingKioskId) {
+    state.adminPricingKioskId = kiosks[0]?.kioskId ? normalizeKioskId(kiosks[0].kioskId) : "__default";
+  }
+  const selectedKioskId = state.adminPricingKioskId === "__default" ? "" : normalizeKioskId(state.adminPricingKioskId);
+  const selectedKiosk = selectedKioskId ? adminKioskById(selectedKioskId) : null;
+  if (selectedKioskId && !selectedKiosk) {
+    state.adminPricingKioskId = "__default";
+  }
+  const activeKioskId = selectedKiosk ? normalizeKioskId(selectedKiosk.kioskId) : "";
+  const pricingServices = selectedKiosk ? servicesForAdminKiosk(selectedKiosk) : services;
+  const scopeTitle = selectedKiosk
+    ? `${selectedKiosk.name || selectedKiosk.kioskId} kiosk pricing`
+    : "Default pricing";
+  const scopeSubtitle = selectedKiosk
+    ? `${selectedKiosk.kioskId || ""} | ${adminProjectName(selectedKiosk.projectId)} | overrides default service rates`
+    : "Fallback rates used when a kiosk does not have its own pricing.";
+
   return `
-    ${renderAdminHeader("Pricing Management", "Set page-wise B/W and color rates for each customer service.", `<button class="primary-button" data-action="save-pricing">Save Pricing</button>`)}
+    ${renderAdminHeader("Pricing Management", "Set page-wise B/W and color rates kiosk-wise.", `<button class="primary-button" data-action="save-pricing">Save Pricing</button>`)}
     ${state.pricingSaveStatus ? `<div class="save-note">${escapeHtml(state.pricingSaveStatus)}</div>` : ""}
+    <div class="module-card pricing-scope-card">
+      <label class="setting-field">Pricing Scope
+        <select data-admin-pricing-kiosk>
+          <option value="__default" ${state.adminPricingKioskId === "__default" ? "selected" : ""}>Default pricing for all kiosks</option>
+          ${kiosks.map((kiosk) => {
+    const kioskId = normalizeKioskId(kiosk.kioskId);
+    return `<option value="${escapeHtml(kioskId)}" ${activeKioskId === kioskId ? "selected" : ""}>${escapeHtml(kiosk.name || kioskId)} (${escapeHtml(kioskId)})</option>`;
+  }).join("")}
+        </select>
+      </label>
+      <div class="pricing-scope-summary">
+        <strong>${escapeHtml(scopeTitle)}</strong>
+        <span>${escapeHtml(scopeSubtitle)}</span>
+      </div>
+    </div>
     <div class="settings-grid pricing-settings-grid">
-      ${services.map((service) => {
-    const rates = serviceRates(service.id);
+      ${pricingServices.length ? pricingServices.map((service) => {
+    const rates = serviceRates(service.id, activeKioskId);
+    const inputScope = activeKioskId || "__default";
 
     return `
           <div class="setting-field service-pricing-card">
@@ -6637,13 +8241,13 @@ function renderPricing() {
               <h2>${escapeHtml(service.title)}</h2>
               <p class="helper-text">${escapeHtml(service.description)}</p>
             </div>
-            <label for="price-${service.id}-bw">B/W per page</label>
-            <input id="price-${service.id}-bw" type="number" min="0" value="${rates.bw}" data-service-price="${service.id}" data-price-key="bw" />
-            <label for="price-${service.id}-color">Color per page</label>
-            <input id="price-${service.id}-color" type="number" min="0" value="${rates.color}" data-service-price="${service.id}" data-price-key="color" />
+            <label for="price-${inputScope}-${service.id}-bw">B/W per page</label>
+            <input id="price-${inputScope}-${service.id}-bw" type="number" min="0" value="${rates.bw}" data-service-price="${service.id}" data-price-key="bw" data-price-kiosk="${escapeHtml(inputScope)}" />
+            <label for="price-${inputScope}-${service.id}-color">Color per page</label>
+            <input id="price-${inputScope}-${service.id}-color" type="number" min="0" value="${rates.color}" data-service-price="${service.id}" data-price-key="color" data-price-kiosk="${escapeHtml(inputScope)}" />
           </div>
         `;
-  }).join("")}
+  }).join("") : `<div class="empty-note">No services are assigned to this kiosk yet. Add services from Service Management first.</div>`}
     </div>
   `;
 }
@@ -6684,6 +8288,11 @@ async function loadPricingSettings() {
 }
 
 async function savePricingSettings() {
+  if (!kioskAdminCanManageSetup()) {
+    blockKioskAdminSetupAction();
+    return;
+  }
+
   syncPricingDraftFromDom();
   state.pricing = normalizePricing(state.pricing);
   storePricing();
@@ -6705,7 +8314,10 @@ async function savePricingSettings() {
     state.pricing = normalizePricing(payload.pricing);
     storeConfigMeta(payload.config || {});
     storePricing();
-    state.pricingSaveStatus = "Pricing saved for all services.";
+    const selectedKiosk = state.adminPricingKioskId === "__default" ? null : adminKioskById(state.adminPricingKioskId);
+    state.pricingSaveStatus = selectedKiosk
+      ? `Pricing saved for ${selectedKiosk.name || selectedKiosk.kioskId}.`
+      : "Default pricing saved for all kiosks.";
   } catch (error) {
     state.pricingSaveStatus = `${error.message || "Backend pricing service is offline."} Local kiosk pricing is saved.`;
   }
@@ -6717,10 +8329,7 @@ function syncPricingDraftFromDom() {
   document.querySelectorAll("[data-service-price][data-price-key]").forEach((input) => {
     const serviceId = input.dataset.servicePrice;
     const priceKey = input.dataset.priceKey;
-    state.pricing = normalizePricing(state.pricing);
-    if (state.pricing[serviceId]) {
-      state.pricing[serviceId][priceKey] = numericPrice(input.value, 0);
-    }
+    setPricingRate(serviceId, priceKey, input.value, input.dataset.priceKiosk || state.adminPricingKioskId);
   });
 }
 
@@ -6770,69 +8379,129 @@ function updateServiceField(serviceId, field, value) {
   markServicesDirty("");
 }
 
-function defaultServiceDraft() {
+function defaultServiceDraft(kioskId = "", mode = "upload") {
   const id = `custom-service-${Date.now().toString().slice(-5)}`;
+  const contextKiosk = adminKioskById(kioskId);
+  const projectId = contextKiosk?.projectId || firstAdminServiceProjectId();
+  const normalizedMode = mode === "template" ? "template" : "upload";
 
-  return {
+  const draft = {
     id,
     icon: "SV",
-    title: "New Service",
+    title: normalizedMode === "template" ? "New Form Service" : "New Service",
     titleHi: "",
     titleMr: "",
-    description: "Customer service.",
+    description: normalizedMode === "template" ? "Printable forms for this kiosk." : "Customer service.",
     descriptionHi: "",
     descriptionMr: "",
     defaultPages: 1,
-    mode: "upload",
+    mode: normalizedMode,
     imageUrl: "",
     enabled: true,
-    projectIds: firstAdminServiceProjectId() ? [firstAdminServiceProjectId()] : [],
-    kioskIds: [],
+    projectIds: projectId ? [projectId] : [],
+    kioskIds: contextKiosk ? [normalizeKioskId(contextKiosk.kioskId)] : [],
     customerSettings: { ...DEFAULT_KIOSK_CUSTOMER_SETTINGS },
     printDefaults: { ...DEFAULT_SERVICE_PRINT_DEFAULTS },
     pricing: { bw: 2, color: 10 },
     templates: []
   };
+
+  if (normalizedMode === "template") {
+    draft.templates = [{
+      id: "blank-form",
+      title: "Upload Template Document",
+      description: "Uploaded template document.",
+      pages: 1,
+      paperSize: "Auto",
+      orientation: "portrait",
+      fields: [],
+      imageUrl: "",
+      documentType: "image"
+    }];
+  }
+
+  return draft;
 }
 
-function openServiceEditor(serviceId) {
+function openServiceEditor(serviceId, kioskId = "") {
+  if (!kioskAdminCanManageSetup()) {
+    blockKioskAdminSetupAction();
+    return;
+  }
+
   const service = services.find((item) => item.id === serviceId);
   if (!service) return;
+  const contextKioskId = normalizeKioskId(kioskId || state.adminSelectedServiceKioskId);
 
   state.serviceEditor = {
     mode: "edit",
     originalId: serviceId,
+    kioskId: contextKioskId,
     draft: JSON.parse(JSON.stringify({
       ...service,
       pricing: state.pricing[service.id] || service.pricing || { bw: 0, color: 0 },
       templates: service.templates || []
     }))
   };
-  state.adminPage = "service-editor";
+  state.adminSelectedServiceId = serviceId;
+  state.adminSelectedServiceKioskId = contextKioskId || state.adminSelectedServiceKioskId;
+  state.adminPage = "services";
   state.pricingSaveStatus = "";
   render();
 }
 
-function openCreateServiceEditor() {
+function openCreateServiceEditor(kioskId = "", mode = "upload") {
+  if (!kioskAdminCanManageSetup()) {
+    blockKioskAdminSetupAction();
+    return;
+  }
+
   if (!firstAdminServiceProjectId()) {
     state.pricingSaveStatus = "Ask the super admin to allocate a project before creating services.";
     render();
     return;
   }
 
+  const contextKioskId = normalizeKioskId(kioskId || state.adminSelectedServiceKioskId);
   state.serviceEditor = {
     mode: "create",
     originalId: null,
-    draft: defaultServiceDraft()
+    kioskId: contextKioskId,
+    draft: defaultServiceDraft(contextKioskId, mode)
   };
-  state.adminPage = "service-editor";
+  state.adminSelectedServiceKioskId = contextKioskId || state.adminSelectedServiceKioskId;
+  state.adminPage = "services";
   state.pricingSaveStatus = "";
   render();
 }
 
 function closeServiceEditor() {
+  const contextKioskId = state.serviceEditor?.kioskId || state.adminSelectedServiceKioskId;
   state.serviceEditor = null;
   state.adminPage = "services";
+  state.adminSelectedServiceKioskId = contextKioskId;
+  state.pricingSaveStatus = "";
+  render();
+}
+
+function openKioskServiceModal(kioskId) {
+  const id = normalizeKioskId(kioskId);
+  if (!adminKioskById(id)) {
+    state.pricingSaveStatus = "Kiosk not found.";
+    render();
+    return;
+  }
+
+  state.adminSelectedServiceKioskId = id;
+  state.serviceEditor = null;
+  state.adminPage = "services";
+  state.pricingSaveStatus = "";
+  render();
+}
+
+function closeKioskServiceModal() {
+  state.adminSelectedServiceKioskId = "";
+  state.serviceEditor = null;
   state.pricingSaveStatus = "";
   render();
 }
@@ -6907,6 +8576,11 @@ function updateServiceDraftTemplateField(templateIndex, field, value) {
 }
 
 function addDraftTemplate() {
+  if (!kioskAdminCanManageSetup()) {
+    blockKioskAdminSetupAction();
+    return;
+  }
+
   const editor = state.serviceEditor;
   if (!editor) return;
 
@@ -6929,6 +8603,11 @@ function addDraftTemplate() {
 }
 
 function removeDraftTemplate(templateIndex) {
+  if (!kioskAdminCanManageSetup()) {
+    blockKioskAdminSetupAction();
+    return;
+  }
+
   const editor = state.serviceEditor;
   if (!editor) return;
 
@@ -6939,12 +8618,26 @@ function removeDraftTemplate(templateIndex) {
 async function saveServiceEditor() {
   const editor = state.serviceEditor;
   if (!editor) return;
+  if (!kioskAdminCanManageSetup()) {
+    blockKioskAdminSetupAction();
+    return;
+  }
 
   syncServiceEditorDraftFromDom();
   const normalized = normalizeServicesConfig([editor.draft])[0];
   const assignableProjectIds = new Set(adminServiceAssignableProjects().map((project) => project.projectId));
-  normalized.projectIds = (normalized.projectIds || []).filter((projectId) => assignableProjectIds.has(projectId));
-  normalized.kioskIds = [];
+  const contextKioskId = normalizeKioskId(editor.kioskId || state.adminSelectedServiceKioskId);
+  const contextKiosk = adminKioskById(contextKioskId);
+
+  if (contextKiosk) {
+    const projectId = slug(contextKiosk.projectId || "", "");
+    normalized.projectIds = projectId && assignableProjectIds.has(projectId) ? [projectId] : [];
+    normalized.kioskIds = [normalizeKioskId(contextKiosk.kioskId)];
+  } else {
+    const allowedKioskIds = new Set(state.adminData.kiosks.map((kiosk) => normalizeKioskId(kiosk.kioskId)));
+    normalized.projectIds = (normalized.projectIds || []).filter((projectId) => assignableProjectIds.has(projectId));
+    normalized.kioskIds = (normalized.kioskIds || []).map((item) => normalizeKioskId(item)).filter((kioskId) => allowedKioskIds.has(kioskId));
+  }
 
   if (!normalized.title) {
     state.pricingSaveStatus = "Service name is required.";
@@ -6984,6 +8677,7 @@ async function saveServiceEditor() {
   state.pricing = nextPricing;
   state.serviceEditor = null;
   state.adminSelectedServiceId = normalized.id;
+  state.adminSelectedServiceKioskId = contextKioskId || state.adminSelectedServiceKioskId;
   state.adminPage = "services";
   storeServices();
   storePricing();
@@ -7043,6 +8737,11 @@ function updateServiceTemplateField(serviceId, templateIndex, field, value) {
 }
 
 function addServiceTemplate(serviceId) {
+  if (!kioskAdminCanManageSetup()) {
+    blockKioskAdminSetupAction();
+    return;
+  }
+
   services = services.map((service) => {
     if (service.id !== serviceId) return service;
 
@@ -7073,6 +8772,11 @@ function addServiceTemplate(serviceId) {
 }
 
 function removeServiceTemplate(serviceId, templateIndex) {
+  if (!kioskAdminCanManageSetup()) {
+    blockKioskAdminSetupAction();
+    return;
+  }
+
   services = services.map((service) => {
     if (service.id !== serviceId) return service;
 
@@ -7092,6 +8796,11 @@ function removeServiceTemplate(serviceId, templateIndex) {
 }
 
 async function uploadAdminTemplateImage(file, { serviceId, templateIndex = 0, draft = false } = {}) {
+  if (!kioskAdminCanManageSetup()) {
+    blockKioskAdminSetupAction();
+    return;
+  }
+
   const validationError = validateAdminTemplateDocumentFile(file);
 
   if (validationError) {
@@ -7166,6 +8875,11 @@ async function uploadAdminTemplateImage(file, { serviceId, templateIndex = 0, dr
 }
 
 function addService() {
+  if (!kioskAdminCanManageSetup()) {
+    blockKioskAdminSetupAction();
+    return;
+  }
+
   if (!firstAdminServiceProjectId()) {
     state.pricingSaveStatus = "Ask the super admin to allocate a project before adding services.";
     render();
@@ -7207,6 +8921,11 @@ function addService() {
 }
 
 function removeService(serviceId) {
+  if (!kioskAdminCanManageSetup()) {
+    blockKioskAdminSetupAction();
+    return;
+  }
+
   if (services.length <= 1) {
     state.pricingSaveStatus = "At least one service must remain.";
     render();
@@ -7227,6 +8946,11 @@ function removeService(serviceId) {
 }
 
 async function saveServicesSettings() {
+  if (!kioskAdminCanManageSetup()) {
+    blockKioskAdminSetupAction();
+    return;
+  }
+
   syncInlineServicesDraftFromDom();
   services = normalizeServicesConfig(services);
   state.pricing = normalizePricing(state.pricing);
@@ -7236,7 +8960,7 @@ async function saveServicesSettings() {
     services = services.map((service) =>
       (service.projectIds && service.projectIds.length)
         ? service
-        : { ...service, projectIds: [fallbackProjectId], kioskIds: [] }
+        : { ...service, projectIds: [fallbackProjectId], kioskIds: service.kioskIds || [] }
     );
   }
   storeServices();
@@ -7296,17 +9020,19 @@ function pricingLabel(key) {
 }
 
 function renderProjects() {
+  const canManage = kioskAdminCanManageSetup();
+
   return `
-    ${renderAdminHeader("Project Management", "Create and manage projects for this kiosk admin account.", `<button class="primary-button" data-action="create-project">Create Project</button>`)}
+    ${renderAdminHeader("Project Management", canManage ? "Create and manage projects for this kiosk admin account." : "View projects allocated to this kiosk admin account.", canManage ? `<button class="primary-button" data-action="create-project">Create Project</button>` : "")}
     ${adminNotice()}
     ${state.projectCreateStatus ? `<div class="save-note">${escapeHtml(state.projectCreateStatus)}</div>` : ""}
-    ${renderProjectEditorPanel()}
+    ${canManage ? renderProjectEditorPanel() : ""}
     ${renderProjectManagementTable()}
   `;
 }
 
 function renderProjectEditorPanel() {
-  if (!state.projectEditorOpen) return "";
+  if (!state.projectEditorOpen || !kioskAdminCanManageSetup()) return "";
 
   const draft = state.projectDraft;
   const editing = Boolean(state.projectEditId);
@@ -7347,6 +9073,7 @@ function renderProjectEditorPanel() {
 
 function renderProjectManagementTable() {
   const page = adminPaginated(state.adminData.projects, "projects");
+  const canManage = kioskAdminCanManageSetup();
 
   return `
     <div class="table-wrap">
@@ -7358,7 +9085,7 @@ function renderProjectManagementTable() {
             <th>Status</th>
             <th>Kiosks</th>
             <th>Description</th>
-            <th>Actions</th>
+            ${canManage ? "<th>Actions</th>" : ""}
           </tr>
         </thead>
         <tbody>
@@ -7369,15 +9096,17 @@ function renderProjectManagementTable() {
               <td>${escapeHtml(project.status || "")}</td>
               <td>${escapeHtml(String(state.adminData.kiosks.filter((kiosk) => kiosk.projectId === project.projectId).length))}</td>
               <td>${escapeHtml(project.description || "")}</td>
+              ${canManage ? `
               <td>
                 <div class="table-actions">
                   <button class="secondary-button small-button" data-project-edit="${escapeHtml(project.projectId || "")}">Edit</button>
                   <button class="danger-button small-button" data-project-delete="${escapeHtml(project.projectId || "")}">Delete</button>
                 </div>
               </td>
+              ` : ""}
             </tr>
           `).join("") : `
-            <tr><td colspan="6">No projects are assigned to this account.</td></tr>
+            <tr><td colspan="${canManage ? 6 : 5}">No projects are assigned to this account.</td></tr>
           `}
         </tbody>
       </table>
@@ -7387,6 +9116,11 @@ function renderProjectManagementTable() {
 }
 
 function openCreateProjectEditor() {
+  if (!kioskAdminCanManageSetup()) {
+    blockKioskAdminSetupAction();
+    return;
+  }
+
   const nextNumber = state.adminData.projects.length + 1;
   state.projectDraft = {
     projectId: `project-${String(nextNumber).padStart(2, "0")}`,
@@ -7401,6 +9135,11 @@ function openCreateProjectEditor() {
 }
 
 function openEditProjectEditor(projectId) {
+  if (!kioskAdminCanManageSetup()) {
+    blockKioskAdminSetupAction();
+    return;
+  }
+
   const project = state.adminData.projects.find((item) => item.projectId === projectId);
   if (!project) {
     state.projectCreateStatus = "Project not found.";
@@ -7444,6 +9183,11 @@ function syncProjectDraftFromDom() {
 }
 
 async function saveProjectEditor() {
+  if (!kioskAdminCanManageSetup()) {
+    blockKioskAdminSetupAction();
+    return;
+  }
+
   syncProjectDraftFromDom();
   const draft = { ...state.projectDraft };
 
@@ -7485,6 +9229,11 @@ async function saveProjectEditor() {
 }
 
 async function deleteProject(projectId) {
+  if (!kioskAdminCanManageSetup()) {
+    blockKioskAdminSetupAction();
+    return;
+  }
+
   if (!projectId) return;
   if (!window.confirm(`Delete project ${projectId}? Kiosks under this project will also be removed.`)) return;
 
@@ -7513,17 +9262,19 @@ async function deleteProject(projectId) {
 }
 
 function renderKiosks() {
+  const canManage = kioskAdminCanManageSetup();
+
   return `
-    ${renderAdminHeader("Kiosk Management", "Create and manage kiosks inside your allocated projects.", `<button class="primary-button" data-action="create-kiosk">Create Kiosk</button>`)}
+    ${renderAdminHeader("Kiosk Management", canManage ? "Create and manage kiosks inside your allocated projects." : "View kiosks inside your allocated projects.", canManage ? `<button class="primary-button" data-action="create-kiosk">Create Kiosk</button>` : "")}
     ${adminNotice()}
     ${state.kioskCreateStatus ? `<div class="save-note">${escapeHtml(state.kioskCreateStatus)}</div>` : ""}
-    ${renderKioskEditorPanel()}
+    ${canManage ? renderKioskEditorPanel() : ""}
     ${renderKioskManagementTable()}
   `;
 }
 
 function renderKioskEditorPanel() {
-  if (!state.kioskEditorOpen) return "";
+  if (!state.kioskEditorOpen || !kioskAdminCanManageSetup()) return "";
 
   const draft = state.kioskCreate;
   const editing = Boolean(state.kioskEditId);
@@ -7568,6 +9319,7 @@ function renderKioskEditorPanel() {
 function renderKioskManagementTable() {
   const page = adminPaginated(state.adminData.kiosks, "kiosks");
   const kiosks = page.items;
+  const canManage = kioskAdminCanManageSetup();
 
   return `
     <div class="table-wrap">
@@ -7582,7 +9334,7 @@ function renderKioskManagementTable() {
             <th>Activation</th>
             <th>Setup Code</th>
             <th>Last Online</th>
-            <th>Actions</th>
+            ${canManage ? "<th>Actions</th>" : ""}
           </tr>
         </thead>
         <tbody>
@@ -7596,15 +9348,17 @@ function renderKioskManagementTable() {
               <td>${escapeHtml(kiosk.activatedAt ? "Activated" : "Not activated")}</td>
               <td>${escapeHtml(kiosk.setupCode || "")}</td>
               <td>${escapeHtml(kiosk.lastOnline ? formatDateTime(kiosk.lastOnline) : "")}</td>
+              ${canManage ? `
               <td>
                 <div class="table-actions">
                   <button class="secondary-button small-button" data-kiosk-edit="${escapeHtml(kiosk.kioskId || "")}">Edit</button>
                   <button class="danger-button small-button" data-kiosk-delete="${escapeHtml(kiosk.kioskId || "")}">Delete</button>
                 </div>
               </td>
+              ` : ""}
             </tr>
           `).join("") : `
-            <tr><td colspan="9">No kiosks are assigned to this account.</td></tr>
+            <tr><td colspan="${canManage ? 9 : 8}">No kiosks are assigned to this account.</td></tr>
           `}
         </tbody>
       </table>
@@ -7614,10 +9368,15 @@ function renderKioskManagementTable() {
 }
 
 function randomKioskSetupCode() {
-  return Math.random().toString(36).slice(2, 8).toUpperCase();
+  return uniqueAdminSetupCode(state.kioskEditId || "");
 }
 
 function openCreateKioskEditor() {
+  if (!kioskAdminCanManageSetup()) {
+    blockKioskAdminSetupAction();
+    return;
+  }
+
   const project = state.adminData.projects[0];
   if (!project) {
     state.kioskCreateStatus = "No assigned projects found. Ask the super admin to allocate a project first.";
@@ -7625,13 +9384,14 @@ function openCreateKioskEditor() {
     return;
   }
 
-  const nextNumber = state.adminData.kiosks.length + 1;
+  const kioskId = nextAdminKioskId();
+  const nextNumber = Number(/^KIOSK-(\d+)$/i.exec(kioskId)?.[1]) || state.adminData.kiosks.length + 1;
   state.kioskCreate = {
-    kioskId: `KIOSK-${String(nextNumber).padStart(2, "0")}`,
+    kioskId,
     name: `Kiosk ${nextNumber}`,
     projectId: project.projectId,
     branch: "",
-    setupCode: randomKioskSetupCode()
+    setupCode: uniqueAdminSetupCode()
   };
   state.kioskEditId = "";
   state.kioskEditorOpen = true;
@@ -7640,6 +9400,11 @@ function openCreateKioskEditor() {
 }
 
 function openEditKioskEditor(kioskId) {
+  if (!kioskAdminCanManageSetup()) {
+    blockKioskAdminSetupAction();
+    return;
+  }
+
   const kiosk = state.adminData.kiosks.find((item) => String(item.kioskId || "").toUpperCase() === String(kioskId || "").toUpperCase());
   if (!kiosk) {
     state.kioskCreateStatus = "Kiosk not found.";
@@ -7652,7 +9417,7 @@ function openEditKioskEditor(kioskId) {
     name: kiosk.name || "",
     projectId: kiosk.projectId || state.adminData.projects[0]?.projectId || "",
     branch: kiosk.branch || "",
-    setupCode: kiosk.setupCode || randomKioskSetupCode()
+    setupCode: kiosk.setupCode || uniqueAdminSetupCode(kiosk.kioskId || "")
   };
   state.kioskEditId = kiosk.kioskId || "";
   state.kioskEditorOpen = true;
@@ -7669,9 +9434,9 @@ function closeKioskEditor() {
 
 function updateKioskDraftField(field, value) {
   if (field === "kioskId") {
-    state.kioskCreate.kioskId = String(value || "").trim().toUpperCase();
+    state.kioskCreate.kioskId = normalizeKioskCode(value);
   } else if (field === "setupCode") {
-    state.kioskCreate.setupCode = String(value || "").trim().toUpperCase();
+    state.kioskCreate.setupCode = normalizeKioskCode(value, 16);
   } else if (field === "projectId") {
     state.kioskCreate.projectId = slug(value, "");
   } else if (["name", "branch"].includes(field)) {
@@ -7686,11 +9451,40 @@ function syncKioskDraftFromDom() {
 }
 
 async function saveKioskEditor() {
+  if (!kioskAdminCanManageSetup()) {
+    blockKioskAdminSetupAction();
+    return;
+  }
+
   syncKioskDraftFromDom();
-  const draft = { ...state.kioskCreate };
+  const editing = Boolean(state.kioskEditId);
+  const draft = {
+    ...state.kioskCreate,
+    kioskId: normalizeKioskCode(state.kioskCreate.kioskId),
+    setupCode: normalizeKioskCode(state.kioskCreate.setupCode, 16)
+  };
+  const originalKioskId = normalizeKioskCode(state.kioskEditId || "");
 
   if (!draft.kioskId) {
     state.kioskCreateStatus = "Enter a kiosk ID.";
+    render();
+    return;
+  }
+
+  if (adminKioskIdExists(draft.kioskId, originalKioskId)) {
+    state.kioskCreateStatus = "Kiosk ID already exists. Use a unique kiosk ID.";
+    render();
+    return;
+  }
+
+  if (!draft.setupCode) {
+    state.kioskCreateStatus = "Enter a Mini PC setup code.";
+    render();
+    return;
+  }
+
+  if (adminSetupCodeExists(draft.setupCode, originalKioskId)) {
+    state.kioskCreateStatus = "Mini PC setup code already exists. Generate a new setup code.";
     render();
     return;
   }
@@ -7705,7 +9499,6 @@ async function saveKioskEditor() {
   render();
 
   try {
-    const editing = Boolean(state.kioskEditId);
     const path = editing
       ? `/api/admin/kiosks/${encodeURIComponent(state.kioskEditId)}`
       : "/api/admin/kiosks";
@@ -7727,6 +9520,11 @@ async function saveKioskEditor() {
 }
 
 async function deleteKiosk(kioskId) {
+  if (!kioskAdminCanManageSetup()) {
+    blockKioskAdminSetupAction();
+    return;
+  }
+
   if (!kioskId) return;
   if (!window.confirm(`Delete kiosk ${kioskId}?`)) return;
 
@@ -7855,6 +9653,7 @@ function bindEvents() {
   app.onclick = handleClick;
   app.onchange = handleChange;
   app.oninput = handleInput;
+  bindCustomerInactivityEvents();
 }
 
 function syncAdminLoginDraftFromDom() {
@@ -7909,12 +9708,20 @@ async function adminLogin() {
 }
 
 async function handleClick(event) {
-  const target = event.target.closest("button, [data-template], [data-service], [data-action]");
+  const target = event.target.closest("button, [data-template], [data-service], [data-action], [data-template-search-input]");
   if (!target) {
     return;
   }
 
   if (target.disabled) {
+    return;
+  }
+
+  if (target.dataset.customerLanguageButton !== undefined) {
+    const nextLanguage = target.dataset.customerLanguageButton;
+    state.customerLanguage = CUSTOMER_LANGUAGES.has(nextLanguage) ? nextLanguage : "en";
+    storeCustomerLanguage();
+    render();
     return;
   }
 
@@ -7975,6 +9782,8 @@ async function handleClick(event) {
     state.adminPage = target.dataset.adminPage;
     state.adminNavOpen = false;
     state.serviceEditor = null;
+    state.adminSelectedServiceKioskId = "";
+    state.adminPermissionStatus = "";
     render();
     if (!(TEST_HOOKS_ENABLED && state.adminToken === "ui-test-session")) {
       loadAdminData();
@@ -7982,8 +9791,35 @@ async function handleClick(event) {
     return;
   }
 
+  if (target.dataset.kioskServicesOpen) {
+    openKioskServiceModal(target.dataset.kioskServicesOpen);
+    return;
+  }
+
+  if (target.dataset.kioskAddService) {
+    if (!kioskAdminCanManageSetup()) {
+      blockKioskAdminSetupAction();
+      return;
+    }
+    openCreateServiceEditor(target.dataset.kioskAddService, "upload");
+    return;
+  }
+
+  if (target.dataset.kioskAddForms) {
+    if (!kioskAdminCanManageSetup()) {
+      blockKioskAdminSetupAction();
+      return;
+    }
+    openCreateServiceEditor(target.dataset.kioskAddForms, "template");
+    return;
+  }
+
   if (target.dataset.serviceEdit) {
-    openServiceEditor(target.dataset.serviceEdit);
+    if (!kioskAdminCanManageSetup()) {
+      blockKioskAdminSetupAction();
+      return;
+    }
+    openServiceEditor(target.dataset.serviceEdit, target.dataset.kioskId || state.adminSelectedServiceKioskId);
     return;
   }
 
@@ -7994,46 +9830,82 @@ async function handleClick(event) {
   }
 
   if (target.dataset.serviceDelete) {
+    if (!kioskAdminCanManageSetup()) {
+      blockKioskAdminSetupAction();
+      return;
+    }
     removeService(target.dataset.serviceDelete);
     return;
   }
 
   if (target.dataset.projectEdit) {
+    if (!kioskAdminCanManageSetup()) {
+      blockKioskAdminSetupAction();
+      return;
+    }
     openEditProjectEditor(target.dataset.projectEdit);
     return;
   }
 
   if (target.dataset.projectDelete) {
+    if (!kioskAdminCanManageSetup()) {
+      blockKioskAdminSetupAction();
+      return;
+    }
     deleteProject(target.dataset.projectDelete);
     return;
   }
 
   if (target.dataset.kioskEdit) {
+    if (!kioskAdminCanManageSetup()) {
+      blockKioskAdminSetupAction();
+      return;
+    }
     openEditKioskEditor(target.dataset.kioskEdit);
     return;
   }
 
   if (target.dataset.kioskDelete) {
+    if (!kioskAdminCanManageSetup()) {
+      blockKioskAdminSetupAction();
+      return;
+    }
     deleteKiosk(target.dataset.kioskDelete);
     return;
   }
 
   if (target.dataset.draftTemplateAdd !== undefined) {
+    if (!kioskAdminCanManageSetup()) {
+      blockKioskAdminSetupAction();
+      return;
+    }
     addDraftTemplate();
     return;
   }
 
   if (target.dataset.draftTemplateDelete !== undefined) {
+    if (!kioskAdminCanManageSetup()) {
+      blockKioskAdminSetupAction();
+      return;
+    }
     removeDraftTemplate(Number(target.dataset.draftTemplateDelete || 0));
     return;
   }
 
   if (target.dataset.templateAdd) {
+    if (!kioskAdminCanManageSetup()) {
+      blockKioskAdminSetupAction();
+      return;
+    }
     addServiceTemplate(target.dataset.templateAdd);
     return;
   }
 
   if (target.dataset.templateDelete) {
+    if (!kioskAdminCanManageSetup()) {
+      blockKioskAdminSetupAction();
+      return;
+    }
     removeServiceTemplate(target.dataset.templateDelete, Number(target.dataset.templateIndex || 0));
     return;
   }
@@ -8048,6 +9920,11 @@ async function handleClick(event) {
     if (target.dataset.setting === "colorMode" && !customerSettingEnabled(target.dataset.value)) {
       return;
     }
+    if (target.dataset.setting === "sides") {
+      if (!customerSettingEnabled("sides") || (target.dataset.value === "duplex" && state.printer?.supportsDuplex === false)) {
+        return;
+      }
+    }
     state.settings[target.dataset.setting] = target.dataset.value;
     state.settingsCustomized = true;
     render();
@@ -8057,6 +9934,7 @@ async function handleClick(event) {
   if (target.dataset.previewFileIndex !== undefined) {
     state.previewFileIndex = Math.max(0, Math.min(jobFiles().length - 1, Number(target.dataset.previewFileIndex) || 0));
     state.previewZoom = 1;
+    state.previewPage = 1;
     render();
     return;
   }
@@ -8109,12 +9987,20 @@ async function handleClick(event) {
       state.templateSearchKeyboardActive = false;
       render();
       return;
+    } else if (target.dataset.templateSearchAction === "go") {
+      state.templateSearchKeyboardActive = false;
+      render();
+      return;
+    } else if (target.dataset.templateSearchAction === "clear") {
+      state.templateSearchQuery = "";
+      state.templatePage = 1;
+      state.templateSearchKeyboardActive = false;
+      render();
+      return;
     } else if (target.dataset.templateSearchAction === "space") {
       next = current.endsWith(" ") || !current ? current : `${current} `;
     } else if (target.dataset.templateSearchAction === "backspace") {
       next = current.slice(0, -1);
-    } else if (target.dataset.templateSearchAction === "clear") {
-      next = "";
     }
 
     setTemplateSearchQuery(next);
@@ -8123,6 +10009,22 @@ async function handleClick(event) {
 
   if (target.dataset.templateSearchInput !== undefined) {
     activateTemplateSearchKeyboard();
+    return;
+  }
+
+  const setupMutationActions = new Set([
+    "save-pricing",
+    "save-services",
+    "add-service",
+    "create-project",
+    "save-project-editor",
+    "create-kiosk",
+    "save-kiosk-editor",
+    "save-service-editor"
+  ]);
+
+  if (target.dataset.action && setupMutationActions.has(target.dataset.action) && !kioskAdminCanManageSetup()) {
+    blockKioskAdminSetupAction();
     return;
   }
 
@@ -8145,6 +10047,9 @@ async function handleClick(event) {
       break;
     case "refresh-admin":
       loadAdminData();
+      break;
+    case "close-kiosk-service-modal":
+      closeKioskServiceModal();
       break;
     case "admin-logout":
       state.adminAuthed = false;
@@ -8191,13 +10096,27 @@ async function handleClick(event) {
       goToNextStep();
       break;
     case "zoom-in":
-      state.previewZoom = Math.min(1.2, state.previewZoom + 0.1);
+      state.previewZoom = Number(Math.min(2, Number(state.previewZoom || 1) + 0.15).toFixed(2));
       render();
       break;
     case "zoom-out":
+      state.previewZoom = Number(Math.max(0.6, Number(state.previewZoom || 1) - 0.15).toFixed(2));
+      render();
+      break;
+    case "fit-preview":
       state.previewZoom = 1;
       render();
       break;
+    case "prev-preview-page":
+      state.previewPage = Math.max(1, Number(state.previewPage || 1) - 1);
+      render();
+      break;
+    case "next-preview-page": {
+      const pages = Math.max(1, Number(activePreviewFile()?.pages) || 1);
+      state.previewPage = Math.min(pages, Number(state.previewPage || 1) + 1);
+      render();
+      break;
+    }
     case "delete-file":
       clearCurrentFile();
       state.step = 1;
@@ -8251,7 +10170,7 @@ async function handleClick(event) {
       saveServicesSettings();
       break;
     case "add-service":
-      openCreateServiceEditor();
+      openCreateServiceEditor(state.adminSelectedServiceKioskId, "upload");
       break;
     case "create-project":
       openCreateProjectEditor();
@@ -8285,6 +10204,14 @@ async function handleClick(event) {
 async function handleChange(event) {
   const target = event.target;
 
+  if (!kioskAdminCanManageSetup() && isKioskAdminSetupMutationInput(target)) {
+    blockKioskAdminSetupAction();
+    if (target.type === "file") {
+      target.value = "";
+    }
+    return;
+  }
+
   if (target.dataset.customerLanguage !== undefined) {
     state.customerLanguage = CUSTOMER_LANGUAGES.has(target.value) ? target.value : "en";
     storeCustomerLanguage();
@@ -8314,6 +10241,14 @@ async function handleChange(event) {
 
   if (target.dataset.adminServiceSelect !== undefined) {
     state.adminSelectedServiceId = target.value;
+    render();
+    return;
+  }
+
+  if (target.dataset.adminPricingKiosk !== undefined) {
+    const value = target.value === "__default" ? "__default" : normalizeKioskId(target.value);
+    state.adminPricingKioskId = value || "__default";
+    state.pricingSaveStatus = "";
     render();
     return;
   }
@@ -8453,6 +10388,11 @@ async function handleChange(event) {
 function handleInput(event) {
   const target = event.target;
 
+  if (!kioskAdminCanManageSetup() && isKioskAdminSetupMutationInput(target)) {
+    blockKioskAdminSetupAction();
+    return;
+  }
+
   if (target.dataset.templateSearchInput !== undefined) {
     setTemplateSearchQuery(target.value);
     return;
@@ -8484,14 +10424,8 @@ function handleInput(event) {
   }
 
   if (target.dataset.servicePrice && target.dataset.priceKey) {
-    const serviceId = target.dataset.servicePrice;
-
-    state.pricing = normalizePricing(state.pricing);
-
-    if (state.pricing[serviceId]) {
-      state.pricing[serviceId][target.dataset.priceKey] = numericPrice(target.value, 0);
-      state.pricingSaveStatus = "";
-    }
+    setPricingRate(target.dataset.servicePrice, target.dataset.priceKey, target.value, target.dataset.priceKiosk || state.adminPricingKioskId);
+    state.pricingSaveStatus = "";
   }
 
   if (target.dataset.serviceField && target.dataset.field) {
@@ -8548,7 +10482,7 @@ function startReceiptRedirect() {
     state.thankYouPhase = "printing";
     const stage = document.querySelector(".thankyou-stage");
     if (stage) {
-      stage.classList.remove("tq-phase-payment");
+      stage.classList.remove("tq-phase-payment", "tq-phase-payment_done", "tq-phase-thankyou");
       stage.classList.add("tq-phase-printing");
       // Update phase content via DOM
       const phaseEl = document.getElementById("tq-phase-content");
@@ -8563,7 +10497,7 @@ function startReceiptRedirect() {
       state.thankYouPhase = "thankyou";
       const stage2 = document.querySelector(".thankyou-stage");
       if (stage2) {
-        stage2.classList.remove("tq-phase-printing");
+        stage2.classList.remove("tq-phase-payment", "tq-phase-payment_done", "tq-phase-printing");
         stage2.classList.add("tq-phase-thankyou");
         const phaseEl2 = document.getElementById("tq-phase-content");
         if (phaseEl2) phaseEl2.innerHTML = renderThankYouFinal();
@@ -8627,6 +10561,7 @@ function resetCustomer() {
   stopUploadPolling();
   stopPaymentPolling();
   stopReceiptRedirect();
+  stopCustomerInactivityTimer();
   state.mode = "customer";
   setPrivacyPolicyVisible(false);
   state.step = 0;
@@ -8636,7 +10571,9 @@ function resetCustomer() {
   clearCurrentFile();
   state.uploadSession = null;
   state.previewZoom = 1;
+  state.previewActivityArea = "document";
   state.previewFileIndex = 0;
+  state.previewPage = 1;
   state.settings = {
     colorMode: "bw",
     copies: 1,

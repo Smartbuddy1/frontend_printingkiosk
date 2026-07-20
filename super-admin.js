@@ -8,7 +8,6 @@ const DEFAULT_KIOSK_CUSTOMER_SETTINGS = Object.freeze({
   bw: true,
   color: true,
   copies: true,
-  paperSize: true,
   sides: true,
   orientation: true,
   pageRange: true
@@ -17,7 +16,6 @@ const KIOSK_CUSTOMER_SETTING_FIELDS = [
   ["bw", "B/W printing"],
   ["color", "Color printing"],
   ["copies", "Copies"],
-  ["paperSize", "Paper size"],
   ["sides", "Single / both sides"],
   ["orientation", "Orientation"],
   ["pageRange", "Page range"]
@@ -117,7 +115,10 @@ const collections = {
       { key: "name", label: "Name", required: true },
       { key: "email", label: "Email", required: true },
       { key: "password", label: "Password" },
-      { key: "status", label: "Status", type: "select", options: ["active", "disabled"] }
+      { key: "status", label: "Status", type: "select", options: ["active", "disabled"] },
+      { key: "logoUrl", label: "Client logo for kiosk header", type: "image-upload", helper: "Upload a PNG, JPG, GIF, or WebP logo. This logo appears on every kiosk screen under this client." },
+      { key: "kioskTitle", label: "Kiosk heading title" },
+      { key: "kioskSubtitle", label: "Kiosk heading description" }
     ],
     defaults: () => ({
       adminId: `admin-${Date.now().toString().slice(-5)}`,
@@ -125,6 +126,9 @@ const collections = {
       email: "",
       password: "",
       status: "active",
+      logoUrl: "",
+      kioskTitle: "",
+      kioskSubtitle: "Printing Kiosk",
       projectIds: []
     })
   },
@@ -141,8 +145,8 @@ const collections = {
       { key: "branch", label: "Branch", required: true }
     ],
     defaults: () => ({
-      kioskId: `KIOSK-${Date.now().toString().slice(-5)}`,
-      setupCode: generateSetupCode(),
+      kioskId: nextUniqueKioskId(),
+      setupCode: uniqueSetupCode(),
       name: "New Kiosk",
       projectId: state.snapshot?.data?.projects?.[0]?.projectId || "",
       branch: "Unassigned Branch",
@@ -190,7 +194,6 @@ const collections = {
       { key: "pageCount", label: "Pages", type: "number" },
       { key: "copies", label: "Copies", type: "number" },
       { key: "colorMode", label: "Color Mode", type: "select", options: ["bw", "color"] },
-      { key: "paperSize", label: "Paper Size", type: "select", options: ["A4", "A3", "Letter"] },
       { key: "amount", label: "Amount", type: "number" },
       { key: "paymentStatus", label: "Payment Status" },
       { key: "printStatus", label: "Print Status" }
@@ -401,6 +404,52 @@ function generateSetupCode() {
   return Array.from(bytes, (byte) => alphabet[byte % alphabet.length]).join("");
 }
 
+function kioskIdExists(kioskId = "", ignoreKioskId = "") {
+  const normalized = normalizeKioskCode(kioskId);
+  const ignored = normalizeKioskCode(ignoreKioskId);
+  if (!normalized) return false;
+  return data("kiosks").some((kiosk) => {
+    const existingId = normalizeKioskCode(kiosk.kioskId);
+    return existingId === normalized && existingId !== ignored;
+  });
+}
+
+function setupCodeExists(setupCode = "", ignoreKioskId = "") {
+  const normalized = normalizeKioskCode(setupCode);
+  const ignored = normalizeKioskCode(ignoreKioskId);
+  if (!normalized) return false;
+  return data("kiosks").some((kiosk) => {
+    const existingId = normalizeKioskCode(kiosk.kioskId);
+    return existingId !== ignored && normalizeKioskCode(kiosk.setupCode) === normalized;
+  });
+}
+
+function nextUniqueKioskId() {
+  const used = new Set(data("kiosks").map((kiosk) => normalizeKioskCode(kiosk.kioskId)).filter(Boolean));
+  const numericSuffixes = [...used]
+    .map((kioskId) => /^KIOSK-(\d+)$/i.exec(kioskId)?.[1])
+    .filter(Boolean)
+    .map((value) => Number(value))
+    .filter(Number.isFinite);
+  let nextNumber = numericSuffixes.length ? Math.max(...numericSuffixes) + 1 : used.size + 1;
+
+  for (let attempt = 0; attempt < 10000; attempt += 1) {
+    const candidate = `KIOSK-${String(nextNumber + attempt).padStart(2, "0")}`;
+    if (!used.has(candidate)) return candidate;
+  }
+
+  return `KIOSK-${Date.now().toString().slice(-8)}`;
+}
+
+function uniqueSetupCode(ignoreKioskId = "") {
+  for (let attempt = 0; attempt < 100; attempt += 1) {
+    const candidate = generateSetupCode();
+    if (!setupCodeExists(candidate, ignoreKioskId)) return candidate;
+  }
+
+  return Math.random().toString(36).slice(2, 10).toUpperCase();
+}
+
 function normalizeKioskCustomerSettings(settings = {}) {
   const source = {
     ...DEFAULT_KIOSK_CUSTOMER_SETTINGS,
@@ -422,7 +471,7 @@ function normalizeServicePrintDefaults(defaults = {}) {
   return {
     colorMode: source.colorMode === "color" ? "color" : "bw",
     copies: Math.max(1, Math.min(99, Number(source.copies || 1))),
-    paperSize: ["A4", "A3", "Letter", "Legal"].includes(source.paperSize) ? source.paperSize : "A4",
+    paperSize: "A4",
     sides: source.sides === "duplex" ? "duplex" : "single",
     orientation: source.orientation === "landscape" ? "landscape" : "portrait",
     range: String(source.range || "all").trim() || "all"
@@ -1750,6 +1799,21 @@ function renderKioskCustomerSettingsEditor(draft) {
 function renderField(field, draft, disabled = false) {
   const value = draft[field.key] ?? "";
 
+  if (field.type === "image-upload") {
+    return `
+      <label class="setting-field service-image-field client-logo-field">${escapeHtml(field.label)}
+        <div class="admin-image-row client-logo-upload-row">
+          ${renderEditorImagePreview(value, draft.name || "CL")}
+          <div class="admin-image-controls">
+            <input type="file" accept="image/png,image/jpeg,image/gif,image/webp" data-client-logo-upload ${disabled ? "disabled" : ""} />
+            <input type="url" value="${escapeHtml(value)}" data-editor-field="${escapeHtml(field.key)}" placeholder="Logo URL after upload" ${disabled ? "disabled" : ""} />
+            ${field.helper ? `<small>${escapeHtml(field.helper)}</small>` : ""}
+          </div>
+        </div>
+      </label>
+    `;
+  }
+
   if (field.type === "select-data") {
     const options = data(field.collection);
     return `
@@ -2259,6 +2323,12 @@ async function handleInput(event) {
     return;
   }
 
+  if (target.dataset.clientLogoUpload !== undefined && target.files?.length) {
+    await uploadSuperAdminClientLogo(target.files[0]);
+    target.value = "";
+    return;
+  }
+
   if (target.dataset.editorField) {
     updateDraftField(target.dataset.editorField, target.value);
     return;
@@ -2654,6 +2724,47 @@ function validateEditorImageFile(file) {
   return "";
 }
 
+function validateClientLogoFile(file) {
+  if (!file) return "Choose a client logo image.";
+  const isImage = file.type.startsWith("image/") || /\.(png|jpe?g|gif|webp)$/i.test(file.name);
+  if (!isImage) return "Choose a PNG, JPG, GIF, or WebP logo.";
+  if (file.size > 4 * 1024 * 1024) return "Client logo must be 4 MB or smaller.";
+  return "";
+}
+
+async function uploadSuperAdminClientLogo(file) {
+  if (!state.editor || state.editor.collection !== "kioskAdmins") return;
+
+  const validationError = validateClientLogoFile(file);
+  if (validationError) {
+    state.error = validationError;
+    render();
+    return;
+  }
+
+  state.notice = "Uploading client logo...";
+  state.error = "";
+  render();
+
+  try {
+    const formData = new FormData();
+    formData.append("clientLogo", file, file.name);
+    const payload = await fetchJson("/api/super-admin/client-logo", {
+      method: "POST",
+      body: formData
+    });
+
+    state.editor.draft.logoUrl = payload.imageUrl || "";
+    state.notice = payload.storage === "s3"
+      ? "Client logo uploaded to S3. Save Client to publish it."
+      : "Client logo uploaded. Save Client to publish it.";
+  } catch (error) {
+    state.error = error.message || "Client logo upload failed.";
+  }
+
+  render();
+}
+
 async function uploadSuperAdminTemplateImage(file, templateIndex) {
   if (!state.editor || state.editor.collection !== "services") return;
 
@@ -2729,12 +2840,15 @@ function editorPayload() {
     draft.adminId = slug(draft.adminId || draft.email || draft.name, "kiosk-admin");
     draft.email = String(draft.email || "").trim().toLowerCase();
     draft.status = draft.status === "disabled" ? "disabled" : "active";
+    draft.logoUrl = String(draft.logoUrl || "").trim();
+    draft.kioskTitle = String(draft.kioskTitle || "").trim();
+    draft.kioskSubtitle = String(draft.kioskSubtitle || "").trim();
     draft.projectIds = Array.isArray(draft.projectIds)
       ? draft.projectIds.map((item) => slug(item, "")).filter(Boolean)
       : String(draft.projectIds || "").split(",").map((item) => slug(item, "")).filter(Boolean);
     draft.kioskIds = Array.isArray(draft.kioskIds)
-      ? draft.kioskIds.map((item) => String(item || "").trim().toUpperCase()).filter(Boolean)
-      : String(draft.kioskIds || "").split(",").map((item) => item.trim().toUpperCase()).filter(Boolean);
+      ? draft.kioskIds.map((item) => normalizeKioskCode(item)).filter(Boolean)
+      : String(draft.kioskIds || "").split(",").map((item) => normalizeKioskCode(item)).filter(Boolean);
   }
 
   if (state.editor.collection === "projects") {
@@ -2743,8 +2857,9 @@ function editorPayload() {
   }
 
   if (state.editor.collection === "kiosks") {
-    draft.kioskId = normalizeKioskCode(draft.kioskId || `KIOSK-${Date.now().toString().slice(-5)}`);
-    draft.setupCode = normalizeKioskCode(draft.setupCode || generateSetupCode());
+    const ignoreKioskId = state.editor.mode === "edit" ? state.editor.id : "";
+    draft.kioskId = normalizeKioskCode(draft.kioskId) || nextUniqueKioskId();
+    draft.setupCode = normalizeKioskCode(draft.setupCode) || uniqueSetupCode(ignoreKioskId || draft.kioskId);
     draft.customerSettings = normalizeKioskCustomerSettings(draft.customerSettings);
   }
 
@@ -2779,6 +2894,33 @@ async function saveEditor() {
     return;
   }
   const payload = editorPayload();
+  if (collection === "kiosks") {
+    const ignoreKioskId = mode === "edit" ? id : "";
+
+    if (!payload.kioskId) {
+      state.error = "Kiosk ID is required.";
+      render();
+      return;
+    }
+
+    if (kioskIdExists(payload.kioskId, ignoreKioskId)) {
+      state.error = "Kiosk ID already exists. Use a unique kiosk ID.";
+      render();
+      return;
+    }
+
+    if (!payload.setupCode) {
+      state.error = "Mini PC setup code is required.";
+      render();
+      return;
+    }
+
+    if (setupCodeExists(payload.setupCode, ignoreKioskId)) {
+      state.error = "Mini PC setup code already exists. Generate a new setup code.";
+      render();
+      return;
+    }
+  }
   if (collection === "services" && !payload.projectIds.length) {
     state.error = "Select at least one assigned project for this service.";
     render();

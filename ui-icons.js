@@ -21,6 +21,8 @@
     menu: '<path d="M4 6h16M4 12h16M4 18h16"/>',
     close: '<path d="m6 6 12 12M18 6 6 18"/>',
     support: '<circle cx="12" cy="12" r="9"/><path d="M8.5 9a3.5 3.5 0 1 1 5.8 2.6c-1.5 1.2-2.3 1.7-2.3 3.4M12 18h.01"/>',
+    headset: '<path d="M4 13a8 8 0 0 1 16 0"/><path d="M4 13v3a2 2 0 0 0 2 2h1v-7H6a2 2 0 0 0-2 2Z"/><path d="M20 13v3a2 2 0 0 1-2 2h-1v-7h1a2 2 0 0 1 2 2Z"/><path d="M17 18a5 5 0 0 1-5 3h-2"/>',
+    search: '<circle cx="11" cy="11" r="7"/><path d="m20 20-4.3-4.3"/>',
     printer: '<path d="M6 9V3h12v6M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2"/><rect x="6" y="14" width="12" height="7"/><path d="M18 12h.01"/>',
     upload: '<path d="M12 16V5"/><path d="m8 9 4-4 4 4"/><path d="M4 16v2a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-2"/>',
     alert: '<path d="M10.3 3.6 2.6 17a2 2 0 0 0 1.7 3h15.4a2 2 0 0 0 1.7-3L13.7 3.6a2 2 0 0 0-3.4 0Z"/><path d="M12 9v4M12 17h.01"/>',
