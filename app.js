@@ -40,6 +40,7 @@ const UNASSIGNED_KIOSK_ID = "UNASSIGNED-KIOSK";
 const ADMIN_SESSION_KEY = "printingKioskAdminSession";
 const ADMIN_LANGUAGE_KEY = "printingKioskAdminLanguage";
 const CUSTOMER_LANGUAGE_KEY = "printingKioskCustomerLanguage";
+const SERVICES_CACHE_KEY = "kioskServices";
 const ADMIN_LANGUAGES = new Set(["en", "hi", "mr"]);
 const CUSTOMER_LANGUAGES = ADMIN_LANGUAGES;
 const CUSTOMER_LANGUAGE_OPTIONS = [
@@ -2964,15 +2965,37 @@ function setPricingRate(serviceId, priceKey, value, kioskId = "") {
 
 function readStoredServices() {
   try {
-    return normalizeServicesConfig(JSON.parse(window.localStorage.getItem("kioskServices") || "null"));
+    const scopedKey = servicesCacheKey();
+    const scopedServices = window.localStorage.getItem(scopedKey);
+    if (scopedServices) {
+      return normalizeServicesConfig(JSON.parse(scopedServices));
+    }
+
+    if (!isAdminEntry && !DEMO_KIOSK_MODE && KIOSK_ID !== "LOCAL-KIOSK") {
+      return [];
+    }
+
+    return normalizeServicesConfig(JSON.parse(window.localStorage.getItem(SERVICES_CACHE_KEY) || "null"));
   } catch {
-    return normalizeServicesConfig(services);
+    return isAdminEntry || DEMO_KIOSK_MODE || KIOSK_ID === "LOCAL-KIOSK"
+      ? normalizeServicesConfig(services)
+      : [];
   }
+}
+
+function servicesCacheKey() {
+  const kioskId = normalizeKioskId(KIOSK_ID);
+  return kioskId && kioskId !== UNASSIGNED_KIOSK_ID
+    ? `${SERVICES_CACHE_KEY}:${kioskId}`
+    : SERVICES_CACHE_KEY;
 }
 
 function storeServices() {
   try {
-    window.localStorage.setItem("kioskServices", JSON.stringify(services));
+    window.localStorage.setItem(servicesCacheKey(), JSON.stringify(services));
+    if (isAdminEntry || DEMO_KIOSK_MODE || KIOSK_ID === "LOCAL-KIOSK") {
+      window.localStorage.setItem(SERVICES_CACHE_KEY, JSON.stringify(services));
+    }
   } catch {
     // Local storage can be unavailable in hardened kiosk shells.
   }
@@ -4228,7 +4251,7 @@ function applyServiceConfig(payload, { rerender = true, source = "backend" } = {
   const incomingSignature = serviceConfigSignature(payload.services, payload.pricing || state.pricing);
   const currentSignature = serviceConfigSignature(services, state.pricing);
   const hasDifferentServices = incomingSignature !== currentSignature;
-  const shouldApply = hasNewVersion || hasDifferentServices || source === "manual" || !state.configVersion;
+  const shouldApply = source === "backend" || source === "manual" || hasNewVersion || hasDifferentServices || !state.configVersion;
 
   if (!shouldApply && source !== "admin") {
     return false;
@@ -5702,12 +5725,9 @@ function renderServicesStep() {
 
   const printerReady = printerReadyForCustomerFlow();
   const availableServices = customerServices();
-  const printServiceId = availableServices.find(s => s.id === 'demo-documents' || s.id === 'print')?.id || 'print';
-  const govtServiceId = availableServices.find(s => s.id === 'demo-existing-documents' || s.id === 'govt-form')?.id || 'govt-form';
-  const usedServiceIds = new Set([printServiceId, govtServiceId]);
-  const extraServices = availableServices.filter((service) => !usedServiceIds.has(service.id));
-  const totalServiceCards = 2 + extraServices.length;
+  const totalServiceCards = availableServices.length;
   const serviceGridClass = totalServiceCards > 2 ? "services-count-many" : "services-count-2";
+  const emptyServiceMessage = state.configStatus || "No services are configured for this kiosk.";
 
   return `
     <div class="stage service-stage custom-home-stage">
@@ -5717,137 +5737,9 @@ function renderServicesStep() {
       ${state.configStatus ? `<div class="save-note">${escapeHtml(state.configStatus)}</div>` : ""}
       
       <div class="premium-services-grid ${serviceGridClass}" data-service-count="${totalServiceCards}">
-        
-        <!-- Upload & Print Card -->
-        <div class="premium-service-card card-blue" data-service="${printServiceId}" style="cursor: pointer;">
-          <div class="premium-card-header">
-            <div class="premium-icon-box bg-blue" aria-hidden="true">${uiIcon("upload", 28)}</div>
-            <div class="premium-header-text">
-              <h2>Print My Document</h2>
-              <p>Print your PDF, Word, or photo file.</p>
-            </div>
-          </div>
-          
-          <div class="premium-illustration">
-            <svg width="240" height="140" viewBox="0 0 240 140" fill="none" xmlns="http://www.w3.org/2000/svg">
-              <path opacity="0.3" d="M120 70C120 70 80 140 0 140V120C40 120 80 80 120 80C160 80 200 120 240 120V140C160 140 120 70 120 70Z" fill="#E2E8F0"/>
-              <!-- Document Base -->
-              <rect x="100" y="20" width="70" height="90" rx="4" fill="#FFFFFF" stroke="#CBD5E1" stroke-width="2"/>
-              <path d="M145 20V45H170L145 20Z" fill="#FCA5A5"/>
-              <line x1="110" y1="60" x2="160" y2="60" stroke="#E2E8F0" stroke-width="4" stroke-linecap="round"/>
-              <line x1="110" y1="75" x2="150" y2="75" stroke="#E2E8F0" stroke-width="4" stroke-linecap="round"/>
-              <line x1="110" y1="90" x2="160" y2="90" stroke="#E2E8F0" stroke-width="4" stroke-linecap="round"/>
-              <rect x="90" y="45" width="45" height="24" rx="4" fill="#EF4444"/>
-              <text x="96" y="62" fill="white" font-family="sans-serif" font-weight="bold" font-size="14">PDF</text>
-              <!-- Word Document -->
-              <rect x="154" y="32" width="46" height="48" rx="4" fill="#FFFFFF" stroke="#BFDBFE" stroke-width="2"/>
-              <path d="M184 32V48H200L184 32Z" fill="#93C5FD"/>
-              <line x1="162" y1="54" x2="192" y2="54" stroke="#DBEAFE" stroke-width="4" stroke-linecap="round"/>
-              <line x1="162" y1="66" x2="184" y2="66" stroke="#DBEAFE" stroke-width="4" stroke-linecap="round"/>
-              <rect x="145" y="48" width="46" height="24" rx="4" fill="#2563EB"/>
-              <text x="153" y="65" fill="white" font-family="sans-serif" font-weight="bold" font-size="13">DOC</text>
-              
-              <!-- Cloud Upload -->
-              <path d="M75 110C86.0457 110 95 101.046 95 90C95 78.9543 86.0457 70 75 70C74.5516 70 74.108 70.0152 73.6705 70.0449C71.3094 61.5422 63.6067 55 54 55C41.8497 55 32 64.8497 32 77C32 77.3093 32.0064 77.6171 32.0191 77.9234C24.1678 78.7516 18 85.3957 18 93.5C18 102.613 25.3873 110 34.5 110H75Z" fill="#2563EB"/>
-              <path d="M54 75V95M54 75L47 82M54 75L61 82" stroke="white" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"/>
-              
-              <!-- Printer -->
-              <path d="M150 70H210C215.523 70 220 74.4772 220 80V100C220 105.523 215.523 110 210 110H150C144.477 110 140 105.523 140 100V80C140 74.4772 144.477 70 150 70Z" fill="#334155"/>
-              <rect x="160" y="60" width="40" height="10" fill="#E2E8F0"/>
-              <rect x="160" y="100" width="40" height="20" fill="white" stroke="#CBD5E1" stroke-width="2"/>
-              <line x1="165" y1="108" x2="195" y2="108" stroke="#94A3B8" stroke-width="2" stroke-linecap="round"/>
-              <line x1="165" y1="114" x2="185" y2="114" stroke="#94A3B8" stroke-width="2" stroke-linecap="round"/>
-            </svg>
-          </div>
-          
-          <div class="premium-features bg-light-blue">
-            <div class="premium-feature">
-              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#2563EB" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="17 8 12 3 7 8"></polyline><line x1="12" y1="3" x2="12" y2="15"></line></svg>
-              <div>
-                <strong>Add File</strong>
-                <span>Use phone QR</span>
-              </div>
-            </div>
-            <div class="premium-feature border-left">
-              ${uiIcon("system", 20)}
-              <div>
-                <strong>Secure Document</strong>
-                <span>Safe upload</span>
-              </div>
-            </div>
-          </div>
-          <button class="premium-btn bg-blue" data-service="${printServiceId}" ${printerReady ? "" : "disabled"}>
-            Start
-            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="5" y1="12" x2="19" y2="12"></line><polyline points="12 5 19 12 12 19"></polyline></svg>
-          </button>
-        </div>
-
-        <!-- Government Forms Card -->
-        <div class="premium-service-card card-green" data-service="${govtServiceId}" style="cursor: pointer;">
-          <div class="premium-card-header">
-            <div class="premium-icon-box bg-green" aria-hidden="true">${uiIcon("pages", 28)}</div>
-            <div class="premium-header-text">
-              <h2>Government Forms</h2>
-              <p>Select a ready form and print it.</p>
-            </div>
-          </div>
-          
-          <div class="premium-illustration">
-            <svg width="240" height="140" viewBox="0 0 240 140" fill="none" xmlns="http://www.w3.org/2000/svg">
-              <path opacity="0.3" d="M120 70C120 70 160 140 240 140V120C200 120 160 80 120 80C80 80 40 120 0 120V140C80 140 120 70 120 70Z" fill="#D1FAE5"/>
-              
-              <!-- Building Background -->
-              <path d="M150 40L120 20L90 40H150Z" fill="#D1FAE5"/>
-              <rect x="100" y="40" width="8" height="40" fill="#D1FAE5"/>
-              <rect x="116" y="40" width="8" height="40" fill="#D1FAE5"/>
-              <rect x="132" y="40" width="8" height="40" fill="#D1FAE5"/>
-              <rect x="90" y="80" width="60" height="10" fill="#D1FAE5"/>
-              
-              <!-- Green Folder -->
-              <path d="M50 70H110L100 55H60L50 70Z" fill="#34D399"/>
-              <rect x="40" y="70" width="90" height="50" rx="4" fill="#10B981"/>
-              <!-- Emblem inside folder -->
-              <circle cx="85" cy="95" r="12" stroke="#FFFFFF" stroke-width="1.5" stroke-dasharray="2 2" fill="none"/>
-              <circle cx="85" cy="95" r="6" fill="#FFFFFF"/>
-              
-              <!-- Documents -->
-              <rect x="140" y="55" width="45" height="60" rx="2" fill="#F8FAFC" stroke="#CBD5E1" stroke-width="2" transform="rotate(10 140 55)"/>
-              <rect x="130" y="65" width="55" height="75" rx="2" fill="#FFFFFF" stroke="#CBD5E1" stroke-width="2" transform="rotate(-5 130 65)"/>
-              
-              <!-- Checkmarks -->
-              <path d="M165 95L170 100L178 92" stroke="#10B981" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" transform="rotate(-5 130 65)"/>
-              <path d="M165 105L170 110L178 102" stroke="#10B981" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" transform="rotate(-5 130 65)"/>
-              <path d="M165 115L170 120L178 112" stroke="#10B981" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" transform="rotate(-5 130 65)"/>
-              
-              <line x1="140" y1="95" x2="155" y2="95" stroke="#E2E8F0" stroke-width="3" stroke-linecap="round" transform="rotate(-5 130 65)"/>
-              <line x1="140" y1="105" x2="155" y2="105" stroke="#E2E8F0" stroke-width="3" stroke-linecap="round" transform="rotate(-5 130 65)"/>
-              <line x1="140" y1="115" x2="155" y2="115" stroke="#E2E8F0" stroke-width="3" stroke-linecap="round" transform="rotate(-5 130 65)"/>
-            </svg>
-          </div>
-          
-          <div class="premium-features bg-light-green">
-            <div class="premium-feature">
-              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#10B981" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path><polyline points="14 2 14 8 20 8"></polyline><line x1="16" y1="13" x2="8" y2="13"></line><line x1="16" y1="17" x2="8" y2="17"></line><polyline points="10 9 9 9 8 9"></polyline></svg>
-              <div>
-                <strong>Forms</strong>
-                <span>Ready to print</span>
-              </div>
-            </div>
-            <div class="premium-feature border-left-green">
-              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#10B981" stroke-width="2"><circle cx="12" cy="12" r="10"></circle><polyline points="12 6 12 12 16 14"></polyline></svg>
-              <div>
-                <strong>Quick Print</strong>
-                <span>Fast service</span>
-              </div>
-            </div>
-          </div>
-          <button class="premium-btn bg-green" data-service="${govtServiceId}" ${printerReady ? "" : "disabled"}>
-            Start
-            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="5" y1="12" x2="19" y2="12"></line><polyline points="12 5 19 12 12 19"></polyline></svg>
-          </button>
-        </div>
-
-        ${extraServices.map((service, index) => renderAdditionalPremiumServiceCard(service, index, printerReady)).join("")}
+        ${availableServices.length
+          ? availableServices.map((service, index) => renderAdditionalPremiumServiceCard(service, index, printerReady)).join("")
+          : `<div class="empty-note">${escapeHtml(emptyServiceMessage)}</div>`}
       </div>
     </div>
   `;
@@ -10968,6 +10860,10 @@ try {
     }
   }
 } catch (e) { }
+
+if (!isMobilePaymentEntry && state.mode === "customer" && !DEMO_KIOSK_MODE && KIOSK_ID !== UNASSIGNED_KIOSK_ID && !services.length) {
+  state.configStatus = "Loading kiosk services...";
+}
 
 render();
 loadPricingSettings();
