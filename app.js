@@ -1708,6 +1708,34 @@ const state = {
     agent: "Checking",
     statusText: "Checking printer status..."
   },
+  // ── Printer Health (populated by Electron IPC background monitor) ─────────
+  printerHealth: {
+    available: false,
+    online: false,
+    ready: false,
+    busy: false,
+    paper: true,
+    paperLow: false,
+    paperJam: false,
+    doorOpen: false,
+    tonerLow: false,
+    tonerEmpty: false,
+    queueError: false,
+    outputBinFull: false,
+    serviceRequested: false,
+    printing: false,
+    workOffline: false,
+    errorMessage: null,
+    printerName: null,
+    queueLength: 0,
+    paperStatus: "Unknown",
+    tonerStatus: "Unknown",
+    detectedErrorState: 0,
+    detectedErrorText: "Unknown",
+    printerStatus: 0,
+    lastUpdated: null,
+    errorLog: []
+  },
   paymentStatus: "Pending",
   paymentStatusMessage: "",
   paymentError: "",
@@ -5250,6 +5278,7 @@ function renderCustomerShell() {
         ${renderCustomer()}
       </main>
       ${showFooter ? renderCustomerFooterFormsReference() : ""}
+      ${renderPrinterHealthBadge()}
     </div>
   `;
 }
@@ -6663,6 +6692,7 @@ function renderPaymentStep() {
     customerSettingEnabled("copies") ? `${details.copies} cop${details.copies === 1 ? "y" : "ies"}` : ""
   ].filter(Boolean).join(" &middot; ");
   return `
+    ${renderPrinterHealthOverlay()}
     <div class="stage payment-stage">
       <div class="stage-header">
         <h1>${paymentHeading}</h1>
@@ -6737,6 +6767,195 @@ function renderPrintFailureStep() {
           <button class="secondary-button" data-action="request-refund">Request Refund</button>
         </div>
       </div>
+    </div>
+  `;
+}
+
+/* ── Printer Health Monitoring ──────────────────────────────────────────────── */
+
+/**
+ * Initialize the Electron IPC bridge for real-time printer health updates.
+ * Only active when running inside Electron (window.kioskPrinterHealth exposed by preload.js).
+ * Purely additive — writes only to state.printerHealth, never touches state.printer.
+ */
+function initPrinterHealthIpc() {
+  if (!window.kioskPrinterHealth || typeof window.kioskPrinterHealth.onUpdate !== "function") {
+    return; // Not running in Electron — skip gracefully
+  }
+
+  window.kioskPrinterHealth.onUpdate(function (health) {
+    if (!health || typeof health !== "object") return;
+    state.printerHealth = {
+      available: true,
+      online: Boolean(health.online),
+      ready: Boolean(health.ready),
+      busy: Boolean(health.busy),
+      paper: health.paper !== false,
+      paperLow: Boolean(health.paperLow),
+      paperJam: Boolean(health.paperJam),
+      doorOpen: Boolean(health.doorOpen),
+      tonerLow: Boolean(health.tonerLow),
+      tonerEmpty: Boolean(health.tonerEmpty),
+      queueError: Boolean(health.queueError),
+      outputBinFull: Boolean(health.outputBinFull),
+      serviceRequested: Boolean(health.serviceRequested),
+      printing: Boolean(health.printing),
+      workOffline: Boolean(health.workOffline),
+      errorMessage: health.errorMessage || null,
+      printerName: health.printerName || null,
+      queueLength: Number(health.queueLength || 0),
+      paperStatus: health.paperStatus || "Unknown",
+      tonerStatus: health.tonerStatus || "Unknown",
+      detectedErrorState: Number(health.detectedErrorState || 0),
+      detectedErrorText: health.detectedErrorText || "Unknown",
+      printerStatus: Number(health.printerStatus || 0),
+      lastUpdated: health.lastUpdated || new Date().toISOString(),
+      errorLog: Array.isArray(health.errorLog) ? health.errorLog : []
+    };
+    render();
+  });
+}
+
+/** Returns the human-readable printer status label for the customer badge */
+function printerHealthLabel() {
+  const h = state.printerHealth;
+  if (!h.available) return null;
+  if (!h.online) return "\uD83D\uDD34 Printer Offline";
+  if (h.paperJam) return "\uD83D\uDD34 Paper Jam";
+  if (!h.paper) return "\uD83D\uDD34 Out of Paper";
+  if (h.doorOpen) return "\uD83D\uDD34 Door Open";
+  if (h.tonerEmpty) return "\uD83D\uDD34 Replace Toner";
+  if (h.outputBinFull) return "\uD83D\uDD34 Output Tray Full";
+  if (h.serviceRequested) return "\uD83D\uDD34 Service Required";
+  if (h.queueError) return "\uD83D\uDD34 Print Queue Error";
+  if (h.printing) return "\uD83D\uDFE1 Printing\u2026";
+  if (h.busy) return "\uD83D\uDFE1 Printer Busy";
+  if (h.tonerLow) return "\uD83D\uDFE1 Toner Low";
+  if (h.paperLow) return "\uD83D\uDFE1 Paper Low";
+  if (h.ready) return "\uD83D\uDFE2 Printer Ready";
+  return "\uD83D\uDFE1 Checking\u2026";
+}
+
+/** Returns severity class: 'ok', 'warn', or 'error' */
+function printerHealthSeverity() {
+  const h = state.printerHealth;
+  if (!h.available) return "ok";
+  if (!h.online || h.paperJam || !h.paper || h.doorOpen || h.tonerEmpty || h.outputBinFull || h.serviceRequested || h.queueError) return "error";
+  if (h.busy || h.printing || h.tonerLow || h.paperLow) return "warn";
+  return "ok";
+}
+
+/** Returns true when the printer has a critical error that should block payment */
+function printerHealthCriticalError() {
+  const h = state.printerHealth;
+  if (!h.available) return false; // IPC not connected — don't block (fallback to existing paymentReady())
+  return !h.online || h.paperJam || !h.paper || h.doorOpen || h.tonerEmpty || h.outputBinFull || h.serviceRequested || h.queueError;
+}
+
+/**
+ * Small floating status pill shown on every customer screen (bottom-left corner).
+ * Auto-hides when IPC is not available (non-Electron / demo mode).
+ */
+function renderPrinterHealthBadge() {
+  const label = printerHealthLabel();
+  if (!label) return "";
+  const severity = printerHealthSeverity();
+  return `<div class="printer-health-badge printer-health-badge--${escapeHtml(severity)}" aria-live="polite" aria-atomic="true" title="Printer Status">${escapeHtml(label)}</div>`;
+}
+
+/**
+ * Full-screen critical-error overlay on the payment screen.
+ * Shown only when printerHealthCriticalError() is true.
+ * The IPC monitor auto-retries every 2 s — when the printer recovers this disappears.
+ */
+function renderPrinterHealthOverlay() {
+  if (!printerHealthCriticalError()) return "";
+  const h = state.printerHealth;
+  const reason = h.errorMessage || printerHealthLabel() || "Printer unavailable";
+  return `
+    <div class="printer-health-overlay" role="alertdialog" aria-modal="true" aria-label="Printer unavailable">
+      <div class="printer-health-overlay__card">
+        <div class="printer-health-overlay__icon">\uD83D\uDDA8\uFE0F</div>
+        <h2 class="printer-health-overlay__title">Printer is currently unavailable</h2>
+        <div class="printer-health-overlay__reason">
+          <span class="printer-health-overlay__reason-label">Reason</span>
+          <span class="printer-health-overlay__reason-value">${escapeHtml(reason)}</span>
+        </div>
+        <p class="printer-health-overlay__help">Please contact staff for assistance.</p>
+        <p class="printer-health-overlay__retry">Checking printer automatically every 2 seconds&hellip;</p>
+        <div class="printer-health-overlay__dot-row">
+          <span class="printer-health-dot printer-health-dot--pulse"></span>
+          <span class="printer-health-overlay__dot-label">Live monitoring active</span>
+        </div>
+      </div>
+    </div>
+  `;
+}
+
+/**
+ * Admin printer health panel — live card for the System Status admin page.
+ * Shows all monitored fields and a scrollable error log.
+ */
+function renderAdminPrinterHealthPanel() {
+  const h = state.printerHealth;
+  const severity = printerHealthSeverity();
+  const label = printerHealthLabel();
+  const statusBadgeClass = severity === "ok" ? "good" : severity === "warn" ? "warn" : "bad";
+
+  if (!h.available) {
+    return `
+      <div class="module-card printer-health-panel printer-health-panel--unavailable">
+        <h2>\uD83D\uDDA8\uFE0F Live Printer Health</h2>
+        <p class="helper-text">Real-time printer monitoring is only active when the kiosk is running in Electron mode with the local printer agent.</p>
+      </div>
+    `;
+  }
+
+  const paperDisplay = h.paperJam ? "Paper Jam" : !h.paper ? "Empty" : h.paperLow ? "Low" : "OK";
+  const tonerDisplay = h.tonerEmpty ? "Empty" : h.tonerLow ? "Low" : "OK";
+  const queueDisplay = h.queueLength > 0 ? `${h.queueLength} job${h.queueLength === 1 ? "" : "s"}` : "Empty";
+  const lastHeartbeat = h.lastUpdated ? formatDateTime(h.lastUpdated) : "Never";
+  const recentErrors = h.errorLog.filter(function (entry) { return entry.status !== "ok"; }).slice(-10).reverse();
+
+  return `
+    <div class="module-card printer-health-panel">
+      <div class="printer-health-panel__header">
+        <h2>\uD83D\uDDA8\uFE0F Live Printer Health</h2>
+        <span class="badge ${statusBadgeClass}">${escapeHtml(label || "Unknown")}</span>
+      </div>
+      <div class="health-list printer-health-panel__grid">
+        ${renderHealthRow("Printer Status", h.online ? "Online" : "Offline", h.online ? "good" : "bad")}
+        ${renderHealthRow("Printer Name", h.printerName || "Unknown", h.printerName ? "good" : "warn")}
+        ${renderHealthRow("Paper Status", paperDisplay, (!h.paper || h.paperJam) ? "bad" : h.paperLow ? "warn" : "good")}
+        ${renderHealthRow("Toner Status", tonerDisplay, h.tonerEmpty ? "bad" : h.tonerLow ? "warn" : "good")}
+        ${renderHealthRow("Door", h.doorOpen ? "Open" : "Closed", h.doorOpen ? "bad" : "good")}
+        ${renderHealthRow("Queue Length", queueDisplay, h.queueError ? "bad" : h.queueLength > 0 ? "warn" : "good")}
+        ${renderHealthRow("Current Job", h.printing ? "Printing" : h.busy ? "Busy" : "Idle", h.printing ? "warn" : "good")}
+        ${renderHealthRow("Last Heartbeat", lastHeartbeat, "good")}
+        ${h.errorMessage ? renderHealthRow("Last Error", h.errorMessage, "bad") : ""}
+      </div>
+      ${recentErrors.length ? `
+        <div class="printer-error-log">
+          <h3>Recent Error Log</h3>
+          <div class="printer-error-log__table-wrap">
+            <table class="printer-error-log__table">
+              <thead>
+                <tr><th>Time</th><th>Status</th><th>Description</th><th>Resolved</th></tr>
+              </thead>
+              <tbody>
+                ${recentErrors.map(function (entry) { return `
+                  <tr>
+                    <td>${escapeHtml(formatDateTime(entry.time))}</td>
+                    <td><span class="badge ${entry.status === "error" ? "bad" : "warn"}">${escapeHtml(entry.status)}</span></td>
+                    <td>${escapeHtml(entry.description || "")}</td>
+                    <td>${entry.resolved ? escapeHtml(formatDateTime(entry.resolved)) : "<span class=\"badge warn\">Active</span>"}</td>
+                  </tr>
+                `; }).join("")}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      ` : ""}
     </div>
   `;
 }
@@ -7674,6 +7893,7 @@ function renderSystemStatus() {
   return `
     ${renderAdminHeader("System Status", "Live health data for kiosks in your assigned projects.")}
     ${adminNotice()}
+    ${renderAdminPrinterHealthPanel()}
     <div class="module-grid">
       ${page.items.length ? page.items.map((kiosk) => `
         <div class="module-card">
@@ -10781,3 +11001,7 @@ if (!isMobilePaymentEntry && state.adminAuthed) {
 }
 
 setInterval(updateKioskClock, 1000);
+
+// ── Printer Health IPC bridge (Electron-only, non-breaking) ─────────────────
+// No-op when window.kioskPrinterHealth is not exposed (non-Electron / demo mode).
+initPrinterHealthIpc();
