@@ -4291,23 +4291,10 @@ async function refreshKioskConfig({ rerender = true, force = false } = {}) {
     const payload = await fetchJson(`${BACKEND_URL}/api/kiosk/config?kioskId=${encodeURIComponent(KIOSK_ID)}${DEMO_KIOSK_MODE ? '&demo=true' : ''}`);
 
     if (DEMO_KIOSK_MODE && state.mode === "customer") {
-      let finalDemoServices = JSON.parse(JSON.stringify(demoKioskServices));
-      if (payload && Array.isArray(payload.services)) {
-        const templateServices = payload.services.filter(s => s.mode === "template" && Array.isArray(s.templates));
-        const allTemplates = templateServices.flatMap(s => s.templates);
-        if (allTemplates.length > 0) {
-          const existingDocsService = finalDemoServices.find(s => s.id === "demo-existing-documents");
-          if (existingDocsService) {
-            existingDocsService.templates = allTemplates;
-            // Optionally merge pricing
-            if (payload.pricing) {
-              existingDocsService.pricing = payload.pricing[templateServices[0].id] || existingDocsService.pricing;
-            }
-          }
-        }
+      if (!payload || !Array.isArray(payload.services) || payload.services.length === 0) {
+        payload.services = JSON.parse(JSON.stringify(demoKioskServices));
+        payload.pricing = Object.fromEntries(payload.services.map((service) => [service.id, service.pricing]));
       }
-      payload.services = finalDemoServices;
-      payload.pricing = Object.fromEntries(finalDemoServices.map((service) => [service.id, service.pricing]));
     }
 
     return applyServiceConfig(payload, {
@@ -4333,9 +4320,6 @@ function stopConfigPolling() {
 
 function startConfigPolling() {
   stopConfigPolling();
-  if (DEMO_KIOSK_MODE) {
-    return;
-  }
 
   state.configPoller = setInterval(() => {
     if (state.mode === "customer") {
