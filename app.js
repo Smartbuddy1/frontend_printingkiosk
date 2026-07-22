@@ -63,6 +63,8 @@ const DEFAULT_KIOSK_BRAND = Object.freeze({
 let localJobSequence = 0;
 let customerInactivityEventsBound = false;
 let lastCustomerRenderedStep = null;
+let lastPrinterHealthSyncAt = 0;
+let lastPrinterHealthSyncSignature = "";
 
 const ADMIN_TRANSLATION_ROWS = [
   ["Language", "लैंग्वेज", "लैंग्वेज"],
@@ -3465,9 +3467,66 @@ function printerReadyForCustomerFlow() {
   return state.printer.online && !state.printer.checking;
 }
 
+function customerKioskBlockStatus() {
+  if (state.printer.checking) {
+    return {
+      title: "Checking printer connection",
+      detail: "Please wait while the kiosk checks the local printer.",
+      tone: "checking"
+    };
+  }
+
+  if (!state.printer.online) {
+    const agentOffline = String(state.printer.agent || "").toLowerCase() === "offline";
+    return {
+      title: agentOffline ? "Local print service offline" : "Printer offline",
+      detail: userFacingConnectionMessage(state.printer.statusText, agentOffline
+        ? "Ask staff to start the kiosk print service on this machine."
+        : "Ask staff to check the printer power, cable, paper, and Windows printer status."),
+      tone: "error"
+    };
+  }
+
+  if (state.configStatus) {
+    return {
+      title: "Kiosk service connection issue",
+      detail: userFacingConnectionMessage(state.configStatus, "Ask staff to check the kiosk backend connection."),
+      tone: "warn"
+    };
+  }
+
+  return null;
+}
+
+function userFacingConnectionMessage(message, fallback) {
+  const text = String(message || "").trim();
+  if (!text) return fallback;
+
+  const normalized = text.toLowerCase();
+  if (normalized === "failed to fetch" || normalized.includes("load failed") || normalized.includes("networkerror")) {
+    return fallback;
+  }
+
+  return text;
+}
+
+function renderCustomerServiceStatusBanner(status) {
+  if (!status) return "";
+
+  return `
+    <div class="kiosk-service-status kiosk-service-status--${escapeHtml(status.tone)}" role="status" aria-live="polite">
+      <span class="kiosk-service-status__icon" aria-hidden="true">${uiIcon(status.tone === "checking" ? "refresh" : "alert", 22)}</span>
+      <span class="kiosk-service-status__copy">
+        <strong>${escapeHtml(status.title)}</strong>
+        <span>${escapeHtml(status.detail)}</span>
+      </span>
+    </div>
+  `;
+}
+
 function paymentBlockMessage() {
   if (!state.printer.online) {
-    return state.printer.statusText || "Printer is not ready. Refresh printer status before payment.";
+    return userFacingConnectionMessage(state.printer.statusText, "Printer is not ready. Ask staff to check the printer or local print service.");
   }
 
   if (!colorSelectionSupported()) {
@@ -4112,6 +4171,9 @@ async function refreshPrinterStatus({ rerender = true } = {}) {
     };
     applyPrinterPaperDefault(state.printer);
   } catch (error) {
+    const isAbort = error.name === "AbortError";
+    const rawMessage = String(error.message || "").trim();
+    const connectionFailed = rawMessage.toLowerCase() === "failed to fetch" || error instanceof TypeError;
     state.printer = {
       ...state.printer,
       online: false,
@@ -4122,9 +4184,11 @@ async function refreshPrinterStatus({ rerender = true } = {}) {
       queue: 0,
       supportsColor: null,
       agent: "Offline",
-      statusText: error.name === "AbortError"
+      statusText: isAbort
         ? "Printer status check timed out. Check the printer connection or restart the local print agent."
-        : error.message || "Local print agent unavailable"
+        : connectionFailed
+          ? "Local print service is offline. Ask staff to start the kiosk print service on this machine."
+          : rawMessage || "Local print agent unavailable"
     };
   } finally {
     window.clearTimeout(timeoutId);
@@ -4885,6 +4949,7 @@ async function startLocalPrintJob() {
     state.printError = "";
     state.printStatusMessage = `Printed ${documentCount} document${documentCount === 1 ? "" : "s"}.`;
     addJob("Completed");
+    state.thankYouPhase = "thankyou";
     state.step = 4;
     render();
     startReceiptRedirect();
@@ -4963,8 +5028,9 @@ async function startLocalPrintJob() {
     }
 
     state.printProgress = 5;
-    state.printStatusMessage = `Sent to ${lastPrinterName || "printer"}.`;
+    state.printStatusMessage = `Printed on ${lastPrinterName || "printer"}.`;
     addJob("Completed");
+    state.thankYouPhase = "thankyou";
     state.step = 4;
     render();
     startReceiptRedirect();
@@ -5516,9 +5582,7 @@ function renderCustomerFooterFormsReference() {
 
 function renderAdminTopbar() {
   const adminLabel = state.adminAccount?.name || state.adminAccount?.email || "Client";
-  const alertCount = liveJobs().filter((job) => /failed/i.test(job.printStatus || job.print || "")).length
-    + state.adminData.refunds.filter((refund) => /pending/i.test(refund.status || "")).length
-    + (state.printer.online ? 0 : 1);
+  const alertCount = adminOperationalAlerts().length;
 
   return `
     <header class="topbar admin-topbar">
@@ -5724,6 +5788,7 @@ function renderServicesStep() {
   }
 
   const printerReady = printerReadyForCustomerFlow();
+  const serviceBlockStatus = customerKioskBlockStatus();
   const availableServices = customerServices();
   const totalServiceCards = availableServices.length;
   const serviceGridClass = totalServiceCards > 2 ? "services-count-many" : "services-count-2";
@@ -5734,18 +5799,19 @@ function renderServicesStep() {
       <div class="stage-header custom-home-header">
         <h1>Printing Kiosk</h1>
       </div>
-      ${state.configStatus ? `<div class="save-note">${escapeHtml(state.configStatus)}</div>` : ""}
+      ${renderCustomerServiceStatusBanner(serviceBlockStatus)}
+      ${state.configStatus && !serviceBlockStatus ? `<div class="save-note">${escapeHtml(state.configStatus)}</div>` : ""}
       
       <div class="premium-services-grid ${serviceGridClass}" data-service-count="${totalServiceCards}">
         ${availableServices.length
-          ? availableServices.map((service, index) => renderAdditionalPremiumServiceCard(service, index, printerReady)).join("")
+          ? availableServices.map((service, index) => renderAdditionalPremiumServiceCard(service, index, printerReady, serviceBlockStatus)).join("")
           : `<div class="empty-note">${escapeHtml(emptyServiceMessage)}</div>`}
       </div>
     </div>
   `;
 }
 
-function renderAdditionalPremiumServiceCard(service, index, printerReady) {
+function renderAdditionalPremiumServiceCard(service, index, printerReady, serviceBlockStatus = null) {
   const isTemplate = isFormTemplateService(service.id);
   const accent = isTemplate ? "green" : "blue";
   const icon = isTemplate ? "pages" : "upload";
@@ -5768,7 +5834,7 @@ function renderAdditionalPremiumServiceCard(service, index, printerReady) {
             </div>`;
 
   return `
-        <div class="premium-service-card premium-service-card-extra card-${accent}" data-service="${escapeHtml(service.id)}" style="cursor: pointer;">
+        <div class="premium-service-card premium-service-card-extra card-${accent} ${printerReady ? "" : "is-service-blocked"}" data-service="${escapeHtml(service.id)}" aria-disabled="${printerReady ? "false" : "true"}" style="cursor: ${printerReady ? "pointer" : "not-allowed"};">
           <div class="premium-card-header">
             <div class="premium-icon-box bg-${accent}" aria-hidden="true">${uiIcon(icon, 28)}</div>
             <div class="premium-header-text">
@@ -5799,6 +5865,7 @@ function renderAdditionalPremiumServiceCard(service, index, printerReady) {
             Start
             <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="5" y1="12" x2="19" y2="12"></line><polyline points="12 5 19 12 12 19"></polyline></svg>
           </button>
+          ${!printerReady && serviceBlockStatus ? `<p class="premium-service-block-message">${escapeHtml(serviceBlockStatus.title)}</p>` : ""}
         </div>
   `;
 }
@@ -6688,7 +6755,46 @@ function initPrinterHealthIpc() {
       lastUpdated: health.lastUpdated || new Date().toISOString(),
       errorLog: Array.isArray(health.errorLog) ? health.errorLog : []
     };
+    syncPrinterHealthToBackend(state.printerHealth);
     render();
+  });
+}
+
+function syncPrinterHealthToBackend(health) {
+  if (!health?.available || isMobilePaymentEntry || KIOSK_ID === UNASSIGNED_KIOSK_ID) return;
+
+  const signature = JSON.stringify({
+    online: health.online,
+    ready: health.ready,
+    paper: health.paper,
+    paperLow: health.paperLow,
+    paperJam: health.paperJam,
+    doorOpen: health.doorOpen,
+    tonerLow: health.tonerLow,
+    tonerEmpty: health.tonerEmpty,
+    queueError: health.queueError,
+    outputBinFull: health.outputBinFull,
+    serviceRequested: health.serviceRequested,
+    printerName: health.printerName,
+    errorMessage: health.errorMessage,
+    queueLength: health.queueLength,
+    detectedErrorState: health.detectedErrorState
+  });
+  const now = Date.now();
+  if (signature === lastPrinterHealthSyncSignature && now - lastPrinterHealthSyncAt < 30000) return;
+
+  lastPrinterHealthSyncSignature = signature;
+  lastPrinterHealthSyncAt = now;
+
+  fetch(`${BACKEND_URL}/api/kiosk/health`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      kioskId: KIOSK_ID,
+      printerHealth: health
+    })
+  }).catch(() => {
+    // The next printer health update will retry.
   });
 }
 
@@ -6726,6 +6832,60 @@ function printerHealthCriticalError() {
   const h = state.printerHealth;
   if (!h.available) return false; // IPC not connected — don't block (fallback to existing paymentReady())
   return !h.online || h.paperJam || !h.paper || h.doorOpen || h.tonerEmpty || h.outputBinFull || h.serviceRequested || h.queueError;
+}
+
+function printerHealthAlerts() {
+  const h = state.printerHealth;
+  if (!h.available) return [];
+
+  const printerName = h.printerName || "Kiosk printer";
+  const alerts = [];
+  const add = (title, detail, tone = "warn") => {
+    alerts.push({ title, detail, tone, source: "printer" });
+  };
+
+  if (!h.online) add("Printer offline", h.errorMessage || `${printerName} is offline.`, "bad");
+  if (h.paperJam) add("Paper jam detected", `${printerName}: clear the jam and close all trays.`, "bad");
+  if (!h.paper) add("Printer out of paper", `${printerName}: load paper in the tray.`, "bad");
+  if (h.paperLow) add("Printer paper low", `${printerName}: refill paper soon.`);
+  if (h.doorOpen) add("Printer door open", `${printerName}: close the printer door or tray.`, "bad");
+  if (h.tonerEmpty) add("Toner empty", `${printerName}: replace the toner cartridge.`, "bad");
+  if (h.tonerLow) add("Toner low", `${printerName}: keep a replacement toner ready.`);
+  if (h.outputBinFull) add("Output tray full", `${printerName}: remove printed pages from the output tray.`, "bad");
+  if (h.serviceRequested) add("Printer service required", h.errorMessage || `${printerName}: service intervention required.`, "bad");
+  if (h.queueError) add("Print queue blocked", h.errorMessage || `${printerName}: clear the Windows print queue.`, "bad");
+
+  if (!alerts.length && h.errorMessage) {
+    add("Printer warning", h.errorMessage, printerHealthSeverity() === "error" ? "bad" : "warn");
+  }
+
+  return alerts;
+}
+
+function adminOperationalAlerts() {
+  const failedJobs = liveJobs().map(jobRow).filter((job) => /failed/i.test(job.print));
+  const pendingRefunds = state.adminData.refunds.filter((refund) => /pending/i.test(refund.status || ""));
+  return [
+    ...printerHealthAlerts(),
+    ...(!state.printerHealth.available && !state.printer.online ? [{
+      title: "Local printer agent offline",
+      detail: state.printer.statusText || "Printer is not ready.",
+      tone: "bad",
+      source: "printer"
+    }] : []),
+    ...failedJobs.map((job) => ({
+      title: "Payment success but print failed",
+      detail: `${job.id} ${job.file}`,
+      tone: "warn",
+      source: "job"
+    })),
+    ...pendingRefunds.map((refund) => ({
+      title: "Refund request",
+      detail: `${refund.refundId} ${money(refund.amount || 0)}`,
+      tone: "warn",
+      source: "refund"
+    }))
+  ];
 }
 
 /**
@@ -6792,6 +6952,7 @@ function renderAdminPrinterHealthPanel() {
   const queueDisplay = h.queueLength > 0 ? `${h.queueLength} job${h.queueLength === 1 ? "" : "s"}` : "Empty";
   const lastHeartbeat = h.lastUpdated ? formatDateTime(h.lastUpdated) : "Never";
   const recentErrors = h.errorLog.filter(function (entry) { return entry.status !== "ok"; }).slice(-10).reverse();
+  const alerts = printerHealthAlerts();
 
   return `
     <div class="module-card printer-health-panel">
@@ -6799,6 +6960,16 @@ function renderAdminPrinterHealthPanel() {
         <h2>\uD83D\uDDA8\uFE0F Live Printer Health</h2>
         <span class="badge ${statusBadgeClass}">${escapeHtml(label || "Unknown")}</span>
       </div>
+      ${alerts.length ? `
+        <div class="printer-alert-strip">
+          ${alerts.map((alert) => `
+            <div class="printer-alert-strip__item printer-alert-strip__item--${escapeHtml(alert.tone || "warn")}">
+              <strong>${escapeHtml(alert.title)}</strong>
+              <span>${escapeHtml(alert.detail)}</span>
+            </div>
+          `).join("")}
+        </div>
+      ` : ""}
       <div class="health-list printer-health-panel__grid">
         ${renderHealthRow("Printer Status", h.online ? "Online" : "Offline", h.online ? "good" : "bad")}
         ${renderHealthRow("Printer Name", h.printerName || "Unknown", h.printerName ? "good" : "warn")}
@@ -7665,10 +7836,7 @@ function dashboardMetrics() {
 function renderDashboard() {
   const failedJobs = liveJobs().map(jobRow).filter((job) => job.print.includes("Failed"));
   const queuedJobs = liveJobs().map(jobRow).filter((job) => /queue|printing|pending/i.test(job.print));
-  const alerts = [
-    ...failedJobs.map((job) => `${job.id} needs print recovery`),
-    ...state.adminData.refunds.filter((refund) => /pending/i.test(refund.status || "")).map((refund) => `${refund.refundId} refund pending`)
-  ];
+  const alerts = adminOperationalAlerts();
 
   return `
     ${renderAdminHeader("Dashboard", "Manage your assigned projects, kiosks, and services.")}
@@ -7698,7 +7866,7 @@ function renderDashboard() {
       <div class="module-card dashboard-panel">
         <div class="module-card-title"><span>${uiIcon("bell", 20)}</span><h2>Latest Alerts</h2><button data-admin-page="alerts">View all alerts</button></div>
         <div class="info-list dashboard-alert-list">
-          ${(alerts.length ? alerts : ["No live alerts"]).map((alert, index) => `<div class="info-row ${alerts.length ? "is-alert" : "is-clear"}"><span class="alert-row-icon">${uiIcon(alerts.length ? (index ? "activity" : "alert") : "system", 19)}</span><span>${escapeHtml(alert)}</span><strong>${alerts.length ? "Open" : "OK"}</strong></div>`).join("")}
+          ${(alerts.length ? alerts.slice(0, 5) : [{ title: "No live alerts", detail: "Backend and assigned kiosk checks are clear.", tone: "good" }]).map((alert, index) => `<div class="info-row ${alerts.length ? "is-alert" : "is-clear"}"><span class="alert-row-icon">${uiIcon(alerts.length ? (index ? "activity" : "alert") : "system", 19)}</span><span>${escapeHtml(alert.title)}${alert.detail ? `<small>${escapeHtml(alert.detail)}</small>` : ""}</span><strong>${alerts.length ? "Open" : "OK"}</strong></div>`).join("")}
         </div>
       </div>
     </div>
@@ -9657,24 +9825,18 @@ function renderRefunds() {
 }
 
 function renderAlerts() {
-  const failedJobs = liveJobs().map(jobRow).filter((job) => /failed/i.test(job.print));
-  const pendingRefunds = state.adminData.refunds.filter((refund) => /pending/i.test(refund.status || ""));
-  const alerts = [
-    ...(state.printer.online ? [] : [{ title: "Printer offline", detail: state.printer.statusText || "Printer is not ready", tone: "warn" }]),
-    ...failedJobs.map((job) => ({ title: "Payment success but print failed", detail: `${job.id} ${job.file}`, tone: "warn" })),
-    ...pendingRefunds.map((refund) => ({ title: "Refund request", detail: `${refund.refundId} ${money(refund.amount || 0)}`, tone: "warn" }))
-  ];
+  const alerts = adminOperationalAlerts();
   const page = adminPaginated(alerts, "alerts");
 
   return `
-    ${renderAdminHeader("Notifications", "Dashboard, email, SMS, and WhatsApp alerts can be wired here.")}
+    ${renderAdminHeader("Notifications", "Printer, print job, refund, and kiosk service alerts.")}
     ${adminNotice()}
     <div class="module-grid">
       ${(page.items.length ? page.items : [{ title: "No live alerts", detail: "Backend and assigned kiosk checks are clear.", tone: "good" }]).map((alert) => `
-        <div class="module-card">
+        <div class="module-card admin-alert-card admin-alert-card--${escapeHtml(alert.tone || "warn")}">
           <h2>${escapeHtml(alert.title)}</h2>
           <p class="helper-text">${escapeHtml(alert.detail)}</p>
-          <span class="badge ${alert.tone}">${alert.tone === "good" ? "OK" : "Open"}</span>
+          <span class="badge ${alert.tone === "bad" ? "bad" : alert.tone || "warn"}">${alert.tone === "good" ? "OK" : "Open"}</span>
         </div>
       `).join("")}
     </div>
@@ -10574,61 +10736,25 @@ function stopReceiptRedirect() {
 function startReceiptRedirect() {
   if (state.receiptRedirectTimer) return;
 
-  // Phase 1: Payment Done — shown immediately when render() is first called.
-  // We do NOT re-render every second. Instead we use DOM patching.
-  state.thankYouPhase = "payment_done";
+  state.thankYouPhase = "thankyou";
   state.receiptSecondsLeft = RECEIPT_REDIRECT_SECONDS;
 
-  // After 2 seconds, transition to printing animation phase
-  setTimeout(() => {
-    if (state.step !== 4) return;
-    state.thankYouPhase = "printing";
-    const stage = document.querySelector(".thankyou-stage");
-    if (stage) {
-      stage.classList.remove("tq-phase-payment", "tq-phase-payment_done", "tq-phase-thankyou");
-      stage.classList.add("tq-phase-printing");
-      // Update phase content via DOM
-      const phaseEl = document.getElementById("tq-phase-content");
-      if (phaseEl) phaseEl.innerHTML = renderThankYouPrinting();
-    } else {
+  state.receiptRedirectTimer = setInterval(() => {
+    state.receiptSecondsLeft -= 1;
+
+    const secEl = document.getElementById("tq-seconds-left");
+    const secEl2 = document.getElementById("tq-seconds-left-text");
+    if (secEl) secEl.textContent = state.receiptSecondsLeft;
+    if (secEl2) secEl2.textContent = state.receiptSecondsLeft;
+
+    if (state.receiptSecondsLeft <= 0) {
+      stopReceiptRedirect();
+      resetCustomer();
       render();
+      refreshPrinterStatus();
     }
-
-    // After 4 seconds of printing animation, transition to Thank You
-    setTimeout(() => {
-      if (state.step !== 4) return;
-      state.thankYouPhase = "thankyou";
-      const stage2 = document.querySelector(".thankyou-stage");
-      if (stage2) {
-        stage2.classList.remove("tq-phase-payment", "tq-phase-payment_done", "tq-phase-printing");
-        stage2.classList.add("tq-phase-thankyou");
-        const phaseEl2 = document.getElementById("tq-phase-content");
-        if (phaseEl2) phaseEl2.innerHTML = renderThankYouFinal();
-      } else {
-        render();
-      }
-
-      // Now start the countdown — DOM only, no re-render
-      state.receiptRedirectTimer = setInterval(() => {
-        state.receiptSecondsLeft -= 1;
-
-        // Just update the countdown number in DOM
-        const secEl = document.getElementById("tq-seconds-left");
-        const secEl2 = document.getElementById("tq-seconds-left-text");
-        if (secEl) secEl.textContent = state.receiptSecondsLeft;
-        if (secEl2) secEl2.textContent = state.receiptSecondsLeft;
-
-        if (state.receiptSecondsLeft <= 0) {
-          stopReceiptRedirect();
-          resetCustomer();
-          render();
-          refreshPrinterStatus();
-        }
-      }, 1000);
-    }, 4000);
-  }, 2000);
+  }, 1000);
 }
-
 function addJob(printStatus) {
   const service = selectedService();
   const details = priceDetails();

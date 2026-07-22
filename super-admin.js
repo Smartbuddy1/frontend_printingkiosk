@@ -81,7 +81,8 @@ const pageGroups = [
       { id: "projects", label: "Projects", icon: "hierarchy" },
       { id: "kiosks", label: "Kiosks", icon: "kiosks" },
       { id: "pricing", label: "Pricing", icon: "pricing" },
-      { id: "revenue", label: "Revenue", icon: "payments" }
+      { id: "revenue", label: "Revenue", icon: "payments" },
+      { id: "alerts", label: "Alerts", icon: "alert" }
     ]
   }
 ];
@@ -761,9 +762,7 @@ function renderShell() {
 }
 
 function renderTopbar() {
-  const pendingRefunds = data("refunds").filter((refund) => /pending/i.test(refund.status || "")).length;
-  const failedJobs = data("jobs").filter((job) => /failed/i.test(job.printStatus || "")).length;
-  const alertCount = pendingRefunds + failedJobs;
+  const alertCount = superAdminOperationalAlerts().length;
 
   return `
     <header class="topbar admin-topbar">
@@ -775,7 +774,7 @@ function renderTopbar() {
         </div>
       </div>
       <div class="topbar-actions">
-        <button class="notification-button" data-page="refunds" aria-label="Open operational alerts">
+        <button class="notification-button" data-page="alerts" aria-label="Open operational alerts">
           ${uiIcon("bell", 22)}
           ${alertCount ? `<span>${Math.min(alertCount, 99)}</span>` : ""}
         </button>
@@ -831,6 +830,7 @@ function renderCurrentPage() {
   }
 
   if (state.page === "dashboard") return renderDashboard();
+  if (state.page === "alerts") return renderAlerts();
   if (state.page === "pricing") return renderPricing();
   if (state.page === "services") return renderDashboard();
   if (state.page === "revenue") return renderRevenue();
@@ -867,10 +867,91 @@ function renderNotice() {
   return notices.join("");
 }
 
+function superAdminOperationalAlerts() {
+  const alerts = [];
+  const kiosks = data("kiosks");
+  const jobs = data("jobs");
+  const refunds = data("refunds");
+
+  kiosks.forEach((kiosk) => {
+    const kioskId = kiosk.kioskId || "Kiosk";
+    const status = String(kiosk.status || "").toLowerCase();
+    const printerHealth = kiosk.printerHealth && typeof kiosk.printerHealth === "object" ? kiosk.printerHealth : null;
+    if (status === "offline") {
+      alerts.push({
+        title: "Kiosk offline",
+        detail: `${kioskId} ${kiosk.branch || ""}`.trim(),
+        tone: "bad",
+        source: "kiosk"
+      });
+    } else if (status === "maintenance") {
+      alerts.push({
+        title: "Kiosk in maintenance",
+        detail: `${kioskId} ${kiosk.branch || ""}`.trim(),
+        tone: "warn",
+        source: "kiosk"
+      });
+    }
+
+    if (kiosk.updateStatus === "failed" || kiosk.updateLastError) {
+      alerts.push({
+        title: "Kiosk update failed",
+        detail: `${kioskId}: ${kiosk.updateLastError || kiosk.updateMessage || "Update needs review."}`,
+        tone: "warn",
+        source: "update"
+      });
+    }
+
+    if (printerHealth) {
+      const printerName = printerHealth.printerName || kiosk.printer || "Printer";
+      const addPrinterAlert = (title, detail, tone = "warn") => {
+        alerts.push({
+          title,
+          detail: `${kioskId}: ${detail}`,
+          tone,
+          source: "printer"
+        });
+      };
+
+      if (!printerHealth.online) addPrinterAlert("Printer offline", printerHealth.errorMessage || `${printerName} is offline.`, "bad");
+      if (printerHealth.paperJam) addPrinterAlert("Paper jam detected", `${printerName}: clear the jam and close all trays.`, "bad");
+      if (printerHealth.paper === false) addPrinterAlert("Printer out of paper", `${printerName}: load paper in the tray.`, "bad");
+      if (printerHealth.paperLow) addPrinterAlert("Printer paper low", `${printerName}: refill paper soon.`);
+      if (printerHealth.doorOpen) addPrinterAlert("Printer door open", `${printerName}: close the printer door or tray.`, "bad");
+      if (printerHealth.tonerEmpty) addPrinterAlert("Toner empty", `${printerName}: replace the toner cartridge.`, "bad");
+      if (printerHealth.tonerLow) addPrinterAlert("Toner low", `${printerName}: keep a replacement toner ready.`);
+      if (printerHealth.outputBinFull) addPrinterAlert("Output tray full", `${printerName}: remove printed pages from the output tray.`, "bad");
+      if (printerHealth.serviceRequested) addPrinterAlert("Printer service required", printerHealth.errorMessage || `${printerName}: service intervention required.`, "bad");
+      if (printerHealth.queueError) addPrinterAlert("Print queue blocked", printerHealth.errorMessage || `${printerName}: clear the Windows print queue.`, "bad");
+    }
+  });
+
+  jobs.filter((job) => /failed/i.test(job.printStatus || "")).forEach((job) => {
+    alerts.push({
+      title: "Print failed",
+      detail: `${job.jobId || "Job"} ${job.kioskId || ""} ${job.failureReason || job.printStatus || ""}`.trim(),
+      tone: "warn",
+      source: "job"
+    });
+  });
+
+  refunds.filter((refund) => /pending/i.test(refund.status || "")).forEach((refund) => {
+    alerts.push({
+      title: "Refund pending",
+      detail: `${refund.refundId || "Refund"} ${money(refund.amount || 0)}`,
+      tone: "warn",
+      source: "refund"
+    });
+  });
+
+  return alerts;
+}
+
 function renderDashboard() {
   const summary = state.snapshot?.summary || {};
   const failedJobs = data("jobs").filter((job) => /failed/i.test(job.printStatus || ""));
   const pendingRefunds = data("refunds").filter((refund) => /pending/i.test(refund.status || ""));
+  const alerts = superAdminOperationalAlerts();
 
   return `
     ${renderHeader("Super Admin Dashboard", "Master operational view across every kiosk and record.", `<button class="primary-button" data-page="kiosks">${uiIcon("kiosks", 18)} Open Kiosks</button>`)}
@@ -901,11 +982,49 @@ function renderDashboard() {
       <div class="module-card dashboard-panel support-panel">
         <div class="module-card-title"><span>${uiIcon("support", 20)}</span><h2>Support Queue</h2></div>
         <div class="health-list">
+          ${renderHealth("Operational alerts", `${alerts.length}`, alerts.length ? "warn" : "good")}
           ${renderHealth("Failed jobs", `${failedJobs.length}`, failedJobs.length ? "warn" : "good")}
           ${renderHealth("Pending refunds", `${pendingRefunds.length}`, pendingRefunds.length ? "warn" : "good")}
           ${renderHealth("Kiosk records", `${summary.kiosks || 0}`, summary.kiosks ? "good" : "warn")}
         </div>
+        <button class="panel-link" data-page="alerts">Open alert center ${uiIcon("alert", 17)}</button>
       </div>
+    </div>
+  `;
+}
+
+function renderAlerts() {
+  const alerts = superAdminOperationalAlerts();
+
+  return `
+    ${renderHeader("Alert Center", "Network-wide kiosk, print, refund, and update issues.", `<button class="primary-button" data-action="refresh">${uiIcon("refresh", 18)} Refresh</button>`)}
+    ${renderNotice()}
+    <div class="metrics-grid dashboard-metrics">
+      ${[
+        ["Open Alerts", alerts.length, "All active issues", "alert", alerts.length ? "red" : "green"],
+        ["Kiosk Issues", alerts.filter((alert) => alert.source === "kiosk").length, "Offline or maintenance", "kiosks", "amber"],
+        ["Printer Issues", alerts.filter((alert) => alert.source === "printer").length, "Paper, toner, jam, queue", "printer", "red"],
+        ["Print Jobs", alerts.filter((alert) => alert.source === "job").length, "Failed print jobs", "history", "red"],
+        ["Refund Issues", alerts.filter((alert) => alert.source === "refund").length, "Pending refunds", "refunds", "amber"]
+      ].map(([label, value, detail, icon, tone]) => `
+        <div class="metric-card has-icon tone-${tone}">
+          <span class="metric-icon">${uiIcon(icon, 25)}</span>
+          <div class="metric-copy">
+            <span>${escapeHtml(label)}</span>
+            <strong>${escapeHtml(String(value))}</strong>
+            <small>${escapeHtml(detail)}</small>
+          </div>
+        </div>
+      `).join("")}
+    </div>
+    <div class="module-grid">
+      ${(alerts.length ? alerts : [{ title: "No live alerts", detail: "All backend records are clear.", tone: "good", source: "system" }]).map((alert) => `
+        <div class="module-card admin-alert-card admin-alert-card--${escapeHtml(alert.tone || "warn")}">
+          <h2>${escapeHtml(alert.title)}</h2>
+          <p class="helper-text">${escapeHtml(alert.detail)}</p>
+          <span class="badge ${alert.tone === "bad" ? "bad" : alert.tone || "warn"}">${alert.tone === "good" ? "OK" : "Open"}</span>
+        </div>
+      `).join("")}
     </div>
   `;
 }
