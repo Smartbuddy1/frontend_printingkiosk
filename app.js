@@ -2628,7 +2628,7 @@ function friendlyPrintError(value) {
     return "Windows cannot print this file type because no default app with a Print command is associated with it. For PDF, install SumatraPDF or set a PDF reader as the default print app, then retry.";
   }
 
-  return message;
+  return customerSafePrinterMessage(message, "Payment succeeded, but the printer did not complete the job. Please contact staff.");
 }
 
 function numericPrice(value, fallback = 0) {
@@ -3504,6 +3504,45 @@ function userFacingConnectionMessage(message, fallback) {
 
   const normalized = text.toLowerCase();
   if (normalized === "failed to fetch" || normalized.includes("load failed") || normalized.includes("networkerror")) {
+    return fallback;
+  }
+
+  return customerSafePrinterMessage(text, fallback);
+}
+
+function customerSafePrinterMessage(message, fallback = "Printer is not ready. Please contact staff.") {
+  const text = String(message || "").trim();
+  const normalized = text.toLowerCase();
+  if (!text) return fallback;
+
+  if (normalized.includes("paper jam") || normalized.includes("jam detected")) {
+    return "Paper jam detected. Please contact staff.";
+  }
+  if (normalized.includes("no paper") || normalized.includes("out of paper") || normalized.includes("load paper")) {
+    return "Printer is out of paper. Please contact staff.";
+  }
+  if (normalized.includes("low paper") || normalized.includes("paper running low")) {
+    return "Printer paper is low. Please contact staff.";
+  }
+  if (normalized.includes("no toner") || normalized.includes("toner empty") || normalized.includes("replace cartridge")) {
+    return "Printer toner needs replacement. Please contact staff.";
+  }
+  if (normalized.includes("low toner") || normalized.includes("toner low")) {
+    return "Printer toner is low. Please contact staff.";
+  }
+  if (normalized.includes("door open") || normalized.includes("tray")) {
+    return "Printer door or tray is open. Please contact staff.";
+  }
+  if (normalized.includes("output tray full") || normalized.includes("output bin full")) {
+    return "Printer output tray is full. Please contact staff.";
+  }
+  if (normalized.includes("queue") || normalized.includes("blocked")) {
+    return "Printer queue needs attention. Please contact staff.";
+  }
+  if (normalized.includes("offline") || normalized.includes("not running") || normalized.includes("unavailable")) {
+    return "Printer is offline. Please contact staff.";
+  }
+  if (normalized.includes("printer") && normalized.includes(":")) {
     return fallback;
   }
 
@@ -5028,7 +5067,7 @@ async function startLocalPrintJob() {
     }
 
     state.printProgress = 5;
-    state.printStatusMessage = `Printed on ${lastPrinterName || "printer"}.`;
+    state.printStatusMessage = "Printing completed successfully.";
     addJob("Completed");
     state.thankYouPhase = "thankyou";
     state.step = 4;
@@ -6907,7 +6946,7 @@ function renderPrinterHealthBadge() {
 function renderPrinterHealthOverlay() {
   if (!printerHealthCriticalError()) return "";
   const h = state.printerHealth;
-  const reason = h.errorMessage || printerHealthLabel() || "Printer unavailable";
+  const reason = customerSafePrinterMessage(h.errorMessage || printerHealthLabel(), "Printer is unavailable. Please contact staff.");
   return `
     <div class="printer-health-overlay" role="alertdialog" aria-modal="true" aria-label="Printer unavailable">
       <div class="printer-health-overlay__card">
