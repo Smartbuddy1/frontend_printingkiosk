@@ -896,646 +896,646 @@ const demoKioskServices = [
         documentType: "pdf"
       },
 
-        {
-                id: "nmc-form-0",
-                title: "Request For New Connection",
-                titleHi: "Request For New Connection",
-                titleMr: "Request For New Connection",
-                description: "Category: Water Supply Department",
-                descriptionHi: "Category: Water Supply Department",
-                descriptionMr: "Category: Water Supply Department",
-                pages: 1,
-                paperSize: "A4",
-                orientation: "portrait",
-                fields: [],
-                imageUrl: "/assets/forms/nmc/nmc_0_request_for_new_connection.pdf",
-                documentType: "pdf",
-                hasStaticPreview: false
-        },
-        {
-                id: "nmc-form-1",
-                title: "Request For Change Of Water Rate",
-                titleHi: "Request For Change Of Water Rate",
-                titleMr: "Request For Change Of Water Rate",
-                description: "Category: Water Supply Department",
-                descriptionHi: "Category: Water Supply Department",
-                descriptionMr: "Category: Water Supply Department",
-                pages: 1,
-                paperSize: "A4",
-                orientation: "portrait",
-                fields: [],
-                imageUrl: "/assets/forms/nmc/nmc_1_request_for_change_of_water_rate.pdf",
-                documentType: "pdf",
-                hasStaticPreview: false
-        },
-        {
-                id: "nmc-form-2",
-                title: "Request For Change In Name",
-                titleHi: "Request For Change In Name",
-                titleMr: "Request For Change In Name",
-                description: "Category: Water Supply Department",
-                descriptionHi: "Category: Water Supply Department",
-                descriptionMr: "Category: Water Supply Department",
-                pages: 1,
-                paperSize: "A4",
-                orientation: "portrait",
-                fields: [],
-                imageUrl: "/assets/forms/nmc/nmc_2_request_for_change_in_name.pdf",
-                documentType: "pdf",
-                hasStaticPreview: false
-        },
-        {
-                id: "nmc-form-3",
-                title: "Request For Bill At Residential Rate",
-                titleHi: "Request For Bill At Residential Rate",
-                titleMr: "Request For Bill At Residential Rate",
-                description: "Category: Water Supply Department",
-                descriptionHi: "Category: Water Supply Department",
-                descriptionMr: "Category: Water Supply Department",
-                pages: 1,
-                paperSize: "A4",
-                orientation: "portrait",
-                fields: [],
-                imageUrl: "/assets/forms/nmc/nmc_3_request_for_bill_at_residential_rate.pdf",
-                documentType: "pdf",
-                hasStaticPreview: false
-        },
-        {
-                id: "nmc-form-4",
-                title: "Request For Change In Location Of Connection",
-                titleHi: "Request For Change In Location Of Connection",
-                titleMr: "Request For Change In Location Of Connection",
-                description: "Category: Water Supply Department",
-                descriptionHi: "Category: Water Supply Department",
-                descriptionMr: "Category: Water Supply Department",
-                pages: 1,
-                paperSize: "A4",
-                orientation: "portrait",
-                fields: [],
-                imageUrl: "/assets/forms/nmc/nmc_4_request_for_change_in_location_of_connection.pdf",
-                documentType: "pdf",
-                hasStaticPreview: false
-        },
-        {
-                id: "nmc-form-5",
-                title: "Registration Of Property On Demand Register",
-                titleHi: "Registration Of Property On Demand Register",
-                titleMr: "Registration Of Property On Demand Register",
-                description: "Category: Tax Department",
-                descriptionHi: "Category: Tax Department",
-                descriptionMr: "Category: Tax Department",
-                pages: 1,
-                paperSize: "A4",
-                orientation: "portrait",
-                fields: [],
-                imageUrl: "/assets/forms/nmc/nmc_5_registration_of_property_on_demand_register.pdf",
-                documentType: "pdf",
-                hasStaticPreview: false
-        },
-        {
-                id: "nmc-form-6",
-                title: "Reduction Of Property Tax",
-                titleHi: "Reduction Of Property Tax",
-                titleMr: "Reduction Of Property Tax",
-                description: "Category: Tax Department",
-                descriptionHi: "Category: Tax Department",
-                descriptionMr: "Category: Tax Department",
-                pages: 1,
-                paperSize: "A4",
-                orientation: "portrait",
-                fields: [],
-                imageUrl: "/assets/forms/nmc/nmc_6_reduction_of_property_tax.pdf",
-                documentType: "pdf",
-                hasStaticPreview: false
-        },
-        {
-                id: "nmc-form-7",
-                title: "Tax On Property",
-                titleHi: "Tax On Property",
-                titleMr: "Tax On Property",
-                description: "Category: Tax Department",
-                descriptionHi: "Category: Tax Department",
-                descriptionMr: "Category: Tax Department",
-                pages: 1,
-                paperSize: "A4",
-                orientation: "portrait",
-                fields: [],
-                imageUrl: "/assets/forms/nmc/nmc_7_tax_on_property.pdf",
-                documentType: "pdf",
-                hasStaticPreview: false
-        },
-        {
-                id: "nmc-form-8",
-                title: "No Objection Certifi hucate (N.O.C.)",
-                titleHi: "No Objection Certifi hucate (N.O.C.)",
-                titleMr: "No Objection Certifi hucate (N.O.C.)",
-                description: "Category: Electrical Department",
-                descriptionHi: "Category: Electrical Department",
-                descriptionMr: "Category: Electrical Department",
-                pages: 1,
-                paperSize: "A4",
-                orientation: "portrait",
-                fields: [],
-                imageUrl: "/assets/forms/nmc/nmc_8_no_objection_certifi_hucate__n_o_c__.pdf",
-                documentType: "pdf",
-                hasStaticPreview: false
-        },
-        {
-                id: "nmc-form-9",
-                title: "No Objection Certificate (N.O.C.)",
-                titleHi: "No Objection Certificate (N.O.C.)",
-                titleMr: "No Objection Certificate (N.O.C.)",
-                description: "Category: Business & Shop Registration",
-                descriptionHi: "Category: Business & Shop Registration",
-                descriptionMr: "Category: Business & Shop Registration",
-                pages: 1,
-                paperSize: "A4",
-                orientation: "portrait",
-                fields: [],
-                imageUrl: "/assets/forms/nmc/nmc_9_no_objection_certificate__n_o_c__.pdf",
-                documentType: "pdf",
-                hasStaticPreview: false
-        },
-        {
-                id: "nmc-form-10",
-                title: "Architect Registration Application",
-                titleHi: "Architect Registration Application",
-                titleMr: "Architect Registration Application",
-                description: "Category: Town Planning Department",
-                descriptionHi: "Category: Town Planning Department",
-                descriptionMr: "Category: Town Planning Department",
-                pages: 1,
-                paperSize: "A4",
-                orientation: "portrait",
-                fields: [],
-                imageUrl: "/assets/forms/nmc/nmc_10_architect_registration_application.pdf",
-                documentType: "pdf",
-                hasStaticPreview: false
-        },
-        {
-                id: "nmc-form-11",
-                title: "Structural Engineer / Engineer Supervisor New License Application",
-                titleHi: "Structural Engineer / Engineer Supervisor New License Application",
-                titleMr: "Structural Engineer / Engineer Supervisor New License Application",
-                description: "Category: Town Planning Department",
-                descriptionHi: "Category: Town Planning Department",
-                descriptionMr: "Category: Town Planning Department",
-                pages: 1,
-                paperSize: "A4",
-                orientation: "portrait",
-                fields: [],
-                imageUrl: "/assets/forms/nmc/nmc_11_structural_engineer___engineer_supervisor_new_license_application.pdf",
-                documentType: "pdf",
-                hasStaticPreview: false
-        },
-        {
-                id: "nmc-form-12",
-                title: "Structural Engineer / Engineer Supervisor License Renewal Application",
-                titleHi: "Structural Engineer / Engineer Supervisor License Renewal Application",
-                titleMr: "Structural Engineer / Engineer Supervisor License Renewal Application",
-                description: "Category: Town Planning Department",
-                descriptionHi: "Category: Town Planning Department",
-                descriptionMr: "Category: Town Planning Department",
-                pages: 1,
-                paperSize: "A4",
-                orientation: "portrait",
-                fields: [],
-                imageUrl: "/assets/forms/nmc/nmc_12_structural_engineer___engineer_supervisor_license_renewal_application.pdf",
-                documentType: "pdf",
-                hasStaticPreview: false
-        },
-        {
-                id: "nmc-form-13",
-                title: "Tentative Layout",
-                titleHi: "Tentative Layout",
-                titleMr: "Tentative Layout",
-                description: "Category: Town Planning Department",
-                descriptionHi: "Category: Town Planning Department",
-                descriptionMr: "Category: Town Planning Department",
-                pages: 1,
-                paperSize: "A4",
-                orientation: "portrait",
-                fields: [],
-                imageUrl: "/assets/forms/nmc/nmc_13_tentative_layout.pdf",
-                documentType: "pdf",
-                hasStaticPreview: false
-        },
-        {
-                id: "nmc-form-14",
-                title: "Final Layout",
-                titleHi: "Final Layout",
-                titleMr: "Final Layout",
-                description: "Category: Town Planning Department",
-                descriptionHi: "Category: Town Planning Department",
-                descriptionMr: "Category: Town Planning Department",
-                pages: 1,
-                paperSize: "A4",
-                orientation: "portrait",
-                fields: [],
-                imageUrl: "/assets/forms/nmc/nmc_14_final_layout.pdf",
-                documentType: "pdf",
-                hasStaticPreview: false
-        },
-        {
-                id: "nmc-form-15",
-                title: "Building Permission (B.P.)",
-                titleHi: "Building Permission (B.P.)",
-                titleMr: "Building Permission (B.P.)",
-                description: "Category: Town Planning Department",
-                descriptionHi: "Category: Town Planning Department",
-                descriptionMr: "Category: Town Planning Department",
-                pages: 1,
-                paperSize: "A4",
-                orientation: "portrait",
-                fields: [],
-                imageUrl: "/assets/forms/nmc/nmc_15_building_permission__b_p__.pdf",
-                documentType: "pdf",
-                hasStaticPreview: false
-        },
-        {
-                id: "nmc-form-16",
-                title: "Occupancy Certificate",
-                titleHi: "Occupancy Certificate",
-                titleMr: "Occupancy Certificate",
-                description: "Category: Town Planning Department",
-                descriptionHi: "Category: Town Planning Department",
-                descriptionMr: "Category: Town Planning Department",
-                pages: 1,
-                paperSize: "A4",
-                orientation: "portrait",
-                fields: [],
-                imageUrl: "/assets/forms/nmc/nmc_16_occupancy_certificate.pdf",
-                documentType: "pdf",
-                hasStaticPreview: false
-        },
-        {
-                id: "nmc-form-17",
-                title: "No Objection Certificate (N.O.C.)",
-                titleHi: "No Objection Certificate (N.O.C.)",
-                titleMr: "No Objection Certificate (N.O.C.)",
-                description: "Category: Town Planning Department",
-                descriptionHi: "Category: Town Planning Department",
-                descriptionMr: "Category: Town Planning Department",
-                pages: 1,
-                paperSize: "A4",
-                orientation: "portrait",
-                fields: [],
-                imageUrl: "/assets/forms/nmc/nmc_17_no_objection_certificate__n_o_c__.pdf",
-                documentType: "pdf",
-                hasStaticPreview: false
-        },
-        {
-                id: "nmc-form-18",
-                title: "Birth Certificate",
-                titleHi: "Birth Certificate",
-                titleMr: "Birth Certificate",
-                description: "Category: Birth & Death Certificate",
-                descriptionHi: "Category: Birth & Death Certificate",
-                descriptionMr: "Category: Birth & Death Certificate",
-                pages: 1,
-                paperSize: "A4",
-                orientation: "portrait",
-                fields: [],
-                imageUrl: "/assets/forms/nmc/nmc_18_birth_certificate.pdf",
-                documentType: "pdf",
-                hasStaticPreview: false
-        },
-        {
-                id: "nmc-form-19",
-                title: "Death Certificate",
-                titleHi: "Death Certificate",
-                titleMr: "Death Certificate",
-                description: "Category: Birth & Death Certificate",
-                descriptionHi: "Category: Birth & Death Certificate",
-                descriptionMr: "Category: Birth & Death Certificate",
-                pages: 1,
-                paperSize: "A4",
-                orientation: "portrait",
-                fields: [],
-                imageUrl: "/assets/forms/nmc/nmc_19_death_certificate.pdf",
-                documentType: "pdf",
-                hasStaticPreview: false
-        },
-        {
-                id: "nmc-form-20",
-                title: "Hospital/ Nursing Home/ Maternity Homes Inspection Form",
-                titleHi: "Hospital/ Nursing Home/ Maternity Homes Inspection Form",
-                titleMr: "Hospital/ Nursing Home/ Maternity Homes Inspection Form",
-                description: "Category: Medical Department",
-                descriptionHi: "Category: Medical Department",
-                descriptionMr: "Category: Medical Department",
-                pages: 1,
-                paperSize: "A4",
-                orientation: "portrait",
-                fields: [],
-                imageUrl: "/assets/forms/nmc/nmc_20_hospital__nursing_home__maternity_homes_inspection_form.pdf",
-                documentType: "pdf",
-                hasStaticPreview: false
-        },
-        {
-                id: "nmc-form-21",
-                title: "Form B",
-                titleHi: "Form B",
-                titleMr: "Form B",
-                description: "Category: Medical Department",
-                descriptionHi: "Category: Medical Department",
-                descriptionMr: "Category: Medical Department",
-                pages: 1,
-                paperSize: "A4",
-                orientation: "portrait",
-                fields: [],
-                imageUrl: "/assets/forms/nmc/nmc_21_form_b.pdf",
-                documentType: "pdf",
-                hasStaticPreview: false
-        },
-        {
-                id: "nmc-form-22",
-                title: "Doctor Registration Form",
-                titleHi: "Doctor Registration Form",
-                titleMr: "Doctor Registration Form",
-                description: "Category: Medical Department",
-                descriptionHi: "Category: Medical Department",
-                descriptionMr: "Category: Medical Department",
-                pages: 1,
-                paperSize: "A4",
-                orientation: "portrait",
-                fields: [],
-                imageUrl: "/assets/forms/nmc/nmc_22_doctor_registration_form.pdf",
-                documentType: "pdf",
-                hasStaticPreview: false
-        },
-        {
-                id: "nmc-form-23",
-                title: "Sisters Registration Form",
-                titleHi: "Sisters Registration Form",
-                titleMr: "Sisters Registration Form",
-                description: "Category: Medical Department",
-                descriptionHi: "Category: Medical Department",
-                descriptionMr: "Category: Medical Department",
-                pages: 1,
-                paperSize: "A4",
-                orientation: "portrait",
-                fields: [],
-                imageUrl: "/assets/forms/nmc/nmc_23_sisters_registration_form.pdf",
-                documentType: "pdf",
-                hasStaticPreview: false
-        },
-        {
-                id: "nmc-form-24",
-                title: "Hospital Owner Registration",
-                titleHi: "Hospital Owner Registration",
-                titleMr: "Hospital Owner Registration",
-                description: "Category: Medical Department",
-                descriptionHi: "Category: Medical Department",
-                descriptionMr: "Category: Medical Department",
-                pages: 1,
-                paperSize: "A4",
-                orientation: "portrait",
-                fields: [],
-                imageUrl: "/assets/forms/nmc/nmc_24_hospital_owner_registration.pdf",
-                documentType: "pdf",
-                hasStaticPreview: false
-        },
-        {
-                id: "nmc-form-25",
-                title: "Hospital Registration or Renewal Document List",
-                titleHi: "Hospital Registration or Renewal Document List",
-                titleMr: "Hospital Registration or Renewal Document List",
-                description: "Category: Medical Department",
-                descriptionHi: "Category: Medical Department",
-                descriptionMr: "Category: Medical Department",
-                pages: 1,
-                paperSize: "A4",
-                orientation: "portrait",
-                fields: [],
-                imageUrl: "/assets/forms/nmc/nmc_25_hospital_registration_or_renewal_document_list.pdf",
-                documentType: "pdf",
-                hasStaticPreview: false
-        },
-        {
-                id: "nmc-form-26",
-                title: "Pre Natal Diagnostics Registration",
-                titleHi: "Pre Natal Diagnostics Registration",
-                titleMr: "Pre Natal Diagnostics Registration",
-                description: "Category: Medical Department",
-                descriptionHi: "Category: Medical Department",
-                descriptionMr: "Category: Medical Department",
-                pages: 1,
-                paperSize: "A4",
-                orientation: "portrait",
-                fields: [],
-                imageUrl: "/assets/forms/nmc/nmc_26_pre_natal_diagnostics_registration.pdf",
-                documentType: "pdf",
-                hasStaticPreview: false
-        },
-        {
-                id: "nmc-form-27",
-                title: "जैविक कचरा विल्हेवाट (BMW) प्रकल्प सभासदत्व अर्जासाठी आवश्यक असणरे कागदपत्रे.",
-                titleHi: "जैविक कचरा विल्हेवाट (BMW) प्रकल्प सभासदत्व अर्जासाठी आवश्यक असणरे कागदपत्रे.",
-                titleMr: "जैविक कचरा विल्हेवाट (BMW) प्रकल्प सभासदत्व अर्जासाठी आवश्यक असणरे कागदपत्रे.",
-                description: "Category: Medical Department",
-                descriptionHi: "Category: Medical Department",
-                descriptionMr: "Category: Medical Department",
-                pages: 1,
-                paperSize: "A4",
-                orientation: "portrait",
-                fields: [],
-                imageUrl: "/assets/forms/nmc/nmc_27_______________________bmw____________________________________________________.pdf",
-                documentType: "pdf",
-                hasStaticPreview: false
-        },
-        {
-                id: "nmc-form-28",
-                title: "Lokshahi Din Application Form",
-                titleHi: "Lokshahi Din Application Form",
-                titleMr: "Lokshahi Din Application Form",
-                description: "Category: Lokshahi Din Application Form",
-                descriptionHi: "Category: Lokshahi Din Application Form",
-                descriptionMr: "Category: Lokshahi Din Application Form",
-                pages: 1,
-                paperSize: "A4",
-                orientation: "portrait",
-                fields: [],
-                imageUrl: "/assets/forms/nmc/nmc_28_lokshahi_din_application_form.pdf",
-                documentType: "pdf",
-                hasStaticPreview: false
-        },
-        {
-                id: "nmc-form-29",
-                title: "Marriage Registration",
-                titleHi: "Marriage Registration",
-                titleMr: "Marriage Registration",
-                description: "Category: Health Department",
-                descriptionHi: "Category: Health Department",
-                descriptionMr: "Category: Health Department",
-                pages: 1,
-                paperSize: "A4",
-                orientation: "portrait",
-                fields: [],
-                imageUrl: "/assets/forms/nmc/nmc_29_marriage_registration.pdf",
-                documentType: "pdf",
-                hasStaticPreview: false
-        },
-        {
-                id: "nmc-form-30",
-                title: "Annual Return Form (Marathi)",
-                titleHi: "Annual Return Form (Marathi)",
-                titleMr: "Annual Return Form (Marathi)",
-                description: "Category: Local Body Tax Department (LBT)",
-                descriptionHi: "Category: Local Body Tax Department (LBT)",
-                descriptionMr: "Category: Local Body Tax Department (LBT)",
-                pages: 1,
-                paperSize: "A4",
-                orientation: "portrait",
-                fields: [],
-                imageUrl: "/assets/forms/nmc/nmc_30_annual_return_form__marathi_.pdf",
-                documentType: "pdf",
-                hasStaticPreview: false
-        },
-        {
-                id: "nmc-form-31",
-                title: "Annual Return Form (English)",
-                titleHi: "Annual Return Form (English)",
-                titleMr: "Annual Return Form (English)",
-                description: "Category: Local Body Tax Department (LBT)",
-                descriptionHi: "Category: Local Body Tax Department (LBT)",
-                descriptionMr: "Category: Local Body Tax Department (LBT)",
-                pages: 1,
-                paperSize: "A4",
-                orientation: "portrait",
-                fields: [],
-                imageUrl: "/assets/forms/nmc/nmc_31_annual_return_form__english_.pdf",
-                documentType: "pdf",
-                hasStaticPreview: false
-        },
-        {
-                id: "nmc-form-32",
-                title: "Rules and Regulation of Various Appointments To The Municipal Services Video Resolution No.75 Dated 21.06.1985",
-                titleHi: "Rules and Regulation of Various Appointments To The Municipal Services Video Resolution No.75 Dated 21.06.1985",
-                titleMr: "Rules and Regulation of Various Appointments To The Municipal Services Video Resolution No.75 Dated 21.06.1985",
-                description: "Category: Establishment Department",
-                descriptionHi: "Category: Establishment Department",
-                descriptionMr: "Category: Establishment Department",
-                pages: 1,
-                paperSize: "A4",
-                orientation: "portrait",
-                fields: [],
-                imageUrl: "/assets/forms/nmc/nmc_32_rules_and_regulation_of_various_appointments_to_the_municipal_services_video_resolution_no_75_dated_21_06_1985.pdf",
-                documentType: "pdf",
-                hasStaticPreview: false
-        },
-        {
-                id: "nmc-form-33",
-                title: "Rules, Regulations,Laws and Standing order",
-                titleHi: "Rules, Regulations,Laws and Standing order",
-                titleMr: "Rules, Regulations,Laws and Standing order",
-                description: "Category: Establishment Department",
-                descriptionHi: "Category: Establishment Department",
-                descriptionMr: "Category: Establishment Department",
-                pages: 1,
-                paperSize: "A4",
-                orientation: "portrait",
-                fields: [],
-                imageUrl: "/assets/forms/nmc/nmc_33_rules__regulations_laws_and_standing_order.pdf",
-                documentType: "pdf",
-                hasStaticPreview: false
-        },
-        {
-                id: "nmc-form-34",
-                title: "धोकादायक वृक्ष तोडणी अर्ज व हमीपत्र",
-                titleHi: "धोकादायक वृक्ष तोडणी अर्ज व हमीपत्र",
-                titleMr: "धोकादायक वृक्ष तोडणी अर्ज व हमीपत्र",
-                description: "Category: Garden Department",
-                descriptionHi: "Category: Garden Department",
-                descriptionMr: "Category: Garden Department",
-                pages: 1,
-                paperSize: "A4",
-                orientation: "portrait",
-                fields: [],
-                imageUrl: "/assets/forms/nmc/nmc_34____________________________________.pdf",
-                documentType: "pdf",
-                hasStaticPreview: false
-        },
-        {
-                id: "nmc-form-35",
-                title: "बांधकाम बाधित वृक्ष तोडणी अर्ज व हमीपत्र",
-                titleHi: "बांधकाम बाधित वृक्ष तोडणी अर्ज व हमीपत्र",
-                titleMr: "बांधकाम बाधित वृक्ष तोडणी अर्ज व हमीपत्र",
-                description: "Category: Garden Department",
-                descriptionHi: "Category: Garden Department",
-                descriptionMr: "Category: Garden Department",
-                pages: 1,
-                paperSize: "A4",
-                orientation: "portrait",
-                fields: [],
-                imageUrl: "/assets/forms/nmc/nmc_35_________________________________________.pdf",
-                documentType: "pdf",
-                hasStaticPreview: false
-        },
-        {
-                id: "nmc-form-36",
-                title: "अल्प मुदतीचे जाहिरात फलक मनपा जागेत उभारण्याकरीता परवानाासाठी नमूना अर्ज",
-                titleHi: "अल्प मुदतीचे जाहिरात फलक मनपा जागेत उभारण्याकरीता परवानाासाठी नमूना अर्ज",
-                titleMr: "अल्प मुदतीचे जाहिरात फलक मनपा जागेत उभारण्याकरीता परवानाासाठी नमूना अर्ज",
-                description: "Category: Advertisement & License Department",
-                descriptionHi: "Category: Advertisement & License Department",
-                descriptionMr: "Category: Advertisement & License Department",
-                pages: 1,
-                paperSize: "A4",
-                orientation: "portrait",
-                fields: [],
-                imageUrl: "/assets/forms/nmc/nmc_36_________________________________________________________________________.pdf",
-                documentType: "pdf",
-                hasStaticPreview: false
-        },
-        {
-                id: "nmc-form-37",
-                title: "दिर्घ मुदतीचे नविन आकाश-चिन्ह (जाहिरात फलक) परवानाा नुतनीकरणासाठी नमूना ब अर्ज",
-                titleHi: "दिर्घ मुदतीचे नविन आकाश-चिन्ह (जाहिरात फलक) परवानाा नुतनीकरणासाठी नमूना ब अर्ज",
-                titleMr: "दिर्घ मुदतीचे नविन आकाश-चिन्ह (जाहिरात फलक) परवानाा नुतनीकरणासाठी नमूना ब अर्ज",
-                description: "Category: Advertisement & License Department",
-                descriptionHi: "Category: Advertisement & License Department",
-                descriptionMr: "Category: Advertisement & License Department",
-                pages: 1,
-                paperSize: "A4",
-                orientation: "portrait",
-                fields: [],
-                imageUrl: "/assets/forms/nmc/nmc_37_______________________________________________________________________________.pdf",
-                documentType: "pdf",
-                hasStaticPreview: false
-        },
-        {
-                id: "nmc-form-38",
-                title: "दिर्घ मुदतीचे नविन आकाश-चिन्ह (जाहिरात फलक) परवानाासाठी नमूना अ अर्ज",
-                titleHi: "दिर्घ मुदतीचे नविन आकाश-चिन्ह (जाहिरात फलक) परवानाासाठी नमूना अ अर्ज",
-                titleMr: "दिर्घ मुदतीचे नविन आकाश-चिन्ह (जाहिरात फलक) परवानाासाठी नमूना अ अर्ज",
-                description: "Category: Advertisement & License Department",
-                descriptionHi: "Category: Advertisement & License Department",
-                descriptionMr: "Category: Advertisement & License Department",
-                pages: 1,
-                paperSize: "A4",
-                orientation: "portrait",
-                fields: [],
-                imageUrl: "/assets/forms/nmc/nmc_38_____________________________________________________________________.pdf",
-                documentType: "pdf",
-                hasStaticPreview: false
-        },
-        {
-                id: "nmc-form-39",
-                title: "अल्प मुदतीचे जाहिरात फलक खाजगी जागेत उभारण्याकरीता परवानाासाठी नमूना अर्ज",
-                titleHi: "अल्प मुदतीचे जाहिरात फलक खाजगी जागेत उभारण्याकरीता परवानाासाठी नमूना अर्ज",
-                titleMr: "अल्प मुदतीचे जाहिरात फलक खाजगी जागेत उभारण्याकरीता परवानाासाठी नमूना अर्ज",
-                description: "Category: Advertisement & License Department",
-                descriptionHi: "Category: Advertisement & License Department",
-                descriptionMr: "Category: Advertisement & License Department",
-                pages: 1,
-                paperSize: "A4",
-                orientation: "portrait",
-                fields: [],
-                imageUrl: "/assets/forms/nmc/nmc_39__________________________________________________________________________.pdf",
-                documentType: "pdf",
-                hasStaticPreview: false
-        }
+      {
+        id: "nmc-form-0",
+        title: "Request For New Connection",
+        titleHi: "Request For New Connection",
+        titleMr: "Request For New Connection",
+        description: "Category: Water Supply Department",
+        descriptionHi: "Category: Water Supply Department",
+        descriptionMr: "Category: Water Supply Department",
+        pages: 1,
+        paperSize: "A4",
+        orientation: "portrait",
+        fields: [],
+        imageUrl: "/assets/forms/nmc/nmc_0_request_for_new_connection.pdf",
+        documentType: "pdf",
+        hasStaticPreview: false
+      },
+      {
+        id: "nmc-form-1",
+        title: "Request For Change Of Water Rate",
+        titleHi: "Request For Change Of Water Rate",
+        titleMr: "Request For Change Of Water Rate",
+        description: "Category: Water Supply Department",
+        descriptionHi: "Category: Water Supply Department",
+        descriptionMr: "Category: Water Supply Department",
+        pages: 1,
+        paperSize: "A4",
+        orientation: "portrait",
+        fields: [],
+        imageUrl: "/assets/forms/nmc/nmc_1_request_for_change_of_water_rate.pdf",
+        documentType: "pdf",
+        hasStaticPreview: false
+      },
+      {
+        id: "nmc-form-2",
+        title: "Request For Change In Name",
+        titleHi: "Request For Change In Name",
+        titleMr: "Request For Change In Name",
+        description: "Category: Water Supply Department",
+        descriptionHi: "Category: Water Supply Department",
+        descriptionMr: "Category: Water Supply Department",
+        pages: 1,
+        paperSize: "A4",
+        orientation: "portrait",
+        fields: [],
+        imageUrl: "/assets/forms/nmc/nmc_2_request_for_change_in_name.pdf",
+        documentType: "pdf",
+        hasStaticPreview: false
+      },
+      {
+        id: "nmc-form-3",
+        title: "Request For Bill At Residential Rate",
+        titleHi: "Request For Bill At Residential Rate",
+        titleMr: "Request For Bill At Residential Rate",
+        description: "Category: Water Supply Department",
+        descriptionHi: "Category: Water Supply Department",
+        descriptionMr: "Category: Water Supply Department",
+        pages: 1,
+        paperSize: "A4",
+        orientation: "portrait",
+        fields: [],
+        imageUrl: "/assets/forms/nmc/nmc_3_request_for_bill_at_residential_rate.pdf",
+        documentType: "pdf",
+        hasStaticPreview: false
+      },
+      {
+        id: "nmc-form-4",
+        title: "Request For Change In Location Of Connection",
+        titleHi: "Request For Change In Location Of Connection",
+        titleMr: "Request For Change In Location Of Connection",
+        description: "Category: Water Supply Department",
+        descriptionHi: "Category: Water Supply Department",
+        descriptionMr: "Category: Water Supply Department",
+        pages: 1,
+        paperSize: "A4",
+        orientation: "portrait",
+        fields: [],
+        imageUrl: "/assets/forms/nmc/nmc_4_request_for_change_in_location_of_connection.pdf",
+        documentType: "pdf",
+        hasStaticPreview: false
+      },
+      {
+        id: "nmc-form-5",
+        title: "Registration Of Property On Demand Register",
+        titleHi: "Registration Of Property On Demand Register",
+        titleMr: "Registration Of Property On Demand Register",
+        description: "Category: Tax Department",
+        descriptionHi: "Category: Tax Department",
+        descriptionMr: "Category: Tax Department",
+        pages: 1,
+        paperSize: "A4",
+        orientation: "portrait",
+        fields: [],
+        imageUrl: "/assets/forms/nmc/nmc_5_registration_of_property_on_demand_register.pdf",
+        documentType: "pdf",
+        hasStaticPreview: false
+      },
+      {
+        id: "nmc-form-6",
+        title: "Reduction Of Property Tax",
+        titleHi: "Reduction Of Property Tax",
+        titleMr: "Reduction Of Property Tax",
+        description: "Category: Tax Department",
+        descriptionHi: "Category: Tax Department",
+        descriptionMr: "Category: Tax Department",
+        pages: 1,
+        paperSize: "A4",
+        orientation: "portrait",
+        fields: [],
+        imageUrl: "/assets/forms/nmc/nmc_6_reduction_of_property_tax.pdf",
+        documentType: "pdf",
+        hasStaticPreview: false
+      },
+      {
+        id: "nmc-form-7",
+        title: "Tax On Property",
+        titleHi: "Tax On Property",
+        titleMr: "Tax On Property",
+        description: "Category: Tax Department",
+        descriptionHi: "Category: Tax Department",
+        descriptionMr: "Category: Tax Department",
+        pages: 1,
+        paperSize: "A4",
+        orientation: "portrait",
+        fields: [],
+        imageUrl: "/assets/forms/nmc/nmc_7_tax_on_property.pdf",
+        documentType: "pdf",
+        hasStaticPreview: false
+      },
+      {
+        id: "nmc-form-8",
+        title: "No Objection Certifi hucate (N.O.C.)",
+        titleHi: "No Objection Certifi hucate (N.O.C.)",
+        titleMr: "No Objection Certifi hucate (N.O.C.)",
+        description: "Category: Electrical Department",
+        descriptionHi: "Category: Electrical Department",
+        descriptionMr: "Category: Electrical Department",
+        pages: 1,
+        paperSize: "A4",
+        orientation: "portrait",
+        fields: [],
+        imageUrl: "/assets/forms/nmc/nmc_8_no_objection_certifi_hucate__n_o_c__.pdf",
+        documentType: "pdf",
+        hasStaticPreview: false
+      },
+      {
+        id: "nmc-form-9",
+        title: "No Objection Certificate (N.O.C.)",
+        titleHi: "No Objection Certificate (N.O.C.)",
+        titleMr: "No Objection Certificate (N.O.C.)",
+        description: "Category: Business & Shop Registration",
+        descriptionHi: "Category: Business & Shop Registration",
+        descriptionMr: "Category: Business & Shop Registration",
+        pages: 1,
+        paperSize: "A4",
+        orientation: "portrait",
+        fields: [],
+        imageUrl: "/assets/forms/nmc/nmc_9_no_objection_certificate__n_o_c__.pdf",
+        documentType: "pdf",
+        hasStaticPreview: false
+      },
+      {
+        id: "nmc-form-10",
+        title: "Architect Registration Application",
+        titleHi: "Architect Registration Application",
+        titleMr: "Architect Registration Application",
+        description: "Category: Town Planning Department",
+        descriptionHi: "Category: Town Planning Department",
+        descriptionMr: "Category: Town Planning Department",
+        pages: 1,
+        paperSize: "A4",
+        orientation: "portrait",
+        fields: [],
+        imageUrl: "/assets/forms/nmc/nmc_10_architect_registration_application.pdf",
+        documentType: "pdf",
+        hasStaticPreview: false
+      },
+      {
+        id: "nmc-form-11",
+        title: "Structural Engineer / Engineer Supervisor New License Application",
+        titleHi: "Structural Engineer / Engineer Supervisor New License Application",
+        titleMr: "Structural Engineer / Engineer Supervisor New License Application",
+        description: "Category: Town Planning Department",
+        descriptionHi: "Category: Town Planning Department",
+        descriptionMr: "Category: Town Planning Department",
+        pages: 1,
+        paperSize: "A4",
+        orientation: "portrait",
+        fields: [],
+        imageUrl: "/assets/forms/nmc/nmc_11_structural_engineer___engineer_supervisor_new_license_application.pdf",
+        documentType: "pdf",
+        hasStaticPreview: false
+      },
+      {
+        id: "nmc-form-12",
+        title: "Structural Engineer / Engineer Supervisor License Renewal Application",
+        titleHi: "Structural Engineer / Engineer Supervisor License Renewal Application",
+        titleMr: "Structural Engineer / Engineer Supervisor License Renewal Application",
+        description: "Category: Town Planning Department",
+        descriptionHi: "Category: Town Planning Department",
+        descriptionMr: "Category: Town Planning Department",
+        pages: 1,
+        paperSize: "A4",
+        orientation: "portrait",
+        fields: [],
+        imageUrl: "/assets/forms/nmc/nmc_12_structural_engineer___engineer_supervisor_license_renewal_application.pdf",
+        documentType: "pdf",
+        hasStaticPreview: false
+      },
+      {
+        id: "nmc-form-13",
+        title: "Tentative Layout",
+        titleHi: "Tentative Layout",
+        titleMr: "Tentative Layout",
+        description: "Category: Town Planning Department",
+        descriptionHi: "Category: Town Planning Department",
+        descriptionMr: "Category: Town Planning Department",
+        pages: 1,
+        paperSize: "A4",
+        orientation: "portrait",
+        fields: [],
+        imageUrl: "/assets/forms/nmc/nmc_13_tentative_layout.pdf",
+        documentType: "pdf",
+        hasStaticPreview: false
+      },
+      {
+        id: "nmc-form-14",
+        title: "Final Layout",
+        titleHi: "Final Layout",
+        titleMr: "Final Layout",
+        description: "Category: Town Planning Department",
+        descriptionHi: "Category: Town Planning Department",
+        descriptionMr: "Category: Town Planning Department",
+        pages: 1,
+        paperSize: "A4",
+        orientation: "portrait",
+        fields: [],
+        imageUrl: "/assets/forms/nmc/nmc_14_final_layout.pdf",
+        documentType: "pdf",
+        hasStaticPreview: false
+      },
+      {
+        id: "nmc-form-15",
+        title: "Building Permission (B.P.)",
+        titleHi: "Building Permission (B.P.)",
+        titleMr: "Building Permission (B.P.)",
+        description: "Category: Town Planning Department",
+        descriptionHi: "Category: Town Planning Department",
+        descriptionMr: "Category: Town Planning Department",
+        pages: 1,
+        paperSize: "A4",
+        orientation: "portrait",
+        fields: [],
+        imageUrl: "/assets/forms/nmc/nmc_15_building_permission__b_p__.pdf",
+        documentType: "pdf",
+        hasStaticPreview: false
+      },
+      {
+        id: "nmc-form-16",
+        title: "Occupancy Certificate",
+        titleHi: "Occupancy Certificate",
+        titleMr: "Occupancy Certificate",
+        description: "Category: Town Planning Department",
+        descriptionHi: "Category: Town Planning Department",
+        descriptionMr: "Category: Town Planning Department",
+        pages: 1,
+        paperSize: "A4",
+        orientation: "portrait",
+        fields: [],
+        imageUrl: "/assets/forms/nmc/nmc_16_occupancy_certificate.pdf",
+        documentType: "pdf",
+        hasStaticPreview: false
+      },
+      {
+        id: "nmc-form-17",
+        title: "No Objection Certificate (N.O.C.)",
+        titleHi: "No Objection Certificate (N.O.C.)",
+        titleMr: "No Objection Certificate (N.O.C.)",
+        description: "Category: Town Planning Department",
+        descriptionHi: "Category: Town Planning Department",
+        descriptionMr: "Category: Town Planning Department",
+        pages: 1,
+        paperSize: "A4",
+        orientation: "portrait",
+        fields: [],
+        imageUrl: "/assets/forms/nmc/nmc_17_no_objection_certificate__n_o_c__.pdf",
+        documentType: "pdf",
+        hasStaticPreview: false
+      },
+      {
+        id: "nmc-form-18",
+        title: "Birth Certificate",
+        titleHi: "Birth Certificate",
+        titleMr: "Birth Certificate",
+        description: "Category: Birth & Death Certificate",
+        descriptionHi: "Category: Birth & Death Certificate",
+        descriptionMr: "Category: Birth & Death Certificate",
+        pages: 1,
+        paperSize: "A4",
+        orientation: "portrait",
+        fields: [],
+        imageUrl: "/assets/forms/nmc/nmc_18_birth_certificate.pdf",
+        documentType: "pdf",
+        hasStaticPreview: false
+      },
+      {
+        id: "nmc-form-19",
+        title: "Death Certificate",
+        titleHi: "Death Certificate",
+        titleMr: "Death Certificate",
+        description: "Category: Birth & Death Certificate",
+        descriptionHi: "Category: Birth & Death Certificate",
+        descriptionMr: "Category: Birth & Death Certificate",
+        pages: 1,
+        paperSize: "A4",
+        orientation: "portrait",
+        fields: [],
+        imageUrl: "/assets/forms/nmc/nmc_19_death_certificate.pdf",
+        documentType: "pdf",
+        hasStaticPreview: false
+      },
+      {
+        id: "nmc-form-20",
+        title: "Hospital/ Nursing Home/ Maternity Homes Inspection Form",
+        titleHi: "Hospital/ Nursing Home/ Maternity Homes Inspection Form",
+        titleMr: "Hospital/ Nursing Home/ Maternity Homes Inspection Form",
+        description: "Category: Medical Department",
+        descriptionHi: "Category: Medical Department",
+        descriptionMr: "Category: Medical Department",
+        pages: 1,
+        paperSize: "A4",
+        orientation: "portrait",
+        fields: [],
+        imageUrl: "/assets/forms/nmc/nmc_20_hospital__nursing_home__maternity_homes_inspection_form.pdf",
+        documentType: "pdf",
+        hasStaticPreview: false
+      },
+      {
+        id: "nmc-form-21",
+        title: "Form B",
+        titleHi: "Form B",
+        titleMr: "Form B",
+        description: "Category: Medical Department",
+        descriptionHi: "Category: Medical Department",
+        descriptionMr: "Category: Medical Department",
+        pages: 1,
+        paperSize: "A4",
+        orientation: "portrait",
+        fields: [],
+        imageUrl: "/assets/forms/nmc/nmc_21_form_b.pdf",
+        documentType: "pdf",
+        hasStaticPreview: false
+      },
+      {
+        id: "nmc-form-22",
+        title: "Doctor Registration Form",
+        titleHi: "Doctor Registration Form",
+        titleMr: "Doctor Registration Form",
+        description: "Category: Medical Department",
+        descriptionHi: "Category: Medical Department",
+        descriptionMr: "Category: Medical Department",
+        pages: 1,
+        paperSize: "A4",
+        orientation: "portrait",
+        fields: [],
+        imageUrl: "/assets/forms/nmc/nmc_22_doctor_registration_form.pdf",
+        documentType: "pdf",
+        hasStaticPreview: false
+      },
+      {
+        id: "nmc-form-23",
+        title: "Sisters Registration Form",
+        titleHi: "Sisters Registration Form",
+        titleMr: "Sisters Registration Form",
+        description: "Category: Medical Department",
+        descriptionHi: "Category: Medical Department",
+        descriptionMr: "Category: Medical Department",
+        pages: 1,
+        paperSize: "A4",
+        orientation: "portrait",
+        fields: [],
+        imageUrl: "/assets/forms/nmc/nmc_23_sisters_registration_form.pdf",
+        documentType: "pdf",
+        hasStaticPreview: false
+      },
+      {
+        id: "nmc-form-24",
+        title: "Hospital Owner Registration",
+        titleHi: "Hospital Owner Registration",
+        titleMr: "Hospital Owner Registration",
+        description: "Category: Medical Department",
+        descriptionHi: "Category: Medical Department",
+        descriptionMr: "Category: Medical Department",
+        pages: 1,
+        paperSize: "A4",
+        orientation: "portrait",
+        fields: [],
+        imageUrl: "/assets/forms/nmc/nmc_24_hospital_owner_registration.pdf",
+        documentType: "pdf",
+        hasStaticPreview: false
+      },
+      {
+        id: "nmc-form-25",
+        title: "Hospital Registration or Renewal Document List",
+        titleHi: "Hospital Registration or Renewal Document List",
+        titleMr: "Hospital Registration or Renewal Document List",
+        description: "Category: Medical Department",
+        descriptionHi: "Category: Medical Department",
+        descriptionMr: "Category: Medical Department",
+        pages: 1,
+        paperSize: "A4",
+        orientation: "portrait",
+        fields: [],
+        imageUrl: "/assets/forms/nmc/nmc_25_hospital_registration_or_renewal_document_list.pdf",
+        documentType: "pdf",
+        hasStaticPreview: false
+      },
+      {
+        id: "nmc-form-26",
+        title: "Pre Natal Diagnostics Registration",
+        titleHi: "Pre Natal Diagnostics Registration",
+        titleMr: "Pre Natal Diagnostics Registration",
+        description: "Category: Medical Department",
+        descriptionHi: "Category: Medical Department",
+        descriptionMr: "Category: Medical Department",
+        pages: 1,
+        paperSize: "A4",
+        orientation: "portrait",
+        fields: [],
+        imageUrl: "/assets/forms/nmc/nmc_26_pre_natal_diagnostics_registration.pdf",
+        documentType: "pdf",
+        hasStaticPreview: false
+      },
+      {
+        id: "nmc-form-27",
+        title: "जैविक कचरा विल्हेवाट (BMW) प्रकल्प सभासदत्व अर्जासाठी आवश्यक असणरे कागदपत्रे.",
+        titleHi: "जैविक कचरा विल्हेवाट (BMW) प्रकल्प सभासदत्व अर्जासाठी आवश्यक असणरे कागदपत्रे.",
+        titleMr: "जैविक कचरा विल्हेवाट (BMW) प्रकल्प सभासदत्व अर्जासाठी आवश्यक असणरे कागदपत्रे.",
+        description: "Category: Medical Department",
+        descriptionHi: "Category: Medical Department",
+        descriptionMr: "Category: Medical Department",
+        pages: 1,
+        paperSize: "A4",
+        orientation: "portrait",
+        fields: [],
+        imageUrl: "/assets/forms/nmc/nmc_27_______________________bmw____________________________________________________.pdf",
+        documentType: "pdf",
+        hasStaticPreview: false
+      },
+      {
+        id: "nmc-form-28",
+        title: "Lokshahi Din Application Form",
+        titleHi: "Lokshahi Din Application Form",
+        titleMr: "Lokshahi Din Application Form",
+        description: "Category: Lokshahi Din Application Form",
+        descriptionHi: "Category: Lokshahi Din Application Form",
+        descriptionMr: "Category: Lokshahi Din Application Form",
+        pages: 1,
+        paperSize: "A4",
+        orientation: "portrait",
+        fields: [],
+        imageUrl: "/assets/forms/nmc/nmc_28_lokshahi_din_application_form.pdf",
+        documentType: "pdf",
+        hasStaticPreview: false
+      },
+      {
+        id: "nmc-form-29",
+        title: "Marriage Registration",
+        titleHi: "Marriage Registration",
+        titleMr: "Marriage Registration",
+        description: "Category: Health Department",
+        descriptionHi: "Category: Health Department",
+        descriptionMr: "Category: Health Department",
+        pages: 1,
+        paperSize: "A4",
+        orientation: "portrait",
+        fields: [],
+        imageUrl: "/assets/forms/nmc/nmc_29_marriage_registration.pdf",
+        documentType: "pdf",
+        hasStaticPreview: false
+      },
+      {
+        id: "nmc-form-30",
+        title: "Annual Return Form (Marathi)",
+        titleHi: "Annual Return Form (Marathi)",
+        titleMr: "Annual Return Form (Marathi)",
+        description: "Category: Local Body Tax Department (LBT)",
+        descriptionHi: "Category: Local Body Tax Department (LBT)",
+        descriptionMr: "Category: Local Body Tax Department (LBT)",
+        pages: 1,
+        paperSize: "A4",
+        orientation: "portrait",
+        fields: [],
+        imageUrl: "/assets/forms/nmc/nmc_30_annual_return_form__marathi_.pdf",
+        documentType: "pdf",
+        hasStaticPreview: false
+      },
+      {
+        id: "nmc-form-31",
+        title: "Annual Return Form (English)",
+        titleHi: "Annual Return Form (English)",
+        titleMr: "Annual Return Form (English)",
+        description: "Category: Local Body Tax Department (LBT)",
+        descriptionHi: "Category: Local Body Tax Department (LBT)",
+        descriptionMr: "Category: Local Body Tax Department (LBT)",
+        pages: 1,
+        paperSize: "A4",
+        orientation: "portrait",
+        fields: [],
+        imageUrl: "/assets/forms/nmc/nmc_31_annual_return_form__english_.pdf",
+        documentType: "pdf",
+        hasStaticPreview: false
+      },
+      {
+        id: "nmc-form-32",
+        title: "Rules and Regulation of Various Appointments To The Municipal Services Video Resolution No.75 Dated 21.06.1985",
+        titleHi: "Rules and Regulation of Various Appointments To The Municipal Services Video Resolution No.75 Dated 21.06.1985",
+        titleMr: "Rules and Regulation of Various Appointments To The Municipal Services Video Resolution No.75 Dated 21.06.1985",
+        description: "Category: Establishment Department",
+        descriptionHi: "Category: Establishment Department",
+        descriptionMr: "Category: Establishment Department",
+        pages: 1,
+        paperSize: "A4",
+        orientation: "portrait",
+        fields: [],
+        imageUrl: "/assets/forms/nmc/nmc_32_rules_and_regulation_of_various_appointments_to_the_municipal_services_video_resolution_no_75_dated_21_06_1985.pdf",
+        documentType: "pdf",
+        hasStaticPreview: false
+      },
+      {
+        id: "nmc-form-33",
+        title: "Rules, Regulations,Laws and Standing order",
+        titleHi: "Rules, Regulations,Laws and Standing order",
+        titleMr: "Rules, Regulations,Laws and Standing order",
+        description: "Category: Establishment Department",
+        descriptionHi: "Category: Establishment Department",
+        descriptionMr: "Category: Establishment Department",
+        pages: 1,
+        paperSize: "A4",
+        orientation: "portrait",
+        fields: [],
+        imageUrl: "/assets/forms/nmc/nmc_33_rules__regulations_laws_and_standing_order.pdf",
+        documentType: "pdf",
+        hasStaticPreview: false
+      },
+      {
+        id: "nmc-form-34",
+        title: "धोकादायक वृक्ष तोडणी अर्ज व हमीपत्र",
+        titleHi: "धोकादायक वृक्ष तोडणी अर्ज व हमीपत्र",
+        titleMr: "धोकादायक वृक्ष तोडणी अर्ज व हमीपत्र",
+        description: "Category: Garden Department",
+        descriptionHi: "Category: Garden Department",
+        descriptionMr: "Category: Garden Department",
+        pages: 1,
+        paperSize: "A4",
+        orientation: "portrait",
+        fields: [],
+        imageUrl: "/assets/forms/nmc/nmc_34____________________________________.pdf",
+        documentType: "pdf",
+        hasStaticPreview: false
+      },
+      {
+        id: "nmc-form-35",
+        title: "बांधकाम बाधित वृक्ष तोडणी अर्ज व हमीपत्र",
+        titleHi: "बांधकाम बाधित वृक्ष तोडणी अर्ज व हमीपत्र",
+        titleMr: "बांधकाम बाधित वृक्ष तोडणी अर्ज व हमीपत्र",
+        description: "Category: Garden Department",
+        descriptionHi: "Category: Garden Department",
+        descriptionMr: "Category: Garden Department",
+        pages: 1,
+        paperSize: "A4",
+        orientation: "portrait",
+        fields: [],
+        imageUrl: "/assets/forms/nmc/nmc_35_________________________________________.pdf",
+        documentType: "pdf",
+        hasStaticPreview: false
+      },
+      {
+        id: "nmc-form-36",
+        title: "अल्प मुदतीचे जाहिरात फलक मनपा जागेत उभारण्याकरीता परवानाासाठी नमूना अर्ज",
+        titleHi: "अल्प मुदतीचे जाहिरात फलक मनपा जागेत उभारण्याकरीता परवानाासाठी नमूना अर्ज",
+        titleMr: "अल्प मुदतीचे जाहिरात फलक मनपा जागेत उभारण्याकरीता परवानाासाठी नमूना अर्ज",
+        description: "Category: Advertisement & License Department",
+        descriptionHi: "Category: Advertisement & License Department",
+        descriptionMr: "Category: Advertisement & License Department",
+        pages: 1,
+        paperSize: "A4",
+        orientation: "portrait",
+        fields: [],
+        imageUrl: "/assets/forms/nmc/nmc_36_________________________________________________________________________.pdf",
+        documentType: "pdf",
+        hasStaticPreview: false
+      },
+      {
+        id: "nmc-form-37",
+        title: "दिर्घ मुदतीचे नविन आकाश-चिन्ह (जाहिरात फलक) परवानाा नुतनीकरणासाठी नमूना ब अर्ज",
+        titleHi: "दिर्घ मुदतीचे नविन आकाश-चिन्ह (जाहिरात फलक) परवानाा नुतनीकरणासाठी नमूना ब अर्ज",
+        titleMr: "दिर्घ मुदतीचे नविन आकाश-चिन्ह (जाहिरात फलक) परवानाा नुतनीकरणासाठी नमूना ब अर्ज",
+        description: "Category: Advertisement & License Department",
+        descriptionHi: "Category: Advertisement & License Department",
+        descriptionMr: "Category: Advertisement & License Department",
+        pages: 1,
+        paperSize: "A4",
+        orientation: "portrait",
+        fields: [],
+        imageUrl: "/assets/forms/nmc/nmc_37_______________________________________________________________________________.pdf",
+        documentType: "pdf",
+        hasStaticPreview: false
+      },
+      {
+        id: "nmc-form-38",
+        title: "दिर्घ मुदतीचे नविन आकाश-चिन्ह (जाहिरात फलक) परवानाासाठी नमूना अ अर्ज",
+        titleHi: "दिर्घ मुदतीचे नविन आकाश-चिन्ह (जाहिरात फलक) परवानाासाठी नमूना अ अर्ज",
+        titleMr: "दिर्घ मुदतीचे नविन आकाश-चिन्ह (जाहिरात फलक) परवानाासाठी नमूना अ अर्ज",
+        description: "Category: Advertisement & License Department",
+        descriptionHi: "Category: Advertisement & License Department",
+        descriptionMr: "Category: Advertisement & License Department",
+        pages: 1,
+        paperSize: "A4",
+        orientation: "portrait",
+        fields: [],
+        imageUrl: "/assets/forms/nmc/nmc_38_____________________________________________________________________.pdf",
+        documentType: "pdf",
+        hasStaticPreview: false
+      },
+      {
+        id: "nmc-form-39",
+        title: "अल्प मुदतीचे जाहिरात फलक खाजगी जागेत उभारण्याकरीता परवानाासाठी नमूना अर्ज",
+        titleHi: "अल्प मुदतीचे जाहिरात फलक खाजगी जागेत उभारण्याकरीता परवानाासाठी नमूना अर्ज",
+        titleMr: "अल्प मुदतीचे जाहिरात फलक खाजगी जागेत उभारण्याकरीता परवानाासाठी नमूना अर्ज",
+        description: "Category: Advertisement & License Department",
+        descriptionHi: "Category: Advertisement & License Department",
+        descriptionMr: "Category: Advertisement & License Department",
+        pages: 1,
+        paperSize: "A4",
+        orientation: "portrait",
+        fields: [],
+        imageUrl: "/assets/forms/nmc/nmc_39__________________________________________________________________________.pdf",
+        documentType: "pdf",
+        hasStaticPreview: false
+      }
 
     ]
   }
@@ -2390,8 +2390,8 @@ function renderFormTemplateIcon(template, index = 0) {
         ${canGeneratePdfThumbnail ? `data-template-thumbnail-url="${escapeHtml(documentUrl)}" data-template-thumbnail-key="${escapeHtml(cacheKey)}"` : ""}
       >
         ${thumbnailUrl
-          ? `<img class="form-thumbnail-image" src="${escapeHtml(thumbnailUrl)}" alt="" draggable="false" data-no-visual-search />`
-          : `<span class="form-thumbnail-placeholder">${uiIcon("pages", 32)}</span>`}
+      ? `<img class="form-thumbnail-image" src="${escapeHtml(thumbnailUrl)}" alt="" draggable="false" data-no-visual-search />`
+      : `<span class="form-thumbnail-placeholder">${uiIcon("pages", 32)}</span>`}
       </div>
     `;
 }
@@ -3915,7 +3915,6 @@ async function startMobileUploadSession() {
     state.uploadSession = {
       ...payload,
       uploadUrl: publicMobileUploadUrl(payload.token),
-      qrSvg: "",
       status: "waiting"
     };
     render();
@@ -5187,7 +5186,7 @@ function render() {
       }
       window.history.replaceState({}, '', url);
     }
-  } catch (e) {}
+  } catch (e) { }
 }
 
 function updateKioskClock() {
@@ -5380,7 +5379,7 @@ function renderFooterHelpCall() {
       <span class="kiosk-footer-help-icon">${uiIcon("headset", 30)}</span>
       <span class="kiosk-footer-help-copy">
         <small>Need Help? Call Us</small>
-        <strong>1800 123 4567</strong>
+        <strong>+91 9359604384</strong>
       </span>
       <span class="kiosk-footer-help-note">(Toll Free)</span>
     </div>
@@ -6273,8 +6272,8 @@ function renderPreviewStep() {
   const previewClass = hasMultipleFiles
     ? "preview-live multi-document-preview"
     : file?.previewUrl && ["pdf", "image"].includes(file.previewKind)
-    ? "preview-live"
-    : "preview-document-mode";
+      ? "preview-live"
+      : "preview-document-mode";
   const orientation = normalizeOrientation(state.settings.orientation);
   const paperClass = `paper-${normalizePaperSize(state.settings.paperSize, "A4").toLowerCase()} orientation-${orientation} color-${state.settings.colorMode === "color" ? "color" : "bw"}`;
   return `
@@ -6384,7 +6383,6 @@ function renderPreviewControlPanel(details, files) {
             ${files.map((item, index) => `
               <div class="preview-uploaded-row">
                 <span>${index + 1}</span>
-                <strong>${escapeHtml(item.source || item.name || `Document ${index + 1}`)}</strong>
                 <em>${Math.max(1, Number(item.pages) || 1)} page${Math.max(1, Number(item.pages) || 1) === 1 ? "" : "s"}</em>
               </div>
             `).join("")}
@@ -7868,7 +7866,7 @@ function renderSimpleServiceForms(service) {
           </div>
           <span>${Number(template.pages || 1)} page${Number(template.pages || 1) === 1 ? "" : "s"}</span>
         </div>
-      `).join("") : `<div class="simple-form-empty">No forms are configured for this service.</div>`}
+      `).join("") : `<div class="simple-form-empty">No forms added yet. Edit this service to create forms.</div>`}
     </div>
   `;
 }
@@ -8848,18 +8846,14 @@ async function uploadAdminTemplateImage(file, { serviceId, templateIndex = 0, dr
     }
   }
 
-  if (draft) {
+  if (draft && templateIndex === null) {
+    updateServiceDraftField("imageUrl", imageUrl);
+  } else if (draft) {
     updateServiceDraftTemplateField(templateIndex, "imageUrl", imageUrl);
-    updateServiceDraftTemplateField(templateIndex, "documentType", documentType);
-    updateServiceDraftTemplateField(templateIndex, "pages", pages);
-    updateServiceDraftTemplateField(templateIndex, "title", title);
-    updateServiceDraftTemplateField(templateIndex, "description", `${documentType.toUpperCase()} template document.`);
+  } else if (templateIndex === null) {
+    updateServiceField(serviceId, "imageUrl", imageUrl);
   } else {
     updateServiceTemplateField(serviceId, templateIndex, "imageUrl", imageUrl);
-    updateServiceTemplateField(serviceId, templateIndex, "documentType", documentType);
-    updateServiceTemplateField(serviceId, templateIndex, "pages", pages);
-    updateServiceTemplateField(serviceId, templateIndex, "title", title);
-    updateServiceTemplateField(serviceId, templateIndex, "description", `${documentType.toUpperCase()} template document.`);
   }
 
   state.imageUploadBusy = false;
@@ -10079,7 +10073,19 @@ async function handleClick(event) {
         state.templateSearchQuery = "";
         state.templateSearchKeyboardActive = false;
       } else {
-        state.step = Math.max(0, state.step - 1);
+        const prevStep = Math.max(0, state.step - 1);
+        state.step = prevStep;
+        // When going back to the upload screen, always generate a fresh QR session.
+        // The old session is already consumed (status=uploaded) and the mobile page
+        // can no longer accept new uploads on it — a new token is required.
+        if (prevStep === 1 && !isFormTemplateService()) {
+          stopUploadPolling();
+          state.uploadSession = null;
+          state.uploadError = "";
+          render();
+          startMobileUploadSession();
+          break;
+        }
       }
       render();
       break;
@@ -10745,19 +10751,19 @@ try {
       state.step = parsed.step;
       state.selectedService = parsed.selectedService;
       if (parsed.selectedTemplate) state.selectedTemplate = parsed.selectedTemplate;
-      
+
       if (state.step >= 2) {
-         const isTemplate = services.find(s => s.id === state.selectedService)?.mode === "template" || (formTemplates[state.selectedService] && formTemplates[state.selectedService].length > 0);
-         if (!isTemplate && (!state.files || state.files.length === 0)) {
-           state.step = 1;
-         }
+        const isTemplate = services.find(s => s.id === state.selectedService)?.mode === "template" || (formTemplates[state.selectedService] && formTemplates[state.selectedService].length > 0);
+        if (!isTemplate && (!state.files || state.files.length === 0)) {
+          state.step = 1;
+        }
       }
     } else if (parsed.step === 0) {
       state.step = 0;
       state.selectedService = null;
     }
   }
-} catch (e) {}
+} catch (e) { }
 
 render();
 loadPricingSettings();
