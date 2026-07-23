@@ -244,6 +244,59 @@
   margin: 0;
 }
 
+.customer-shell .direct-print-stage {
+  align-items: center;
+  justify-content: center;
+  min-height: min(620px, calc(100dvh - 190px));
+  text-align: center;
+}
+
+.customer-shell .direct-print-panel {
+  align-items: center;
+  background: #ffffff;
+  border: 1px solid #dce7f5;
+  border-radius: 8px;
+  box-shadow: 0 18px 48px rgba(15, 35, 65, 0.11);
+  display: grid;
+  gap: 18px;
+  justify-items: center;
+  margin: 0 auto;
+  max-width: 680px;
+  padding: clamp(26px, 4vw, 46px);
+  width: min(100%, 680px);
+}
+
+.customer-shell .direct-print-visual {
+  align-items: center;
+  background: #eef6ff;
+  border: 1px solid #cfe1fb;
+  border-radius: 50%;
+  color: #0b65f0;
+  display: grid;
+  height: 84px;
+  justify-items: center;
+  width: 84px;
+}
+
+.customer-shell .direct-print-panel h2 {
+  color: #071f49;
+  font-size: clamp(24px, 3vw, 34px);
+  line-height: 1.18;
+  margin: 0;
+}
+
+.customer-shell .direct-print-panel p {
+  color: #52657f;
+  font-size: 16px;
+  line-height: 1.45;
+  margin: 0;
+}
+
+.customer-shell .direct-print-timeline {
+  max-width: 520px;
+  width: 100%;
+}
+
 .customer-shell .payment-summary {
   display: grid;
   gap: 6px;
@@ -15106,7 +15159,7 @@ tbody tr:hover {
   bottom: 18px;
   left: 18px;
   z-index: 200;
-  display: inline-flex;
+  display: none !important;
   align-items: center;
   gap: 6px;
   padding: 7px 14px 7px 10px;

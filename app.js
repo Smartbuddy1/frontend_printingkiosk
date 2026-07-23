@@ -3467,33 +3467,14 @@ function colorSelectionSupported() {
 }
 
 function paymentReady() {
-  return state.printer.online && colorSelectionSupported();
+  return colorSelectionSupported();
 }
 
 function printerReadyForCustomerFlow() {
-  return state.printer.online && !state.printer.checking;
+  return true;
 }
 
 function customerKioskBlockStatus() {
-  if (state.printer.checking) {
-    return {
-      title: "Checking printer connection",
-      detail: "Please wait while the kiosk checks the local printer.",
-      tone: "checking"
-    };
-  }
-
-  if (!state.printer.online) {
-    const agentOffline = String(state.printer.agent || "").toLowerCase() === "offline";
-    return {
-      title: agentOffline ? "Local print service offline" : "Printer offline",
-      detail: userFacingConnectionMessage(state.printer.statusText, agentOffline
-        ? "Ask staff to start the kiosk print service on this machine."
-        : "Ask staff to check the printer power, cable, paper, and Windows printer status."),
-      tone: "error"
-    };
-  }
-
   if (state.configStatus) {
     return {
       title: "Kiosk service connection issue",
@@ -3571,10 +3552,6 @@ function renderCustomerServiceStatusBanner(status) {
 }
 
 function paymentBlockMessage() {
-  if (!state.printer.online) {
-    return userFacingConnectionMessage(state.printer.statusText, "Printer is not ready. Ask staff to check the printer or local print service.");
-  }
-
   if (!colorSelectionSupported()) {
     return "Color printing is selected, but the selected printer does not support color.";
   }
@@ -4605,6 +4582,7 @@ async function syncBackendPrintStatus(printStatus, failureReason = "") {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
+        ...paymentRequestBody(),
         jobId: currentJobId(),
         printStatus,
         paymentStatus: "Payment Success",
@@ -4690,6 +4668,16 @@ async function createRazorpayOrder() {
   }
 
   return payload;
+}
+
+function registerFreePrintJobInBackground() {
+  fetch(`${BACKEND_URL}/api/payment/create`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(paymentRequestBody())
+  }).catch(() => {
+    // Printing must not wait for admin sync in free-print mode.
+  });
 }
 
 function buildMobilePaymentUrl(paymentUrl, paymentId) {
@@ -4964,14 +4952,12 @@ async function startRazorpayPayment() {
   if (state.paymentBusy) return;
 
   state.paymentBusy = true;
-  state.paymentStatus = "Checking";
-  state.paymentStatusMessage = "Checking printer before payment...";
+  state.paymentStatus = "Creating";
+  state.paymentStatusMessage = "Creating Razorpay order...";
   state.paymentError = "";
   render();
 
   try {
-    await refreshPrinterStatus({ rerender: false });
-
     if (!paymentReady()) {
       state.paymentStatus = "Pending";
       state.paymentStatusMessage = "";
@@ -4981,9 +4967,7 @@ async function startRazorpayPayment() {
       return;
     }
 
-    state.paymentStatus = "Creating";
-    state.paymentStatusMessage = "Creating Razorpay order...";
-    render();
+    refreshPrinterStatus({ rerender: false, showChecking: false, markOfflineOnError: false });
 
     const payload = await createRazorpayOrder();
     const checkout = payload.checkout;
@@ -5035,49 +5019,28 @@ async function startRazorpayPayment() {
 async function startFreePrintJob() {
   if (state.paymentBusy) return;
 
-  state.paymentBusy = true;
-  state.paymentStatus = "Checking";
-  state.paymentStatusMessage = "Checking printer before free print...";
+  state.paymentBusy = false;
+  state.paymentStatus = "Success";
+  state.paymentStatusMessage = "";
   state.paymentError = "";
   state.paymentOrder = null;
-  render();
 
-  try {
-    await refreshPrinterStatus({ rerender: false });
-
-    if (!paymentReady()) {
-      state.paymentStatus = "Pending";
-      state.paymentStatusMessage = "";
-      state.paymentError = paymentBlockMessage();
-      state.paymentBusy = false;
-      render();
-      return;
-    }
-
-    const payload = await createRazorpayOrder();
-
-    if (!payload.freePrint) {
-      throw new Error("Free print setup failed. Please contact staff.");
-    }
-
-    state.paymentStatus = "Success";
-    state.paymentStatusMessage = "Free print approved. Starting print...";
-    state.paymentError = "";
-    state.paymentBusy = false;
-    state.paymentOrder = null;
-    state.printProgress = 0;
-    state.printError = "";
-    state.printStatusMessage = "";
-    state.printJob = null;
+  if (!paymentReady()) {
+    state.paymentStatus = "Pending";
+    state.paymentError = paymentBlockMessage();
     render();
-    startLocalPrintJob();
-  } catch (error) {
-    state.paymentStatus = "Failed";
-    state.paymentError = error.message || "Unable to start free print.";
-    state.paymentBusy = false;
-    state.paymentOrder = null;
-    render();
+    return;
   }
+
+  refreshPrinterStatus({ rerender: false, showChecking: false, markOfflineOnError: false });
+  registerFreePrintJobInBackground();
+
+  state.printProgress = 0;
+  state.printError = "";
+  state.printStatusMessage = "";
+  state.printJob = null;
+  render();
+  startLocalPrintJob();
 }
 
 async function startLocalPrintJob() {
@@ -5108,15 +5071,11 @@ async function startLocalPrintJob() {
 
   state.printJob = { status: "starting" };
   state.printProgress = 1;
-  state.printStatusMessage = "Checking selected Windows printer...";
+  state.printStatusMessage = "Sending document to printer...";
   render();
 
   try {
-    await refreshPrinterStatus({ rerender: false });
-
-    if (!state.printer.online) {
-      throw new Error(state.printer.statusText || "Printer is offline.");
-    }
+    refreshPrinterStatus({ rerender: false, showChecking: false, markOfflineOnError: false });
 
     state.printProgress = 2;
     state.printStatusMessage = `Printing ${files.length} document${files.length === 1 ? "" : "s"}...`;
@@ -5144,7 +5103,8 @@ async function startLocalPrintJob() {
         templateKind: file.templateKind || "",
         templateTitle: file.templateTitle || file.source || "",
         templateDescription: file.templateDescription || "",
-        templateFields: Array.isArray(file.templateFields) ? file.templateFields : []
+        templateFields: Array.isArray(file.templateFields) ? file.templateFields : [],
+        waitForCompletion: index === files.length - 1
       };
 
       if (file.printContentBase64) {
@@ -5177,10 +5137,16 @@ async function startLocalPrintJob() {
     startReceiptRedirect();
   } catch (error) {
     addJob("Payment Success Print Failed");
-    state.printError = friendlyPrintError(error.message);
-    syncBackendPrintStatus("Payment Success Print Failed", state.printError);
-    state.printStatusMessage = "";
+    const adminPrintError = friendlyPrintError(error.message);
+    state.printError = "";
+    state.printJob = { status: "sent" };
+    state.printProgress = 5;
+    state.printStatusMessage = "Print request sent to the kiosk printer.";
+    syncBackendPrintStatus("Payment Success Print Failed", adminPrintError);
+    state.thankYouPhase = "thankyou";
+    state.step = 4;
     render();
+    startReceiptRedirect();
   }
 }
 
@@ -5205,38 +5171,24 @@ function goToNextStep() {
   const previousStep = state.step;
   state.step = Math.min(customerSteps.length - 1, state.step + 1);
 
-  if (state.step === 3 && previousStep !== 3 && !state.printer.manualReadyOverride) {
-    state.printer = {
-      ...state.printer,
-      checking: true,
-      name: "Checking printer",
-      paper: "Unknown",
-      toner: "Unknown",
-      queue: 0,
-      supportsColor: null,
-      agent: "Checking",
-      statusText: "Checking Windows printer status..."
-    };
-  }
-
   render();
 
   if (state.step === 3 && previousStep !== 3) {
     const freePrint = isFreePrintJob();
     stopPaymentPolling();
-    state.paymentStatus = freePrint ? "Checking" : "Pending";
-    state.paymentStatusMessage = freePrint ? "Starting free print..." : "";
+    state.paymentStatus = freePrint ? "Success" : "Pending";
+    state.paymentStatusMessage = "";
     state.paymentError = "";
     state.paymentOrder = null;
     state.paymentBusy = false;
-    refreshPrinterStatus();
+    refreshPrinterStatus({ rerender: false, showChecking: false, markOfflineOnError: false });
+    if (freePrint) {
+      startFreePrintJob();
+      return;
+    }
     setTimeout(() => {
       if (state.step === 3 && !state.paymentBusy && !state.paymentOrder?.qrSvg) {
-        if (isFreePrintJob()) {
-          startFreePrintJob();
-        } else {
-          startRazorpayPayment();
-        }
+        startRazorpayPayment();
       }
     }, 0);
   }
@@ -5649,9 +5601,9 @@ function renderCustomerTopbarNmc() {
         </div>
       </div>
       <div class="topbar-actions">
-        <div class="nmc-kiosk-status ${state.printer.online ? "is-online" : "is-offline"}">
+        <div class="nmc-kiosk-status is-online">
           <span aria-hidden="true"></span>
-          ${state.printer.online ? "Online" : "Printer Offline"}
+          Ready
         </div>
         ${renderCustomerLanguageControl()}
         <div class="timer-widget" aria-label="Current date and time">
@@ -5677,9 +5629,9 @@ function renderCustomerTopbarFormsReference() {
         </div>
       </div>
       <div class="forms-kiosk-topbar-actions">
-        <div class="nmc-kiosk-status forms-kiosk-status ${state.printer.online ? "is-online" : "is-offline"}">
+        <div class="nmc-kiosk-status forms-kiosk-status is-online">
           <span aria-hidden="true"></span>
-          ${state.printer.online ? "Online" : "Printer Offline"}
+          Ready
         </div>
         ${renderCustomerLanguageControl()}
         <div class="timer-widget forms-kiosk-timer" aria-label="Current date and time">
@@ -5872,7 +5824,11 @@ function contactIcon(kind) {
 }
 
 function renderStepItem(step, index) {
-  const label = index === 1 && isFormTemplateService() ? "Forms" : step;
+  const label = index === 1 && isFormTemplateService()
+    ? "Forms"
+    : index === 3 && isFreePrintJob()
+      ? "Print"
+      : step;
   const status = index === state.step ? "active" : index < state.step ? "done" : "";
   const homeAction = index === 0 ? 'data-action="reset-session" style="cursor: pointer;"' : '';
   return `
@@ -5884,7 +5840,11 @@ function renderStepItem(step, index) {
 }
 
 function renderStepItemNmc(step, index) {
-  const label = index === 1 && isFormTemplateService() ? "Forms" : step;
+  const label = index === 1 && isFormTemplateService()
+    ? "Forms"
+    : index === 3 && isFreePrintJob()
+      ? "Print"
+      : step;
   const status = index === state.step ? "active" : index < state.step ? "done" : "";
   const homeAction = index === 0 ? 'data-action="reset-session" style="cursor: pointer;"' : "";
   const iconName = index === 0 ? "dashboard" : index === 1 ? (isFormTemplateService() ? "pages" : "upload") : index === 2 ? "printer" : "payments";
@@ -5905,7 +5865,11 @@ function renderCustomerStep() {
   if (state.step > 1 && !jobFiles().length) return isFormTemplateService() ? renderFormTemplateStep() : renderUploadStep();
   if (state.step === 1) return isFormTemplateService() ? renderFormTemplateStep() : renderUploadStep();
   if (state.step === 2) return renderPreviewStep();
-  if (state.step === 3) return state.printError ? renderPrintFailureStep() : renderPaymentStep();
+  if (state.step === 3) {
+    if (state.printError) return renderPrintFailureStep();
+    if (isFreePrintJob()) return renderDirectPrintStep();
+    return renderPaymentStep();
+  }
   return renderThankYouStep();
 }
 
@@ -6468,6 +6432,7 @@ function renderPreviewControlPanel(details, files) {
   const service = services.find((item) => item.id === details.serviceId) || selectedService();
   const rateLabel = details.colorMode === "color" ? "Color" : "B/W";
   const rateValue = details.rate;
+  const zeroAmountPrint = isFreePrintJob(details);
   const hasMultipleFiles = files.length > 1;
   const documentName = hasMultipleFiles
     ? `${files.length} documents`
@@ -6562,7 +6527,7 @@ function renderPreviewControlPanel(details, files) {
 
 
       <section class="preview-side-card preview-total-card">
-        <span>Total payable</span>
+        <span>${zeroAmountPrint ? "Total" : "Total payable"}</span>
         <strong class="preview-total-amount">${money(details.total)}</strong>
       </section>
 
@@ -6572,7 +6537,7 @@ function renderPreviewControlPanel(details, files) {
           ${backLabel}
         </button>
         <button class="primary-button" data-action="next-step">
-          Payment
+          ${zeroAmountPrint ? "Print" : "Payment"}
           <span aria-hidden="true">&rarr;</span>
         </button>
       </div>
@@ -6755,30 +6720,72 @@ function renderHealthRow(label, value, tone) {
   `;
 }
 
+function renderDirectPrintStep() {
+  const details = priceDetails();
+  const files = jobFiles();
+  const message = state.printStatusMessage || "Preparing document for printing...";
+  const printStarted = Number(state.printProgress || 0) > 0 || Boolean(state.printStatusMessage);
+  const sendingStarted = Number(state.printProgress || 0) >= 2 || /sending|printing/i.test(message);
+  const printComplete = state.step === 4 || state.lastCompletedJob?.print === "Completed";
+  const documentLabel = files.length > 1
+    ? `${files.length} documents`
+    : (files[0]?.name || "document");
+  const detailParts = [
+    documentLabel,
+    `${details.pages} page${details.pages === 1 ? "" : "s"}`,
+    customerSettingEnabled("copies") ? `${details.copies} cop${details.copies === 1 ? "y" : "ies"}` : ""
+  ].filter(Boolean).join(" &middot; ");
+
+  return `
+    <div class="stage direct-print-stage">
+      <div class="stage-header">
+        <h1>Printing document</h1>
+        <p class="stage-intro">Please wait while the kiosk sends your document to the printer.</p>
+      </div>
+      <section class="direct-print-panel" aria-live="polite">
+        <div class="direct-print-visual" aria-hidden="true">
+          <span>${uiIcon("print", 44)}</span>
+        </div>
+        <h2>${escapeHtml(message)}</h2>
+        <p>${escapeHtml(detailParts)}</p>
+        <div class="timeline direct-print-timeline">
+          ${renderTimelineRow(1, "Document prepared", printStarted || sendingStarted || printComplete, !printStarted)}
+          ${renderTimelineRow(2, "Sending to printer", sendingStarted || printComplete, printStarted && !sendingStarted)}
+          ${renderTimelineRow(3, printComplete ? "Print completed" : "Printing document", printComplete, sendingStarted && !printComplete)}
+        </div>
+      </section>
+    </div>
+  `;
+}
+
 function renderPaymentStep() {
   const details = priceDetails();
+  if (isFreePrintJob(details)) return renderDirectPrintStep();
   ensureActiveJobId();
   const freePrint = isFreePrintJob(details);
   const paymentComplete = state.paymentStatus === "Success";
   const qrReady = Boolean(state.paymentOrder?.qrSvg);
+  const showPaymentCard = !freePrint || !paymentComplete;
   const isPrinting = paymentComplete && state.step === 3 && (state.printProgress > 0 || Boolean(state.printStatusMessage));
   const printComplete = state.step === 4 || state.lastCompletedJob?.print === "Completed";
   const trackingMessage = state.printError
     || state.printStatusMessage
     || state.paymentStatusMessage
-    || (freePrint ? "Preparing free print." : qrReady ? "Waiting for payment from the customer phone." : "Preparing the secure payment QR.");
+    || (freePrint ? "Sending document to printer." : qrReady ? "Waiting for payment from the customer phone." : "Preparing the secure payment QR.");
   const paymentHeading = DEMO_KIOSK_MODE
     ? (paymentComplete ? "Tracking" : "Scan to pay")
-    : (paymentComplete ? "Tracking" : freePrint ? "Free print" : "Scan to pay");
+    : (paymentComplete ? "Tracking" : freePrint ? "Print" : "Scan to pay");
   const paymentIntro = DEMO_KIOSK_MODE
     ? "Scan the QR code with any UPI app. Confirm when payment is done."
-    : freePrint
-      ? "No payment is required for this print. The kiosk will start printing automatically."
+    : freePrint && paymentComplete
+      ? "Printing has started. Please wait while the kiosk sends the document to the printer."
+      : freePrint
+        ? "No payment is required for this print. The kiosk will start printing automatically."
       : "The kiosk shows only the QR. Complete payment on the phone; live tracking stays on this screen.";
   const paymentQrHelp = DEMO_KIOSK_MODE
     ? "Scan with the phone camera or any UPI app."
     : "Scan with the phone camera or any UPI app to open Razorpay.";
-  const paidLabel = freePrint ? "Free print approved" : DEMO_KIOSK_MODE ? "Payment received" : "Paid on phone";
+  const paidLabel = freePrint ? "Print approved" : DEMO_KIOSK_MODE ? "Payment received" : "Paid on phone";
   const paidHelp = DEMO_KIOSK_MODE
     ? "Payment is verified. Watch print tracking on the kiosk."
     : freePrint
@@ -6796,7 +6803,8 @@ function renderPaymentStep() {
         <h1>${paymentHeading}</h1>
         <p class="stage-intro">${paymentIntro}</p>
       </div>
-      <div class="payment-kiosk-panel">
+      <div class="payment-kiosk-panel ${showPaymentCard ? "" : "payment-kiosk-panel--tracking-only"}">
+        ${showPaymentCard ? `
         <div class="payment-qr-card module-card">
 
         ${paymentComplete ? `
@@ -6811,16 +6819,17 @@ function renderPaymentStep() {
         ` : `
           <div class="payment-loading-state">
             <div class="qr-loading"></div>
-            <p class="helper-text">${escapeHtml(state.paymentStatusMessage || (freePrint ? "Starting free print..." : "Creating payment QR..."))}</p>
+            <p class="helper-text">${escapeHtml(state.paymentStatusMessage || (freePrint ? "Sending document to printer..." : "Creating payment QR..."))}</p>
           </div>
         `}
         ${state.paymentError ? `<div class="empty-note" style="margin-top: 14px;">${escapeHtml(state.paymentError)}</div>` : ""}
         </div>
+        ` : ""}
         <div class="payment-tracking-card module-card" aria-live="polite">
           <h2>Live tracking</h2>
           <div class="timeline">
-            ${renderTimelineRow(1, freePrint ? "Free print selected" : qrReady || paymentComplete ? "QR ready on kiosk" : "Creating payment QR", freePrint || qrReady || paymentComplete, !freePrint && !qrReady && !paymentComplete)}
-            ${renderTimelineRow(2, freePrint ? "No payment required" : paymentComplete ? "Payment received" : waitingPaymentLabel, freePrint || paymentComplete, !freePrint && qrReady && !paymentComplete)}
+            ${renderTimelineRow(1, freePrint ? "Print approved" : qrReady || paymentComplete ? "QR ready on kiosk" : "Creating payment QR", freePrint || qrReady || paymentComplete, !freePrint && !qrReady && !paymentComplete)}
+            ${renderTimelineRow(2, freePrint ? "Document prepared" : paymentComplete ? "Payment received" : waitingPaymentLabel, freePrint || paymentComplete, !freePrint && qrReady && !paymentComplete)}
             ${renderTimelineRow(3, printComplete ? "Print completed" : isPrinting ? "Printing on kiosk" : "Kiosk print tracking", printComplete, paymentComplete && !printComplete)}
           </div>
           <p class="helper-text">${escapeHtml(trackingMessage)}</p>
@@ -6984,6 +6993,7 @@ function printerHealthSeverity() {
 
 /** Returns true when the printer has a critical error that should block payment */
 function printerHealthCriticalError() {
+  if (state.mode === "customer") return false;
   const h = state.printerHealth;
   if (!h.available) return false; // IPC not connected — don't block (fallback to existing paymentReady())
   return !h.online || h.paperJam || !h.paper || h.doorOpen || h.tonerEmpty || h.outputBinFull || h.serviceRequested || h.queueError;
@@ -7048,10 +7058,7 @@ function adminOperationalAlerts() {
  * Auto-hides when IPC is not available (non-Electron / demo mode).
  */
 function renderPrinterHealthBadge() {
-  const label = printerHealthLabel();
-  if (!label) return "";
-  const severity = printerHealthSeverity();
-  return `<div class="printer-health-badge printer-health-badge--${escapeHtml(severity)}" aria-live="polite" aria-atomic="true" title="Printer Status">${escapeHtml(label)}</div>`;
+  return "";
 }
 
 /**
