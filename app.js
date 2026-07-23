@@ -24,7 +24,7 @@ const PUBLIC_FRONTEND_URL = (
 ).replace(/\/+$/, "");
 const RAZORPAY_CHECKOUT_URL = "https://checkout.razorpay.com/v1/checkout.js";
 const PRINTER_STATUS_TIMEOUT_MS = 15000;
-const PRINTER_STATUS_POLL_MS = 5000;
+const PRINTER_STATUS_POLL_MS = 15000;
 const MAX_FILES_PER_JOB = 10;
 const RECEIPT_REDIRECT_SECONDS = 20;
 const CUSTOMER_INACTIVITY_TIMEOUTS = Object.freeze({
@@ -66,6 +66,7 @@ let customerInactivityEventsBound = false;
 let lastCustomerRenderedStep = null;
 let lastPrinterHealthSyncAt = 0;
 let lastPrinterHealthSyncSignature = "";
+let printerStatusRefreshInFlight = false;
 
 const ADMIN_TRANSLATION_ROWS = [
   ["Language", "लैंग्वेज", "लैंग्वेज"],
@@ -4141,8 +4142,15 @@ async function checkMobileUpload() {
   }
 }
 
-async function refreshPrinterStatus({ rerender = true } = {}) {
+async function refreshPrinterStatus({ rerender = true, showChecking = true, markOfflineOnError = true } = {}) {
+  if (printerStatusRefreshInFlight) {
+    return;
+  }
+
+  printerStatusRefreshInFlight = true;
+
   if (DEMO_KIOSK_MODE && state.mode === "customer") {
+    printerStatusRefreshInFlight = false;
     setDemoPrinterReady({ rerender });
     return;
   }
@@ -4164,22 +4172,26 @@ async function refreshPrinterStatus({ rerender = true } = {}) {
       statusText: "Local printer agent runs only on the kiosk mini-PC."
     };
     if (rerender) render();
+    printerStatusRefreshInFlight = false;
     return;
   }
 
   if (state.printer.manualReadyOverride) {
     state.printer.checking = false;
     if (rerender) render();
+    printerStatusRefreshInFlight = false;
     return;
   }
 
-  state.printer = {
-    ...state.printer,
-    checking: true,
-    agent: "Checking",
-    statusText: "Checking printer status..."
-  };
-  if (rerender) render();
+  if (showChecking) {
+    state.printer = {
+      ...state.printer,
+      checking: true,
+      agent: "Checking",
+      statusText: "Checking printer status..."
+    };
+    if (rerender) render();
+  }
 
   const controller = new AbortController();
   const timeoutId = window.setTimeout(() => controller.abort(), PRINTER_STATUS_TIMEOUT_MS);
@@ -4219,6 +4231,16 @@ async function refreshPrinterStatus({ rerender = true } = {}) {
     const isAbort = error.name === "AbortError";
     const rawMessage = String(error.message || "").trim();
     const connectionFailed = rawMessage.toLowerCase() === "failed to fetch" || error instanceof TypeError;
+    if (!markOfflineOnError && state.printer.online) {
+      state.printer = {
+        ...state.printer,
+        checking: false,
+        agent: state.printer.agent === "Offline" ? "Running" : state.printer.agent,
+        statusText: state.printer.statusText || "Ready"
+      };
+      return;
+    }
+
     state.printer = {
       ...state.printer,
       online: false,
@@ -4237,6 +4259,7 @@ async function refreshPrinterStatus({ rerender = true } = {}) {
     };
   } finally {
     window.clearTimeout(timeoutId);
+    printerStatusRefreshInFlight = false;
   }
 
   if (rerender) {
@@ -4476,7 +4499,11 @@ function startPrinterStatusPolling() {
 
   state.printerPoller = setInterval(() => {
     if (state.mode === "customer") {
-      refreshPrinterStatus({ rerender: true });
+      refreshPrinterStatus({
+        rerender: true,
+        showChecking: false,
+        markOfflineOnError: false
+      });
     }
   }, PRINTER_STATUS_POLL_MS);
 }
