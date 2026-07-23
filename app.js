@@ -24,6 +24,7 @@ const PUBLIC_FRONTEND_URL = (
 ).replace(/\/+$/, "");
 const RAZORPAY_CHECKOUT_URL = "https://checkout.razorpay.com/v1/checkout.js";
 const PRINTER_STATUS_TIMEOUT_MS = 15000;
+const PRINTER_STATUS_POLL_MS = 5000;
 const MAX_FILES_PER_JOB = 10;
 const RECEIPT_REDIRECT_SECONDS = 20;
 const CUSTOMER_INACTIVITY_TIMEOUTS = Object.freeze({
@@ -1822,6 +1823,7 @@ const state = {
   configVersion: 0,
   configUpdatedAt: "",
   configPoller: null,
+  printerPoller: null,
   configStatus: "",
   alerts: [],
   filters: {
@@ -4458,6 +4460,27 @@ function startConfigPolling() {
   }, 5000);
 }
 
+function stopPrinterStatusPolling() {
+  if (state.printerPoller) {
+    clearInterval(state.printerPoller);
+    state.printerPoller = null;
+  }
+}
+
+function startPrinterStatusPolling() {
+  if (isMobilePaymentEntry) {
+    return;
+  }
+
+  stopPrinterStatusPolling();
+
+  state.printerPoller = setInterval(() => {
+    if (state.mode === "customer") {
+      refreshPrinterStatus({ rerender: true });
+    }
+  }, PRINTER_STATUS_POLL_MS);
+}
+
 function stopAdminPolling() {
   if (state.adminPoller) {
     clearInterval(state.adminPoller);
@@ -5195,6 +5218,7 @@ function goToNextStep() {
 function openAdmin(page = "dashboard") {
   stopReceiptRedirect();
   stopCustomerInactivityTimer();
+  stopPrinterStatusPolling();
   state.mode = "admin";
   state.adminPage = page;
   render();
@@ -5207,10 +5231,12 @@ function openAdmin(page = "dashboard") {
 
 function openCustomer(reset = false) {
   stopAdminPolling();
+  startPrinterStatusPolling();
 
   if (reset) {
     resetCustomer();
     refreshKioskConfig({ rerender: false, force: true });
+    refreshPrinterStatus({ rerender: false });
     render();
     return;
   }
@@ -5218,6 +5244,7 @@ function openCustomer(reset = false) {
   state.mode = "customer";
   setPrivacyPolicyVisible(false);
   refreshKioskConfig({ rerender: false, force: true });
+  refreshPrinterStatus({ rerender: false });
   render();
 }
 
@@ -11105,6 +11132,7 @@ if (isMobilePaymentEntry) {
 }
 if (!isMobilePaymentEntry && state.mode === "customer") {
   refreshPrinterStatus();
+  startPrinterStatusPolling();
 }
 if (!isMobilePaymentEntry && state.adminAuthed) {
   loadAdminData();
