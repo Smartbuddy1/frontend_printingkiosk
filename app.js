@@ -3436,6 +3436,10 @@ function priceDetails() {
   return { pages, copies, rate, rates, total, colorMode, serviceId: service?.id || "" };
 }
 
+function isFreePrintJob(details = priceDetails()) {
+  return Number(details.total || 0) <= 0;
+}
+
 function applyPrinterPaperDefault(printer = state.printer) {
   if (state.settingsCustomized) return;
   state.settings.paperSize = normalizePaperSize(printer?.defaultPaperSize, "A4");
@@ -4978,6 +4982,54 @@ async function startRazorpayPayment() {
   }
 }
 
+async function startFreePrintJob() {
+  if (state.paymentBusy) return;
+
+  state.paymentBusy = true;
+  state.paymentStatus = "Checking";
+  state.paymentStatusMessage = "Checking printer before free print...";
+  state.paymentError = "";
+  state.paymentOrder = null;
+  render();
+
+  try {
+    await refreshPrinterStatus({ rerender: false });
+
+    if (!paymentReady()) {
+      state.paymentStatus = "Pending";
+      state.paymentStatusMessage = "";
+      state.paymentError = paymentBlockMessage();
+      state.paymentBusy = false;
+      render();
+      return;
+    }
+
+    const payload = await createRazorpayOrder();
+
+    if (!payload.freePrint) {
+      throw new Error("Free print setup failed. Please contact staff.");
+    }
+
+    state.paymentStatus = "Success";
+    state.paymentStatusMessage = "Free print approved. Starting print...";
+    state.paymentError = "";
+    state.paymentBusy = false;
+    state.paymentOrder = null;
+    state.printProgress = 0;
+    state.printError = "";
+    state.printStatusMessage = "";
+    state.printJob = null;
+    render();
+    startLocalPrintJob();
+  } catch (error) {
+    state.paymentStatus = "Failed";
+    state.paymentError = error.message || "Unable to start free print.";
+    state.paymentBusy = false;
+    state.paymentOrder = null;
+    render();
+  }
+}
+
 async function startLocalPrintJob() {
   const files = jobFiles();
 
@@ -5120,16 +5172,21 @@ function goToNextStep() {
   render();
 
   if (state.step === 3 && previousStep !== 3) {
+    const freePrint = isFreePrintJob();
     stopPaymentPolling();
-    state.paymentStatus = "Pending";
-    state.paymentStatusMessage = "";
+    state.paymentStatus = freePrint ? "Checking" : "Pending";
+    state.paymentStatusMessage = freePrint ? "Starting free print..." : "";
     state.paymentError = "";
     state.paymentOrder = null;
     state.paymentBusy = false;
     refreshPrinterStatus();
     setTimeout(() => {
       if (state.step === 3 && !state.paymentBusy && !state.paymentOrder?.qrSvg) {
-        startRazorpayPayment();
+        if (isFreePrintJob()) {
+          startFreePrintJob();
+        } else {
+          startRazorpayPayment();
+        }
       }
     }, 0);
   }
@@ -6647,6 +6704,7 @@ function renderHealthRow(label, value, tone) {
 function renderPaymentStep() {
   const details = priceDetails();
   ensureActiveJobId();
+  const freePrint = isFreePrintJob(details);
   const paymentComplete = state.paymentStatus === "Success";
   const qrReady = Boolean(state.paymentOrder?.qrSvg);
   const isPrinting = paymentComplete && state.step === 3 && (state.printProgress > 0 || Boolean(state.printStatusMessage));
@@ -6654,20 +6712,24 @@ function renderPaymentStep() {
   const trackingMessage = state.printError
     || state.printStatusMessage
     || state.paymentStatusMessage
-    || (qrReady ? "Waiting for payment from the customer phone." : "Preparing the secure payment QR.");
+    || (freePrint ? "Preparing free print." : qrReady ? "Waiting for payment from the customer phone." : "Preparing the secure payment QR.");
   const paymentHeading = DEMO_KIOSK_MODE
     ? (paymentComplete ? "Tracking" : "Scan to pay")
-    : (paymentComplete ? "Tracking" : "Scan to pay");
+    : (paymentComplete ? "Tracking" : freePrint ? "Free print" : "Scan to pay");
   const paymentIntro = DEMO_KIOSK_MODE
     ? "Scan the QR code with any UPI app. Confirm when payment is done."
-    : "The kiosk shows only the QR. Complete payment on the phone; live tracking stays on this screen.";
+    : freePrint
+      ? "No payment is required for this print. The kiosk will start printing automatically."
+      : "The kiosk shows only the QR. Complete payment on the phone; live tracking stays on this screen.";
   const paymentQrHelp = DEMO_KIOSK_MODE
     ? "Scan with the phone camera or any UPI app."
     : "Scan with the phone camera or any UPI app to open Razorpay.";
-  const paidLabel = DEMO_KIOSK_MODE ? "Payment received" : "Paid on phone";
+  const paidLabel = freePrint ? "Free print approved" : DEMO_KIOSK_MODE ? "Payment received" : "Paid on phone";
   const paidHelp = DEMO_KIOSK_MODE
     ? "Payment is verified. Watch print tracking on the kiosk."
-    : "Payment is verified. Watch print tracking on the kiosk.";
+    : freePrint
+      ? "No QR or phone payment is needed. Watch print tracking on the kiosk."
+      : "Payment is verified. Watch print tracking on the kiosk.";
   const waitingPaymentLabel = DEMO_KIOSK_MODE ? "Waiting for payment" : "Waiting for phone payment";
   const paymentDetailParts = [
     `${details.pages} page${details.pages === 1 ? "" : "s"}`,
@@ -6695,7 +6757,7 @@ function renderPaymentStep() {
         ` : `
           <div class="payment-loading-state">
             <div class="qr-loading"></div>
-            <p class="helper-text">${escapeHtml(state.paymentStatusMessage || "Creating payment QR...")}</p>
+            <p class="helper-text">${escapeHtml(state.paymentStatusMessage || (freePrint ? "Starting free print..." : "Creating payment QR..."))}</p>
           </div>
         `}
         ${state.paymentError ? `<div class="empty-note" style="margin-top: 14px;">${escapeHtml(state.paymentError)}</div>` : ""}
@@ -6703,8 +6765,8 @@ function renderPaymentStep() {
         <div class="payment-tracking-card module-card" aria-live="polite">
           <h2>Live tracking</h2>
           <div class="timeline">
-            ${renderTimelineRow(1, qrReady || paymentComplete ? "QR ready on kiosk" : "Creating payment QR", qrReady || paymentComplete, !qrReady && !paymentComplete)}
-            ${renderTimelineRow(2, paymentComplete ? "Payment received" : waitingPaymentLabel, paymentComplete, qrReady && !paymentComplete)}
+            ${renderTimelineRow(1, freePrint ? "Free print selected" : qrReady || paymentComplete ? "QR ready on kiosk" : "Creating payment QR", freePrint || qrReady || paymentComplete, !freePrint && !qrReady && !paymentComplete)}
+            ${renderTimelineRow(2, freePrint ? "No payment required" : paymentComplete ? "Payment received" : waitingPaymentLabel, freePrint || paymentComplete, !freePrint && qrReady && !paymentComplete)}
             ${renderTimelineRow(3, printComplete ? "Print completed" : isPrinting ? "Printing on kiosk" : "Kiosk print tracking", printComplete, paymentComplete && !printComplete)}
           </div>
           <p class="helper-text">${escapeHtml(trackingMessage)}</p>
@@ -10443,7 +10505,11 @@ async function handleClick(event) {
       }
       break;
     case "pay-razorpay":
-      startRazorpayPayment();
+      if (isFreePrintJob()) {
+        startFreePrintJob();
+      } else {
+        startRazorpayPayment();
+      }
       break;
     case "demo-payment-success":
       completeDemoPayment();
