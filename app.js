@@ -2634,6 +2634,11 @@ function friendlyPrintError(value) {
   return customerSafePrinterMessage(message, "Payment succeeded, but the printer did not complete the job. Please contact staff.");
 }
 
+function freePrintError(value) {
+  const message = decodePowerShellError(value) || "The free print did not complete.";
+  return customerSafePrinterMessage(message, "The free print did not complete. Please contact staff.");
+}
+
 function numericPrice(value, fallback = 0) {
   const number = Number(value);
   return Number.isFinite(number) && number >= 0 ? number : fallback;
@@ -3475,14 +3480,6 @@ function printerReadyForCustomerFlow() {
 }
 
 function customerKioskBlockStatus() {
-  if (state.configStatus) {
-    return {
-      title: "Kiosk service connection issue",
-      detail: userFacingConnectionMessage(state.configStatus, "Ask staff to check the kiosk backend connection."),
-      tone: "warn"
-    };
-  }
-
   return null;
 }
 
@@ -4438,7 +4435,7 @@ async function refreshKioskConfig({ rerender = true, force = false } = {}) {
       applyDemoKioskConfig({ rerender });
       return true;
     }
-    state.configStatus = error.message || "Waiting for backend service config.";
+    state.configStatus = "Waiting for backend service config.";
     return false;
   }
 }
@@ -5104,7 +5101,7 @@ async function startLocalPrintJob() {
         templateTitle: file.templateTitle || file.source || "",
         templateDescription: file.templateDescription || "",
         templateFields: Array.isArray(file.templateFields) ? file.templateFields : [],
-        waitForCompletion: index === files.length - 1
+        waitForCompletion: false
       };
 
       if (file.printContentBase64) {
@@ -5136,17 +5133,18 @@ async function startLocalPrintJob() {
     render();
     startReceiptRedirect();
   } catch (error) {
-    addJob("Payment Success Print Failed");
-    const adminPrintError = friendlyPrintError(error.message);
-    state.printError = "";
-    state.printJob = { status: "sent" };
-    state.printProgress = 5;
-    state.printStatusMessage = "Print request sent to the kiosk printer.";
-    syncBackendPrintStatus("Payment Success Print Failed", adminPrintError);
-    state.thankYouPhase = "thankyou";
-    state.step = 4;
+    const freePrint = isFreePrintJob();
+    const rawPrintError = decodePowerShellError(error.message) || error.message || "The printer did not complete the job.";
+    const printStatus = freePrint ? "Free Print Failed" : "Payment Success Print Failed";
+    const kioskPrintError = freePrint ? freePrintError(rawPrintError) : friendlyPrintError(rawPrintError);
+
+    state.printError = kioskPrintError;
+    state.printJob = { ...(state.printJob || {}), status: "failed", errorMessage: rawPrintError };
+    state.printProgress = Math.max(2, Number(state.printProgress || 0));
+    state.printStatusMessage = "The document was not printed. Please ask staff to check the printer and retry.";
+    addJob(printStatus, rawPrintError);
+    state.step = 3;
     render();
-    startReceiptRedirect();
   }
 }
 
@@ -5470,6 +5468,21 @@ function renderAdminShell() {
   `;
 }
 
+function renderCustomerPrinterStatusBadge() {
+  const h = state.printerHealth || {};
+  const isOffline = !state.printer.online || !h.available || !h.online || h.paperJam || h.paper === false || h.doorOpen || h.tonerEmpty || h.queueError || h.serviceRequested || state.printer.agent === "Offline" || String(state.printer.statusText || "").toLowerCase().includes("offline");
+  const text = isOffline ? "Printer Offline" : "Printer Online";
+  const icon = isOffline ? uiIcon("alert-circle", 18) : uiIcon("check-circle", 18);
+  const colorClass = isOffline ? "status-offline" : "status-online";
+  
+  return `
+    <div class="kiosk-public-printer-status ${colorClass}">
+      <span class="printer-status-icon">${icon}</span>
+      <span class="printer-status-text">${text}</span>
+    </div>
+  `;
+}
+
 function renderCustomerLanguageControl() {
   return `
     <div class="customer-language-control kiosk-language-control" aria-label="Select language" data-no-customer-translation>
@@ -5504,7 +5517,7 @@ function currentCustomerBrand(defaultSubtitle = DEFAULT_KIOSK_BRAND.subtitle) {
 
 function renderCustomerBrandMark(className = "brand-mark nmc-kiosk-mark", defaultSubtitle = DEFAULT_KIOSK_BRAND.subtitle) {
   const brand = currentCustomerBrand(defaultSubtitle);
-  return `<div class="${escapeHtml(className)}"><img src="${escapeHtml(brand.logoUrl)}" alt="${escapeHtml(brand.alt)}" draggable="false" data-no-visual-search /></div>`;
+  return `<div class="${escapeHtml(className)}"><img src="${escapeHtml(brand.logoUrl)}" alt="${escapeHtml(brand.alt)}" draggable="false" data-no-visual-search onerror="this.onerror=null;this.src='${escapeHtml(DEFAULT_KIOSK_BRAND.logoUrl)}';" /></div>`;
 }
 
 function renderCustomerBrandCopy(copyClass = "classic-home-brand-copy", defaultSubtitle = DEFAULT_KIOSK_BRAND.subtitle, titleClass = "brand-title", subtitleClass = "brand-subtitle") {
@@ -5525,6 +5538,7 @@ function renderCustomerTopbar() {
         ${renderCustomerBrandCopy("classic-home-brand-copy", "Printing Kiosk", "brand-title", "brand-subtitle")}
       </div>
       <div class="topbar-actions">
+        ${renderCustomerPrinterStatusBadge()}
         ${renderCustomerLanguageControl()}
         <div class="timer-widget" aria-label="Current date and time">
           ${uiIcon("clock", 18)}
@@ -5546,6 +5560,7 @@ function renderCustomerTopbarClassicHome() {
         ${renderCustomerBrandCopy("classic-home-brand-copy", "Printing Kiosk")}
       </div>
       <div class="topbar-actions">
+        ${renderCustomerPrinterStatusBadge()}
         ${renderCustomerLanguageControl()}
         <div class="timer-widget" aria-label="Current date and time">
           ${uiIcon("clock", 18)}
@@ -5605,6 +5620,7 @@ function renderCustomerTopbarNmc() {
           <span aria-hidden="true"></span>
           Ready
         </div>
+        ${renderCustomerPrinterStatusBadge()}
         ${renderCustomerLanguageControl()}
         <div class="timer-widget" aria-label="Current date and time">
           ${uiIcon("clock", 18)}
@@ -5633,6 +5649,7 @@ function renderCustomerTopbarFormsReference() {
           <span aria-hidden="true"></span>
           Ready
         </div>
+        ${renderCustomerPrinterStatusBadge()}
         ${renderCustomerLanguageControl()}
         <div class="timer-widget forms-kiosk-timer" aria-label="Current date and time">
           ${uiIcon("clock", 18)}
@@ -5925,6 +5942,45 @@ function renderServicesStep() {
   `;
 }
 
+function premiumServiceIllustration(isTemplate) {
+  if (isTemplate) {
+    return `
+      <div class="premium-illustration" aria-hidden="true">
+        <svg viewBox="0 0 320 170" role="img" focusable="false">
+          <path d="M34 144c52 0 65-18 104-18h48c41 0 50 18 100 18" fill="#eefdf7"/>
+          <path d="M190 56h-18l47-31 47 31h-18v55h-58V56Z" fill="#bff7df"/>
+          <path d="M84 62h92l18 28v64H64V82c0-11 9-20 20-20Z" fill="#10b981"/>
+          <path d="M82 62h94l-20 28H64l18-28Z" fill="#15c998"/>
+          <circle cx="122" cy="103" r="17" fill="none" stroke="#ffffff" stroke-width="6" stroke-dasharray="3 8"/>
+          <path d="M205 69 282 79l13 96-78 8-12-114Z" fill="#ffffff" stroke="#cbd5e1" stroke-width="4"/>
+          <path d="m244 112 10 10 20-23M247 137l10 10 20-23M250 162l10 10 20-23" fill="none" stroke="#10b981" stroke-width="6" stroke-linecap="round" stroke-linejoin="round"/>
+        </svg>
+      </div>
+    `;
+  }
+
+  return `
+    <div class="premium-illustration" aria-hidden="true">
+      <svg viewBox="0 0 320 170" role="img" focusable="false">
+        <path d="M28 144c47 0 66-18 104-18h52c39 0 56 18 108 18" fill="#f3f7fb"/>
+        <path d="M125 27h69l30 30v94h-99V27Z" fill="#ffffff" stroke="#cbd5e1" stroke-width="4"/>
+        <path d="M194 27v31h30" fill="#fca5a5"/>
+        <path d="M188 47h56l30 30v74h-86V47Z" fill="#ffffff" stroke="#bfdbfe" stroke-width="4"/>
+        <path d="M244 47v31h30" fill="#bfdbfe"/>
+        <rect x="106" y="70" width="62" height="35" rx="7" fill="#ef4444"/>
+        <text x="137" y="94" fill="#ffffff" font-family="Arial, sans-serif" font-size="22" font-weight="700" text-anchor="middle">PDF</text>
+        <rect x="178" y="73" width="62" height="35" rx="7" fill="#2563eb"/>
+        <text x="209" y="97" fill="#ffffff" font-family="Arial, sans-serif" font-size="22" font-weight="700" text-anchor="middle">DOC</text>
+        <path d="M79 142c-20 0-36-15-36-34 0-17 13-31 30-33 8-20 28-34 51-34 27 0 50 19 54 44 18 3 31 18 31 36 0 12-6 22-15 28H79Z" fill="#2563eb"/>
+        <path d="M120 123V78M98 100l22-22 22 22" fill="none" stroke="#ffffff" stroke-width="9" stroke-linecap="round" stroke-linejoin="round"/>
+        <rect x="175" y="101" width="90" height="49" rx="14" fill="#334155"/>
+        <path d="M196 137h54v32h-54z" fill="#ffffff" stroke="#cbd5e1" stroke-width="4"/>
+        <path d="M204 153h38" stroke="#94a3b8" stroke-width="4" stroke-linecap="round"/>
+      </svg>
+    </div>
+  `;
+}
+
 function renderAdditionalPremiumServiceCard(service, index, printerReady, serviceBlockStatus = null) {
   const isTemplate = isFormTemplateService(service.id);
   const accent = isTemplate ? "green" : "blue";
@@ -5956,6 +6012,8 @@ function renderAdditionalPremiumServiceCard(service, index, printerReady, servic
               <p>${escapeHtml(description)}</p>
             </div>
           </div>
+
+          ${premiumServiceIllustration(isTemplate)}
 
           <div class="premium-features bg-light-${accent}">
             <div class="premium-feature">
@@ -6854,24 +6912,29 @@ function renderTimelineRow(index, text, done, active = false) {
 }
 
 function renderPrintFailureStep() {
+  const freePrint = isFreePrintJob();
+  const intro = freePrint
+    ? `${state.printError} Staff can check the printer and retry this free print.`
+    : `${state.printError} The paid job is saved in admin history and can be retried without charging again.`;
+
   return `
     <div class="stage print-failure-stage">
       <div class="stage-header">
         <h1>Printing needs attention</h1>
-        <p class="stage-intro">${escapeHtml(state.printError)} The paid job is saved in admin history and can be retried without charging again.</p>
+        <p class="stage-intro">${escapeHtml(intro)}</p>
       </div>
       <div class="module-card">
         <h2>Recovery Options</h2>
         <div class="health-list">
-          ${renderHealthRow("Payment", "Success", "good")}
-          ${renderHealthRow("Print", "Failed", "bad")}
-          ${renderHealthRow("Queue", "Saved for retry", "warn")}
-          ${renderHealthRow("Refund", "Available if retry fails", "warn")}
+          ${renderHealthRow(freePrint ? "Free print" : "Payment", freePrint ? "Approved" : "Success", "good")}
+          ${renderHealthRow("Print", "Needs staff attention", "bad")}
+          ${renderHealthRow("Queue", freePrint ? "Ready for retry" : "Saved for retry", "warn")}
+          ${freePrint ? "" : renderHealthRow("Refund", "Available if retry fails", "warn")}
         </div>
         ${state.printStatusMessage ? `<p class="helper-text">${escapeHtml(state.printStatusMessage)}</p>` : ""}
         <div class="flow-actions" style="margin-top: 16px;">
           <button class="primary-button" data-action="retry-print">Retry Print</button>
-          <button class="secondary-button" data-action="request-refund">Request Refund</button>
+          ${freePrint ? "" : `<button class="secondary-button" data-action="request-refund">Request Refund</button>`}
         </div>
       </div>
     </div>
@@ -10921,7 +10984,7 @@ function startReceiptRedirect() {
     }
   }, 1000);
 }
-function addJob(printStatus) {
+function addJob(printStatus, failureReason = state.printError) {
   const service = selectedService();
   const details = priceDetails();
 
@@ -10942,7 +11005,7 @@ function addJob(printStatus) {
 
   state.jobs.unshift(job);
   if (!DEMO_KIOSK_MODE) {
-    syncBackendPrintStatus(printStatus, state.printError);
+    syncBackendPrintStatus(printStatus, failureReason);
   }
 
   if (printStatus === "Completed") {
