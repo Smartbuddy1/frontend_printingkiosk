@@ -963,6 +963,7 @@ function renderDashboard() {
   const affectedKiosks = new Set(alerts.map((alert) => alert.kioskId).filter(Boolean)).size;
   const paperAlerts = alerts.filter((alert) => alert.category === "paper").length;
   const tonerAlerts = alerts.filter((alert) => alert.category === "toner").length;
+  const pendingRefunds = data("refunds").filter((r) => String(r.status || "").toLowerCase() === "pending" || String(r.status || "").toLowerCase() === "requested");
 
   return `
     ${renderHeader("Super Admin Dashboard", "Master operational view across every kiosk and record.", `<button class="primary-button" data-page="kiosks">${uiIcon("kiosks", 18)} Open Kiosks</button>`)}
