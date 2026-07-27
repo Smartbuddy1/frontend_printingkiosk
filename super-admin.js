@@ -954,6 +954,10 @@ function kioskPrinterHealthAlerts(kiosk = {}) {
   if (printerHealth.serviceRequested) add("service", "Printer service required", printerHealth.errorMessage || "service intervention required");
   if (queueError) add("queue", "Print queue blocked", printerHealth.errorMessage || "clear the Windows print queue");
 
+  if (alerts.length === 0 && printerHealth.status === "offline" && printerHealth.errorMessage) {
+    add("queue", "Printer Offline", printerHealth.errorMessage);
+  }
+
   return alerts;
 }
 
