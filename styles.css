@@ -1774,6 +1774,38 @@ button:disabled:hover {
   margin: 0;
 }
 
+.pricing-kiosk-filters {
+  align-items: center;
+  grid-template-columns: minmax(260px, 1fr) auto auto;
+}
+
+.pricing-kiosk-table td strong {
+  color: var(--ink);
+  font-weight: var(--weight-semibold);
+}
+
+.pricing-editor-modal-content {
+  max-height: min(82vh, 760px);
+  max-width: 960px;
+  overflow: auto;
+  width: min(960px, calc(100vw - 32px));
+}
+
+.pricing-editor-table td small {
+  color: var(--muted);
+  display: block;
+  font-size: 12px;
+  margin-top: 3px;
+}
+
+.pricing-editor-table input {
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  min-height: 38px;
+  padding: 0 10px;
+  width: 120px;
+}
+
 .kiosk-settings-panel {
   border-top: 1px solid var(--line);
   display: grid;

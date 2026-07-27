@@ -34,6 +34,7 @@ const state = {
   authToken: "",
   page: "dashboard",
   snapshot: null,
+  snapshotPoller: null,
   loading: false,
   notice: "",
   error: "",
@@ -57,6 +58,7 @@ const state = {
   navOpen: false,
   editor: null,
   pricingDraft: {},
+  pricingEditor: null,
   releaseDraft: {
     version: "",
     channel: "production",
@@ -111,7 +113,7 @@ const collections = {
     title: "Client Management",
     subtitle: "Create client logins first. Allocate each client from the Project form.",
     key: "adminId",
-    columns: ["name", "email", "status", "projectIds", "lastLoginAt"],
+    columns: ["name", "email", "status", "kioskTitle", "kioskSubtitle", "projectIds", "lastLoginAt"],
     fields: [
       { key: "name", label: "Name", required: true },
       { key: "email", label: "Email", required: true },
@@ -119,7 +121,7 @@ const collections = {
       { key: "status", label: "Status", type: "select", options: ["active", "disabled"] },
       { key: "logoUrl", label: "Client logo for kiosk header", type: "image-upload", helper: "Upload a PNG, JPG, GIF, or WebP logo. This logo appears on every kiosk screen under this client." },
       { key: "kioskTitle", label: "Kiosk heading title" },
-      { key: "kioskSubtitle", label: "Kiosk heading description" }
+      { key: "kioskSubtitle", label: "Kiosk heading description", type: "textarea" }
     ],
     defaults: () => ({
       adminId: `admin-${Date.now().toString().slice(-5)}`,
@@ -324,6 +326,7 @@ function isSessionAuthError(error) {
 }
 
 function expireAdminSession(message = "Session expired. Please sign in again.") {
+  stopSnapshotPolling();
   state.authed = false;
   state.authToken = "";
   state.snapshot = null;
@@ -335,6 +338,22 @@ function expireAdminSession(message = "Session expired. Please sign in again.") 
   state.loginError = message;
   clearAdminSession();
   render();
+}
+
+function stopSnapshotPolling() {
+  if (state.snapshotPoller) {
+    clearInterval(state.snapshotPoller);
+    state.snapshotPoller = null;
+  }
+}
+
+function startSnapshotPolling() {
+  stopSnapshotPolling();
+  state.snapshotPoller = setInterval(() => {
+    if (state.authed && !document.hidden) {
+      loadSnapshot({ quiet: true });
+    }
+  }, 5000);
 }
 
 function redirectToKioskAdmin() {
@@ -703,8 +722,26 @@ function renderPagination(key, page) {
   `;
 }
 
-function pricingFor(serviceId) {
-  return state.pricingDraft?.[serviceId] || state.snapshot?.data?.pricing?.[serviceId] || { bw: 0, color: 0 };
+function normalizeRatePair(rates = {}, fallback = { bw: 0, color: 0 }) {
+  return {
+    bw: numeric(rates.bw, fallback.bw || 0),
+    color: numeric(rates.color, fallback.color || 0)
+  };
+}
+
+function pricingFor(serviceId, kioskId = "") {
+  const pricing = state.pricingDraft || state.snapshot?.data?.pricing || {};
+  const service = data("services").find((item) => item.id === serviceId);
+  const defaultRates = normalizeRatePair(service?.pricing || {});
+  const globalRates = normalizeRatePair(pricing?.[serviceId] || state.snapshot?.data?.pricing?.[serviceId] || {}, defaultRates);
+  const kioskRates = kioskId
+    ? pricing?.__kiosks?.[kioskId]?.[serviceId] || state.snapshot?.data?.pricing?.__kiosks?.[kioskId]?.[serviceId]
+    : null;
+  return kioskRates ? normalizeRatePair(kioskRates, globalRates) : globalRates;
+}
+
+function kioskPricingOverrides(kioskId) {
+  return state.pricingDraft?.__kiosks?.[kioskId] || {};
 }
 
 function render() {
@@ -868,90 +905,64 @@ function renderNotice() {
 }
 
 function superAdminOperationalAlerts() {
-  const alerts = [];
   const kiosks = data("kiosks");
-  const jobs = data("jobs");
-  const refunds = data("refunds");
+  return kiosks
+    .flatMap(kioskPrinterHealthAlerts)
+    .sort((a, b) => (Date.parse(b.lastUpdated || "") || 0) - (Date.parse(a.lastUpdated || "") || 0));
+}
 
-  kiosks.forEach((kiosk) => {
-    const kioskId = kiosk.kioskId || "Kiosk";
-    const status = String(kiosk.status || "").toLowerCase();
-    const printerHealth = kiosk.printerHealth && typeof kiosk.printerHealth === "object" ? kiosk.printerHealth : null;
-    if (status === "offline") {
-      alerts.push({
-        title: "Kiosk offline",
-        detail: `${kioskId} ${kiosk.branch || ""}`.trim(),
-        tone: "bad",
-        source: "kiosk"
-      });
-    } else if (status === "maintenance") {
-      alerts.push({
-        title: "Kiosk in maintenance",
-        detail: `${kioskId} ${kiosk.branch || ""}`.trim(),
-        tone: "warn",
-        source: "kiosk"
-      });
-    }
+function kioskPrinterHealthAlerts(kiosk = {}) {
+  const printerHealth = kiosk.printerHealth && typeof kiosk.printerHealth === "object"
+    ? kiosk.printerHealth
+    : null;
+  if (!printerHealth) return [];
 
-    if (kiosk.updateStatus === "failed" || kiosk.updateLastError) {
-      alerts.push({
-        title: "Kiosk update failed",
-        detail: `${kioskId}: ${kiosk.updateLastError || kiosk.updateMessage || "Update needs review."}`,
-        tone: "warn",
-        source: "update"
-      });
-    }
-
-    if (printerHealth) {
-      const printerName = printerHealth.printerName || kiosk.printer || "Printer";
-      const addPrinterAlert = (title, detail, tone = "warn") => {
-        alerts.push({
-          title,
-          detail: `${kioskId}: ${detail}`,
-          tone,
-          source: "printer"
-        });
-      };
-
-      if (!printerHealth.online) addPrinterAlert("Printer offline", printerHealth.errorMessage || `${printerName} is offline.`, "bad");
-      if (printerHealth.paperJam) addPrinterAlert("Paper jam detected", `${printerName}: clear the jam and close all trays.`, "bad");
-      if (printerHealth.paper === false) addPrinterAlert("Printer out of paper", `${printerName}: load paper in the tray.`, "bad");
-      if (printerHealth.paperLow) addPrinterAlert("Printer paper low", `${printerName}: refill paper soon.`);
-      if (printerHealth.doorOpen) addPrinterAlert("Printer door open", `${printerName}: close the printer door or tray.`, "bad");
-      if (printerHealth.tonerEmpty) addPrinterAlert("Toner empty", `${printerName}: replace the toner cartridge.`, "bad");
-      if (printerHealth.tonerLow) addPrinterAlert("Toner low", `${printerName}: keep a replacement toner ready.`);
-      if (printerHealth.outputBinFull) addPrinterAlert("Output tray full", `${printerName}: remove printed pages from the output tray.`, "bad");
-      if (printerHealth.serviceRequested) addPrinterAlert("Printer service required", printerHealth.errorMessage || `${printerName}: service intervention required.`, "bad");
-      if (printerHealth.queueError) addPrinterAlert("Print queue blocked", printerHealth.errorMessage || `${printerName}: clear the Windows print queue.`, "bad");
-    }
-  });
-
-  jobs.filter((job) => /failed/i.test(job.printStatus || "")).forEach((job) => {
+  const kioskId = kiosk.kioskId || "Kiosk";
+  const printerName = printerHealth.printerName || kiosk.printer || "Printer";
+  const paperStatus = String(printerHealth.paperStatus || "").toLowerCase();
+  const tonerStatus = String(printerHealth.tonerStatus || "").toLowerCase();
+  const lastUpdated = printerHealth.lastUpdated ? ` Last updated: ${formatDateTime(printerHealth.lastUpdated)}.` : "";
+  const alerts = [];
+  const add = (category, title, detail, tone = "bad") => {
     alerts.push({
-      title: "Print failed",
-      detail: `${job.jobId || "Job"} ${job.kioskId || ""} ${job.failureReason || job.printStatus || ""}`.trim(),
-      tone: "warn",
-      source: "job"
+      title: `${kioskId} - ${title}`,
+      detail: `${printerName}: ${detail}.${lastUpdated}`,
+      tone,
+      source: "printer",
+      category,
+      kioskId,
+      lastUpdated: printerHealth.lastUpdated || kiosk.lastOnline || ""
     });
-  });
+  };
 
-  refunds.filter((refund) => /pending/i.test(refund.status || "")).forEach((refund) => {
-    alerts.push({
-      title: "Refund pending",
-      detail: `${refund.refundId || "Refund"} ${money(refund.amount || 0)}`,
-      tone: "warn",
-      source: "refund"
-    });
-  });
+  const paperJam = Boolean(printerHealth.paperJam) || paperStatus.includes("jam");
+  const noPaper = printerHealth.paper === false || paperStatus.includes("no paper") || paperStatus.includes("out of paper") || paperStatus.includes("empty");
+  const paperLow = Boolean(printerHealth.paperLow) || paperStatus.includes("low");
+  const doorOpen = Boolean(printerHealth.doorOpen) || paperStatus.includes("door");
+  const tonerEmpty = Boolean(printerHealth.tonerEmpty) || tonerStatus.includes("no toner") || tonerStatus.includes("empty") || tonerStatus.includes("replace");
+  const tonerLow = Boolean(printerHealth.tonerLow) || tonerStatus.includes("low");
+  const queueError = Boolean(printerHealth.queueError);
+
+  if (paperJam) add("paper", "Paper jam detected", "clear the paper jam and close all trays");
+  else if (noPaper) add("paper", "Paper empty", "load paper in the tray");
+  else if (paperLow) add("paper", "Paper low", "refill paper soon", "warn");
+
+  if (doorOpen) add("paper", "Printer door open", "close the printer door or tray");
+  if (tonerEmpty) add("toner", "Toner empty", "replace the toner cartridge");
+  else if (tonerLow) add("toner", "Toner low", "keep a replacement toner ready", "warn");
+  if (printerHealth.outputBinFull) add("paper", "Output tray full", "remove printed pages from the output tray");
+  if (printerHealth.serviceRequested) add("service", "Printer service required", printerHealth.errorMessage || "service intervention required");
+  if (queueError) add("queue", "Print queue blocked", printerHealth.errorMessage || "clear the Windows print queue");
 
   return alerts;
 }
 
 function renderDashboard() {
   const summary = state.snapshot?.summary || {};
-  const failedJobs = data("jobs").filter((job) => /failed/i.test(job.printStatus || ""));
-  const pendingRefunds = data("refunds").filter((refund) => /pending/i.test(refund.status || ""));
   const alerts = superAdminOperationalAlerts();
+  const affectedKiosks = new Set(alerts.map((alert) => alert.kioskId).filter(Boolean)).size;
+  const paperAlerts = alerts.filter((alert) => alert.category === "paper").length;
+  const tonerAlerts = alerts.filter((alert) => alert.category === "toner").length;
 
   return `
     ${renderHeader("Super Admin Dashboard", "Master operational view across every kiosk and record.", `<button class="primary-button" data-page="kiosks">${uiIcon("kiosks", 18)} Open Kiosks</button>`)}
@@ -980,12 +991,12 @@ function renderDashboard() {
     <div class="module-grid dashboard-modules dashboard-modules-revenue">
       ${renderDashboardRevenuePanel(summary)}
       <div class="module-card dashboard-panel support-panel">
-        <div class="module-card-title"><span>${uiIcon("support", 20)}</span><h2>Support Queue</h2></div>
+        <div class="module-card-title"><span>${uiIcon("printer", 20)}</span><h2>Live Printer Alerts</h2></div>
         <div class="health-list">
-          ${renderHealth("Operational alerts", `${alerts.length}`, alerts.length ? "warn" : "good")}
-          ${renderHealth("Failed jobs", `${failedJobs.length}`, failedJobs.length ? "warn" : "good")}
-          ${renderHealth("Pending refunds", `${pendingRefunds.length}`, pendingRefunds.length ? "warn" : "good")}
-          ${renderHealth("Kiosk records", `${summary.kiosks || 0}`, summary.kiosks ? "good" : "warn")}
+          ${renderHealth("Open printer alerts", `${alerts.length}`, alerts.length ? "warn" : "good")}
+          ${renderHealth("Kiosks with alerts", `${affectedKiosks}`, affectedKiosks ? "warn" : "good")}
+          ${renderHealth("Paper / jam alerts", `${paperAlerts}`, paperAlerts ? "bad" : "good")}
+          ${renderHealth("Toner alerts", `${tonerAlerts}`, tonerAlerts ? "bad" : "good")}
         </div>
         <button class="panel-link" data-page="alerts">Open alert center ${uiIcon("alert", 17)}</button>
       </div>
@@ -995,17 +1006,22 @@ function renderDashboard() {
 
 function renderAlerts() {
   const alerts = superAdminOperationalAlerts();
+  const affectedKiosks = new Set(alerts.map((alert) => alert.kioskId).filter(Boolean)).size;
+  const paperAlerts = alerts.filter((alert) => alert.category === "paper").length;
+  const tonerAlerts = alerts.filter((alert) => alert.category === "toner").length;
+  const queueAlerts = alerts.filter((alert) => alert.category === "queue").length;
+  const serviceAlerts = alerts.filter((alert) => alert.category === "service").length;
 
   return `
-    ${renderHeader("Alert Center", "Network-wide kiosk, print, refund, and update issues.", `<button class="primary-button" data-action="refresh">${uiIcon("refresh", 18)} Refresh</button>`)}
+    ${renderHeader("Alert Center", "Live printer hardware alerts by kiosk ID.", `<button class="primary-button" data-action="refresh">${uiIcon("refresh", 18)} Refresh</button>`)}
     ${renderNotice()}
     <div class="metrics-grid dashboard-metrics">
       ${[
-        ["Open Alerts", alerts.length, "All active issues", "alert", alerts.length ? "red" : "green"],
-        ["Kiosk Issues", alerts.filter((alert) => alert.source === "kiosk").length, "Offline or maintenance", "kiosks", "amber"],
-        ["Printer Issues", alerts.filter((alert) => alert.source === "printer").length, "Paper, toner, jam, queue", "printer", "red"],
-        ["Print Jobs", alerts.filter((alert) => alert.source === "job").length, "Failed print jobs", "history", "red"],
-        ["Refund Issues", alerts.filter((alert) => alert.source === "refund").length, "Pending refunds", "refunds", "amber"]
+        ["Open Alerts", alerts.length, "Live printer issues only", "alert", alerts.length ? "red" : "green"],
+        ["Kiosks", affectedKiosks, "Kiosk IDs with alerts", "kiosks", affectedKiosks ? "amber" : "green"],
+        ["Paper / Jam", paperAlerts, "Paper empty, low, jam, door", "printer", paperAlerts ? "red" : "green"],
+        ["Toner", tonerAlerts, "Low or empty cartridge", "pricing", tonerAlerts ? "red" : "green"],
+        ["Queue / Service", queueAlerts + serviceAlerts, "Blocked queue or service", "history", queueAlerts + serviceAlerts ? "red" : "green"]
       ].map(([label, value, detail, icon, tone]) => `
         <div class="metric-card has-icon tone-${tone}">
           <span class="metric-icon">${uiIcon(icon, 25)}</span>
@@ -1018,7 +1034,7 @@ function renderAlerts() {
       `).join("")}
     </div>
     <div class="module-grid">
-      ${(alerts.length ? alerts : [{ title: "No live alerts", detail: "All backend records are clear.", tone: "good", source: "system" }]).map((alert) => `
+      ${(alerts.length ? alerts : [{ title: "No live printer alerts", detail: "Paper, toner, door, and queue checks are clear.", tone: "good", source: "system" }]).map((alert) => `
         <div class="module-card admin-alert-card admin-alert-card--${escapeHtml(alert.tone || "warn")}">
           <h2>${escapeHtml(alert.title)}</h2>
           <p class="helper-text">${escapeHtml(alert.detail)}</p>
@@ -1530,7 +1546,7 @@ function renderKioskNode(kiosk) {
 }
 
 function renderServiceNode(kiosk, service) {
-  const rates = service.pricing || pricingFor(service.id);
+  const rates = pricingFor(service.id, kiosk.kioskId);
 
   return `
     <div class="hierarchy-service">
@@ -1604,6 +1620,22 @@ function serviceForProject(service, projectId) {
     return kioskIds.some((kioskId) => projectKioskIds.has(kioskId));
   }
   return true;
+}
+
+function servicesForKiosk(kiosk = {}) {
+  const kioskId = kiosk.kioskId || "";
+  const projectId = kiosk.projectId || "";
+  return data("services").filter((service) => {
+    const kioskIds = Array.isArray(service.kioskIds) ? service.kioskIds : [];
+    if (kioskIds.length) return kioskIds.includes(kioskId);
+    return serviceForProject(service, projectId);
+  });
+}
+
+function kioskPricingOverrideCount(kiosk = {}) {
+  const serviceIds = new Set(servicesForKiosk(kiosk).map((service) => service.id));
+  return Object.keys(kioskPricingOverrides(kiosk.kioskId || ""))
+    .filter((serviceId) => serviceIds.has(serviceId)).length;
 }
 
 function serviceProjectLabel(projectId) {
@@ -1809,6 +1841,8 @@ function collectionColumnLabel(column) {
   if (column === "adminId") return "Client";
   if (column === "projectId") return "Project";
   if (column === "projectIds") return "Projects";
+  if (column === "kioskTitle") return "Kiosk Heading";
+  if (column === "kioskSubtitle") return "Kiosk Description";
   return labelize(column);
 }
 
@@ -1829,6 +1863,14 @@ function assignedProjectIdsForAdmin(admin = {}) {
   return [...new Set([...directIds, ...projectIds].filter(Boolean))];
 }
 
+function clientKioskTitle(admin = {}) {
+  return String(admin.kioskTitle || admin.headingTitle || admin.title || "").trim();
+}
+
+function clientKioskSubtitle(admin = {}) {
+  return String(admin.kioskSubtitle || admin.headingDescription || admin.description || admin.subtitle || "").trim();
+}
+
 function formatCell(collection, column, row) {
   if (collection === "services" && column === "bw") return escapeHtml(money((row.pricing || pricingFor(row.id)).bw || 0));
   if (collection === "services" && column === "color") return escapeHtml(money((row.pricing || pricingFor(row.id)).color || 0));
@@ -1836,6 +1878,8 @@ function formatCell(collection, column, row) {
   if (column === "kioskIds") return escapeHtml((row.kioskIds || []).join(", ") || "All");
   if (column === "adminId") return escapeHtml(kioskAdminName(row.adminId));
   if (column === "projectId") return escapeHtml(projectName(row.projectId));
+  if (collection === "kioskAdmins" && column === "kioskTitle") return escapeHtml(clientKioskTitle(row) || "Not set");
+  if (collection === "kioskAdmins" && column === "kioskSubtitle") return escapeHtml(clientKioskSubtitle(row) || "Not set");
   if (collection === "kioskAdmins" && column === "projectIds") {
     return escapeHtml(assignedProjectIdsForAdmin(row).map(projectName).join(", ") || "None");
   }
@@ -2096,32 +2140,130 @@ function renderDraftTemplate(template, index) {
 }
 
 function renderPricing() {
-  const services = data("services");
-  const page = paginated(services, "pricing-services");
+  const rows = filteredPricingKiosks();
+  const page = paginated(rows, "pricing-kiosks");
 
   return `
-    ${renderHeader("Pricing Control", "Master B/W and color pricing by service.", `<button class="primary-button" data-pricing-save-all>Save All</button>`)}
+    ${renderHeader("Kiosk Pricing", "Set service prices kiosk-wise. Each kiosk can override the global service price.", `<button class="primary-button" data-pricing-save-all>Save All Pricing</button>`)}
     ${renderNotice()}
-    <div class="settings-grid pricing-settings-grid">
-      ${page.items.map((service) => {
-        const rates = pricingFor(service.id);
-
-        return `
-          <div class="setting-field service-pricing-card">
-            <div>
-              <h2>${escapeHtml(service.title)}</h2>
-              <p class="helper-text">${escapeHtml(service.id)}</p>
-            </div>
-            <label>B/W per page</label>
-            <input type="number" min="0" value="${rates.bw || 0}" data-pricing-service="${escapeHtml(service.id)}" data-pricing-key="bw" />
-            <label>Color per page</label>
-            <input type="number" min="0" value="${rates.color || 0}" data-pricing-service="${escapeHtml(service.id)}" data-pricing-key="color" />
-            <button class="secondary-button" data-pricing-save="${escapeHtml(service.id)}">Save ${escapeHtml(service.id)}</button>
-          </div>
-        `;
-      }).join("")}
+    <div class="filters pricing-kiosk-filters">
+      <input placeholder="Search kiosk, branch, project, or service" value="${escapeHtml(state.search)}" data-action-input="search" />
+      <button class="secondary-button" data-pricing-search>Search</button>
+      ${state.search ? `<button class="ghost-button" data-pricing-search-clear>Clear</button>` : ""}
     </div>
-    ${renderPagination("pricing-services", page)}
+    <div class="table-wrap pricing-kiosk-table">
+      <table>
+        <thead>
+          <tr>
+            <th>Kiosk ID</th>
+            <th>Kiosk</th>
+            <th>Project</th>
+            <th>Services</th>
+            <th>Custom Prices</th>
+            <th>Actions</th>
+          </tr>
+        </thead>
+        <tbody>
+          ${page.items.length ? page.items.map((kiosk) => {
+            const serviceCount = servicesForKiosk(kiosk).length;
+            const overrideCount = kioskPricingOverrideCount(kiosk);
+            return `
+              <tr>
+                <td><strong>${escapeHtml(kiosk.kioskId || "-")}</strong></td>
+                <td>${escapeHtml([kiosk.name, kiosk.branch].filter(Boolean).join(" | ") || "-")}</td>
+                <td>${escapeHtml(projectName(kiosk.projectId))}</td>
+                <td>${serviceCount}</td>
+                <td>${overrideCount ? `${overrideCount} service${overrideCount === 1 ? "" : "s"}` : "Default"}</td>
+                <td>
+                  <div class="table-actions">
+                    <button class="secondary-button small-button" data-pricing-edit-kiosk="${escapeHtml(kiosk.kioskId || "")}">Edit Prices</button>
+                    <button class="danger-button small-button" data-pricing-delete-kiosk="${escapeHtml(kiosk.kioskId || "")}" ${overrideCount ? "" : "disabled"}>Delete Prices</button>
+                  </div>
+                </td>
+              </tr>
+            `;
+          }).join("") : `<tr><td colspan="6">No kiosks found.</td></tr>`}
+        </tbody>
+      </table>
+    </div>
+    ${renderPagination("pricing-kiosks", page)}
+    ${renderPricingEditorModal()}
+  `;
+}
+
+function filteredPricingKiosks() {
+  const search = state.search.trim().toLowerCase();
+  const rows = data("kiosks");
+  if (!search) return rows;
+
+  return rows.filter((kiosk) => {
+    const services = servicesForKiosk(kiosk);
+    const haystack = [
+      kiosk.kioskId,
+      kiosk.name,
+      kiosk.branch,
+      kiosk.status,
+      kiosk.projectId,
+      projectName(kiosk.projectId),
+      ...services.flatMap((service) => [service.id, service.title, service.description])
+    ].filter(Boolean).join(" ").toLowerCase();
+    return haystack.includes(search);
+  });
+}
+
+function renderPricingEditorModal() {
+  const editor = state.pricingEditor;
+  if (!editor?.kioskId) return "";
+
+  const kiosk = data("kiosks").find((item) => item.kioskId === editor.kioskId);
+  if (!kiosk) return "";
+
+  const services = servicesForKiosk(kiosk);
+  return `
+    <div class="editor-modal-shell pricing-editor-modal-shell" role="dialog" aria-modal="true" aria-label="Edit kiosk pricing">
+      <button class="editor-modal-backdrop" data-pricing-editor-cancel aria-label="Close pricing editor"></button>
+      <div class="editor-modal-content pricing-editor-modal-content">
+        <div class="admin-header">
+          <div>
+            <h1>Set Prices - ${escapeHtml(kiosk.kioskId)}</h1>
+            <p>${escapeHtml([kiosk.name, kiosk.branch, projectName(kiosk.projectId)].filter(Boolean).join(" | "))}</p>
+          </div>
+          <div class="flow-actions">
+            <button class="ghost-button" data-pricing-editor-cancel>Cancel</button>
+            <button class="danger-button" data-pricing-editor-delete="${escapeHtml(kiosk.kioskId)}" ${kioskPricingOverrideCount(kiosk) ? "" : "disabled"}>Delete Prices</button>
+            <button class="primary-button" data-pricing-editor-save>Save Prices</button>
+          </div>
+        </div>
+        <div class="table-wrap pricing-editor-table">
+          <table>
+            <thead>
+              <tr>
+                <th>Service</th>
+                <th>Mode</th>
+                <th>B/W per page</th>
+                <th>Color per page</th>
+              </tr>
+            </thead>
+            <tbody>
+              ${services.length ? services.map((service) => {
+                const rates = editor.draft?.[service.id] || pricingFor(service.id, kiosk.kioskId);
+                return `
+                  <tr>
+                    <td>
+                      <strong>${escapeHtml(service.title || service.id)}</strong>
+                      <small>${escapeHtml(service.id)}</small>
+                    </td>
+                    <td>${escapeHtml(service.mode || "upload")}</td>
+                    <td><input type="number" min="0" value="${rates.bw || 0}" data-kiosk-pricing-service="${escapeHtml(service.id)}" data-kiosk-pricing-key="bw" /></td>
+                    <td><input type="number" min="0" value="${rates.color || 0}" data-kiosk-pricing-service="${escapeHtml(service.id)}" data-kiosk-pricing-key="color" /></td>
+                  </tr>
+                `;
+              }).join("") : `<tr><td colspan="4">No services assigned to this kiosk.</td></tr>`}
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
   `;
 }
 
@@ -2247,6 +2389,7 @@ async function superAdminLogin() {
     state.authToken = payload.token || "";
     state.loginError = "";
     await loadSnapshot();
+    startSnapshotPolling();
   } catch (error) {
     state.authed = false;
     state.authToken = "";
@@ -2265,9 +2408,11 @@ async function handleClick(event) {
   }
 
   if (button.dataset.action === "logout") {
+    stopSnapshotPolling();
     state.authed = false;
     state.authToken = "";
     state.editor = null;
+    state.pricingEditor = null;
     state.notice = "";
     clearAdminSession();
     render();
@@ -2306,6 +2451,7 @@ async function handleClick(event) {
     state.page = button.dataset.page;
     state.navOpen = false;
     state.editor = null;
+    state.pricingEditor = null;
     state.search = "";
     state.pagination = {};
     render();
@@ -2315,6 +2461,7 @@ async function handleClick(event) {
   if (button.dataset.projectSelect) {
     state.selectedProjectId = button.dataset.projectSelect;
     state.editor = null;
+    state.pricingEditor = null;
     state.search = "";
     state.pagination = {};
     render();
@@ -2325,6 +2472,7 @@ async function handleClick(event) {
     state.selectedClientId = button.dataset.clientSelect;
     state.selectedProjectId = "";
     state.editor = null;
+    state.pricingEditor = null;
     state.search = "";
     state.pagination = {};
     render();
@@ -2384,6 +2532,45 @@ async function handleClick(event) {
 
   if (button.dataset.pricingSave) {
     await savePricing(button.dataset.pricingSave);
+    return;
+  }
+
+  if (button.dataset.pricingEditKiosk) {
+    beginEditKioskPricing(button.dataset.pricingEditKiosk);
+    return;
+  }
+
+  if (button.dataset.pricingDeleteKiosk) {
+    await deleteKioskPricing(button.dataset.pricingDeleteKiosk);
+    return;
+  }
+
+  if ("pricingSearch" in button.dataset) {
+    state.pagination["pricing-kiosks"] = 1;
+    render();
+    return;
+  }
+
+  if ("pricingSearchClear" in button.dataset) {
+    state.search = "";
+    state.pagination["pricing-kiosks"] = 1;
+    render();
+    return;
+  }
+
+  if ("pricingEditorCancel" in button.dataset) {
+    state.pricingEditor = null;
+    render();
+    return;
+  }
+
+  if ("pricingEditorSave" in button.dataset) {
+    await saveKioskPricing();
+    return;
+  }
+
+  if (button.dataset.pricingEditorDelete) {
+    await deleteKioskPricing(button.dataset.pricingEditorDelete);
     return;
   }
 
@@ -2475,6 +2662,21 @@ async function handleInput(event) {
       [serviceId]: {
         ...(state.pricingDraft[serviceId] || {}),
         [target.dataset.pricingKey]: numeric(target.value, 0)
+      }
+    };
+    return;
+  }
+
+  if (target.dataset.kioskPricingService && target.dataset.kioskPricingKey) {
+    const serviceId = target.dataset.kioskPricingService;
+    state.pricingEditor = {
+      ...(state.pricingEditor || {}),
+      draft: {
+        ...(state.pricingEditor?.draft || {}),
+        [serviceId]: {
+          ...(state.pricingEditor?.draft?.[serviceId] || {}),
+          [target.dataset.kioskPricingKey]: numeric(target.value, 0)
+        }
       }
     };
     return;
@@ -2641,6 +2843,11 @@ function beginEdit(collection, id) {
     draft.kioskIds = [];
     draft.customerSettings = normalizeKioskCustomerSettings(record.customerSettings);
     draft.printDefaults = normalizeServicePrintDefaults(record.printDefaults);
+  }
+  if (collection === "kioskAdmins") {
+    draft.logoUrl = String(record.logoUrl || record.logo || record.clientLogoUrl || "").trim();
+    draft.kioskTitle = clientKioskTitle(record);
+    draft.kioskSubtitle = clientKioskSubtitle(record);
   }
   if (collection === "kiosks") {
     draft.customerSettings = normalizeKioskCustomerSettings(record.customerSettings);
@@ -3097,6 +3304,88 @@ async function deleteRecord(collection, id) {
   }
 }
 
+function beginEditKioskPricing(kioskId) {
+  const kiosk = data("kiosks").find((item) => item.kioskId === kioskId);
+  if (!kiosk) return;
+
+  const draft = Object.fromEntries(
+    servicesForKiosk(kiosk).map((service) => [
+      service.id,
+      pricingFor(service.id, kiosk.kioskId)
+    ])
+  );
+
+  state.pricingEditor = {
+    kioskId: kiosk.kioskId,
+    draft
+  };
+  render();
+}
+
+function pricingDraftWithKiosk(kioskId, ratesByService) {
+  const nextPricing = clone(state.pricingDraft || {});
+  nextPricing.__kiosks = {
+    ...(nextPricing.__kiosks || {}),
+    [kioskId]: Object.fromEntries(
+      Object.entries(ratesByService || {}).map(([serviceId, rates]) => [
+        serviceId,
+        normalizeRatePair(rates)
+      ])
+    )
+  };
+  return nextPricing;
+}
+
+function pricingDraftWithoutKiosk(kioskId) {
+  const nextPricing = clone(state.pricingDraft || {});
+  if (nextPricing.__kiosks && typeof nextPricing.__kiosks === "object") {
+    delete nextPricing.__kiosks[kioskId];
+    if (!Object.keys(nextPricing.__kiosks).length) {
+      delete nextPricing.__kiosks;
+    }
+  }
+  return nextPricing;
+}
+
+async function persistPricingDraft(successMessage) {
+  state.notice = "Saving pricing...";
+  render();
+
+  try {
+    await fetchJson("/api/super-admin/pricing", {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(state.pricingDraft)
+    });
+    state.notice = successMessage || "Pricing saved.";
+    await loadSnapshot({ quiet: true });
+  } catch (error) {
+    if (error.sessionExpired) return;
+    state.error = error.message || "Pricing save failed.";
+    render();
+  }
+}
+
+async function saveKioskPricing() {
+  const editor = state.pricingEditor;
+  if (!editor?.kioskId) return;
+
+  state.pricingDraft = pricingDraftWithKiosk(editor.kioskId, editor.draft || {});
+  state.pricingEditor = null;
+  await persistPricingDraft("Kiosk pricing saved.");
+}
+
+async function deleteKioskPricing(kioskId) {
+  if (!kioskId) return;
+  if (!window.confirm(`Delete custom pricing for ${kioskId}? This kiosk will use default service prices.`)) return;
+
+  state.pricingDraft = pricingDraftWithoutKiosk(kioskId);
+  if (state.pricingEditor?.kioskId === kioskId) {
+    state.pricingEditor = null;
+  }
+  await persistPricingDraft("Kiosk custom pricing deleted.");
+}
+
 async function savePricing(serviceId) {
   const rates = pricingFor(serviceId);
   state.notice = "Saving pricing...";
@@ -3150,4 +3439,5 @@ hydrateAdminSession();
 render();
 if (state.authed) {
   loadSnapshot();
+  startSnapshotPolling();
 }
