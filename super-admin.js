@@ -1517,12 +1517,18 @@ function renderProjectNode(project, hierarchy) {
 }
 
 function renderKioskNode(kiosk) {
+  const printerAlerts = kioskPrinterHealthAlerts(kiosk);
+  const printerErrorBadge = printerAlerts.length
+    ? `<span class="badge bad" title="${escapeHtml(printerAlerts.map(a => a.title).join(', '))}">${printerAlerts.length} printer alert${printerAlerts.length > 1 ? "s" : ""}</span>`
+    : (kiosk.status === "online" ? `<span class="badge good">Online</span>` : `<span class="badge warn">Offline</span>`);
+
   return `
     <div class="hierarchy-node">
       <div class="hierarchy-node-head">
         <div>
-          <h2>${escapeHtml(kiosk.kioskId)} | ${escapeHtml(kiosk.branch || "")}</h2>
-          <p class="helper-text">${escapeHtml(kiosk.name || "")} | ${escapeHtml(kiosk.status || "")} | ${escapeHtml(kiosk.printer || "unknown printer")}</p>
+          <h2>${escapeHtml(kiosk.kioskId)} | ${escapeHtml(kiosk.branch || "")} ${printerErrorBadge}</h2>
+          <p class="helper-text">${escapeHtml(kiosk.name || "")} | ${escapeHtml(kiosk.printer || "unknown printer")}</p>
+          ${printerAlerts.length ? `<p class="helper-text" style="color:var(--red,#e53e3e);font-weight:600;">${escapeHtml(printerAlerts.map(a => a.title.replace(kiosk.kioskId + " - ", "")).join(" • "))}</p>` : ""}
         </div>
         <div class="flow-actions">
           <button class="secondary-button" data-record-edit="kiosks" data-record-id="${escapeHtml(kiosk.kioskId)}">Edit Kiosk</button>
