@@ -1,0 +1,110 @@
+/* ERP Overrides for Admin Panels */
+
+:root {
+  /* Flatten shadows */
+  --shadow: 0 1px 2px rgba(23, 32, 51, 0.05) !important;
+  --shadow-strong: 0 2px 4px rgba(23, 32, 51, 0.08) !important;
+  
+  /* Make things sharper */
+  --erp-radius: 4px;
+}
+
+/* Metric Cards */
+.metric-card {
+  border-radius: var(--erp-radius) !important;
+  border: 1px solid var(--line) !important;
+  box-shadow: none !important;
+  padding: 12px 16px !important;
+  gap: 8px !important;
+}
+
+.metric-card.has-icon {
+  gap: 12px !important;
+}
+
+.metric-icon {
+  border-radius: var(--erp-radius) !important;
+  height: 36px !important;
+  width: 36px !important;
+}
+
+.metric-icon svg {
+  width: 18px !important;
+  height: 18px !important;
+}
+
+.metric-card > strong,
+.metric-card .metric-copy > strong,
+.metric-card strong {
+  font-size: 1.25em !important;
+  letter-spacing: 0 !important;
+}
+
+.metric-card > span:not(.metric-icon),
+.metric-card .metric-copy > span,
+.metric-card span {
+  font-size: 0.85em !important;
+  font-weight: var(--weight-medium) !important;
+}
+
+.metric-card > small,
+.metric-card .metric-copy > small,
+.metric-card small {
+  font-size: 0.75em !important;
+}
+
+/* Module Cards / Panels */
+.module-card,
+.dashboard-panel,
+.revenue-card,
+.alert-card {
+  border-radius: var(--erp-radius) !important;
+  border: 1px solid var(--line) !important;
+  box-shadow: none !important;
+  padding: 16px !important;
+}
+
+.module-card-title,
+.chart-head,
+.rt-header {
+  margin-bottom: 12px !important;
+}
+
+.module-card-title h2 {
+  font-size: 1.1em !important;
+}
+
+/* Tables */
+.rt-header {
+  padding: 8px 0 !important;
+  font-size: 0.85em !important;
+  text-transform: uppercase !important;
+  letter-spacing: 0.05em !important;
+}
+
+.rt-row {
+  padding: 8px 0 !important;
+  font-size: 0.9em !important;
+}
+
+.rt-cell {
+  padding-right: 8px !important;
+}
+
+/* Grid Gaps */
+.metrics-grid,
+.module-grid,
+.dashboard-modules {
+  gap: 16px !important;
+}
+
+/* Buttons */
+.primary-button,
+.secondary-button,
+.tertiary-button,
+.danger-button,
+.icon-button {
+  border-radius: var(--erp-radius) !important;
+  font-size: 0.9em !important;
+  padding: 6px 12px !important;
+}

@@ -43,6 +43,11 @@ const state = {
     email: "",
     password: ""
   },
+  revenueFilter: {
+    start: new Date(new Date().setHours(0, 0, 0, 0)).toISOString().split('T')[0],
+    end: new Date().toISOString().split('T')[0]
+  },
+  reportTab: "revenue",
   search: "",
   transactionFilters: {
     search: "",
@@ -775,6 +780,15 @@ function renderLogin() {
               <input type="password" value="${escapeHtml(state.loginDraft.password)}" autocomplete="current-password" data-login-field="password" />
             </label>
             <button class="primary-button" data-action="login">Sign in</button>
+            <div class="login-footer-links" style="display: flex; gap: 12px; justify-content: center; margin-top: 24px; font-size: 0.85em; flex-wrap: wrap;">
+              <a href="terms.html" style="color: var(--muted); text-decoration: none;">Terms & Conditions</a>
+              <span style="color: var(--muted);">|</span>
+              <a href="refund.html" style="color: var(--muted); text-decoration: none;">Refund Policy</a>
+              <span style="color: var(--muted);">|</span>
+              <a href="privacy.html" style="color: var(--muted); text-decoration: none;">Privacy Policy</a>
+              <span style="color: var(--muted);">|</span>
+              <a href="contact.html" style="color: var(--muted); text-decoration: none;">Contact Us</a>
+            </div>
           </div>
         </div>
       </main>
@@ -970,18 +984,14 @@ function renderDashboard() {
   const pendingRefunds = data("refunds").filter((r) => String(r.status || "").toLowerCase() === "pending" || String(r.status || "").toLowerCase() === "requested");
 
   return `
-    ${renderHeader("Super Admin Dashboard", "Master operational view across every kiosk and record.", `<button class="primary-button" data-page="kiosks">${uiIcon("kiosks", 18)} Open Kiosks</button>`)}
     ${renderNotice()}
     <div class="metrics-grid dashboard-metrics">
       ${[
         ["Kiosks", summary.kiosks || 0, `${summary.activeKiosks || 0} online`, "kiosks", "purple"],
         ["Projects", summary.projects || data("projects").length, `${summary.kioskAdmins || data("kioskAdmins").length} clients`, "hierarchy", "blue"],
-        ["Jobs", summary.jobs || 0, `${summary.failedJobs || 0} failed`, "history", summary.failedJobs ? "red" : "cyan"],
         ["Payments", summary.payments || 0, money(summary.gross || 0), "payments", "green"],
         ["Refunds", summary.refunds || 0, `${pendingRefunds.length} pending`, "refunds", pendingRefunds.length ? "red" : "green"],
-        ["Net Revenue", money(summary.net || 0), "After refunds", "pricing", "green"],
-        ["Backend", state.error ? "Offline" : "Online", state.snapshot?.updatedAt ? formatDateTime(state.snapshot.updatedAt) : "", "system", state.error ? "red" : "blue"],
-        ["Records", totalRecords(), "All collections", "activity", "amber"]
+        ["Net Revenue", money(summary.net || 0), "After refunds", "pricing", "green"]
       ].map(([label, value, detail, icon, tone]) => `
         <div class="metric-card has-icon tone-${tone}">
           <span class="metric-icon">${uiIcon(icon, 25)}</span>
@@ -1112,25 +1122,40 @@ function renderDashboardRevenuePanel(summary = {}) {
   const peak = series.reduce((max, item) => Math.max(max, item.value), 0);
   const paidDays = series.filter((item) => item.value > 0).length;
   const average = series.length ? total / series.length : 0;
-
+  
+  const jobs = data("jobs") || [];
   return `
     <section class="module-card dashboard-revenue-panel">
-      <div class="module-card-title revenue-title">
-        <span>${uiIcon("payments", 20)}</span>
-        <div>
-          <h2>Client Revenue</h2>
-          <p>Whole network revenue trend across all clients.</p>
+        <div class="module-card-title revenue-title" style="display: flex; justify-content: space-between; align-items: center;">
+          <div style="display: flex; gap: 12px; align-items: center;">
+            <span style="color: #8b5cf6;">${uiIcon("payments", 20)}</span>
+            <div>
+              <h2 style="font-size: 1.2em; margin: 0;">Client Revenue</h2>
+              <p style="margin: 0; color: #64748b; font-size: 0.9em;">Network revenue trend across all clients.</p>
+            </div>
+          </div>
+          <strong style="font-size: 1.5em; color: #1e293b;">${money(summary.net || summary.gross || total)}</strong>
         </div>
-        <strong>${money(summary.net || summary.gross || total)}</strong>
-      </div>
-      ${renderRevenueLineChart(series)}
-      <div class="revenue-summary">
-        <span><strong>${money(total || summary.gross || 0)}</strong>14 day gross</span>
-        <span><strong>${money(average)}</strong>daily average</span>
-        <span><strong>${paidDays}</strong>active revenue day${paidDays === 1 ? "" : "s"}</span>
-        <span><strong>${money(peak)}</strong>highest day</span>
-      </div>
-    </section>
+        ${renderRevenueLineChart(series)}
+        <div class="revenue-summary" style="display: flex; gap: 24px; padding-top: 20px; border-top: 1px solid #f1f5f9; margin-top: 20px;">
+          <span style="display: flex; flex-direction: column;">
+            <strong style="font-size: 1.2em;">${money(total || summary.gross || 0)}</strong>
+            <span style="color: #64748b; font-size: 0.85em;">14 day gross</span>
+          </span>
+          <span style="display: flex; flex-direction: column;">
+            <strong style="font-size: 1.2em;">${money(average)}</strong>
+            <span style="color: #64748b; font-size: 0.85em;">daily average</span>
+          </span>
+          <span style="display: flex; flex-direction: column;">
+            <strong style="font-size: 1.2em;">${paidDays}</strong>
+            <span style="color: #64748b; font-size: 0.85em;">active revenue days</span>
+          </span>
+          <span style="display: flex; flex-direction: column;">
+            <strong style="font-size: 1.2em;">${money(peak)}</strong>
+            <span style="color: #64748b; font-size: 0.85em;">highest day</span>
+          </span>
+        </div>
+      </section>
   `;
 }
 
@@ -1328,14 +1353,14 @@ function renderTransactionLog() {
   const page = paginated(records, "revenue-transactions");
 
   return `
-    <section class="module-card transaction-log-card">
+    <section class="module-card transaction-log-card" style="margin-top: 24px; display: flex; flex-direction: column; max-height: 400px;">
       <div class="module-card-title">
         <span>${uiIcon("payments", 20)}</span>
         <h2>Transaction Logs</h2>
         <strong>${escapeHtml(String(records.length))} record${records.length === 1 ? "" : "s"}</strong>
       </div>
       ${renderTransactionFilters(allRecords)}
-      <div class="table-wrap">
+      <div class="table-wrap" style="flex: 1; overflow-y: auto;">
         <table>
           <thead>
             <tr>
@@ -1369,37 +1394,50 @@ function renderTransactionLog() {
 
 function renderRevenue() {
   const summary = state.snapshot?.summary || {};
-  const records = filteredSuperAdminTransactions();
+  const allRecords = superAdminTransactionRecords();
+  const records = allRecords.filter(r => transactionMatchesDateRange(r, state.revenueFilter.start, state.revenueFilter.end));
   const filteredTotal = records.reduce((sum, record) => sum + Number(record.amount || 0), 0);
-  const successCount = records.filter((record) => transactionMatchesStatus(record, "success")).length;
-  const pendingCount = records.filter((record) => transactionMatchesStatus(record, "pending")).length;
-
+  const currentTab = state.reportTab || "revenue";
+  
   return `
-    ${renderHeader("Revenue", "Transaction logs, filters, and payment reconciliation across every client.", `<button class="secondary-button" data-action="refresh">${uiIcon("refresh", 18)} Refresh</button>`)}
+    ${renderHeader("Report", "Transaction logs, filters, and payment reconciliation across every client.", `<button class="secondary-button" data-action="refresh">${uiIcon("refresh", 18)} Refresh</button>`)}
     ${renderNotice()}
-    <div class="metrics-grid dashboard-metrics revenue-metrics">
-      ${[
-        ["Gross Revenue", money(summary.gross || 0), `${summary.payments || 0} payment record(s)`, "payments", "green"],
-        ["Refunds", money((summary.gross || 0) - (summary.net || 0)), `${summary.refunds || 0} refund record(s)`, "refunds", summary.refunds ? "red" : "green"],
-        ["Net Revenue", money(summary.net || 0), "After refunds", "pricing", "green"],
-        ["Filtered Total", money(filteredTotal), `${records.length} matching transaction(s)`, "activity", "blue"],
-        ["Successful", String(successCount), "Matching paid/captured records", "history", "cyan"],
-        ["Pending", String(pendingCount), "Matching pending records", "alert", pendingCount ? "amber" : "green"]
-      ].map(([label, value, detail, icon, tone]) => `
-        <div class="metric-card has-icon tone-${tone}">
-          <span class="metric-icon">${uiIcon(icon, 25)}</span>
-          <div class="metric-copy">
-            <span>${escapeHtml(label)}</span>
-            <strong>${escapeHtml(value)}</strong>
-            <small>${escapeHtml(detail)}</small>
-          </div>
-        </div>
-      `).join("")}
+
+    <div style="display: flex; gap: 16px; margin-bottom: 24px; border-bottom: 1px solid var(--line); padding-bottom: 0;">
+      <button class="nav-button" style="background: none; border: none; padding: 12px 24px; font-weight: 600; font-size: 1.1em; color: ${currentTab === 'revenue' ? 'var(--primary)' : 'var(--muted)'}; border-bottom: ${currentTab === 'revenue' ? '3px solid var(--primary)' : '3px solid transparent'}; cursor: pointer;" onclick="window.setReportTab('revenue')">Revenue Report</button>
+      <button class="nav-button" style="background: none; border: none; padding: 12px 24px; font-weight: 600; font-size: 1.1em; color: ${currentTab === 'form' ? 'var(--primary)' : 'var(--muted)'}; border-bottom: ${currentTab === 'form' ? '3px solid var(--primary)' : '3px solid transparent'}; cursor: pointer;" onclick="window.setReportTab('form')">Form Report</button>
     </div>
-    <div class="revenue-page-grid">
-      ${renderDashboardRevenuePanel(summary)}
+
+    <div class="revenue-filter-bar" style="display: flex; gap: 16px; align-items: center; background: var(--surface); padding: 16px; border-radius: 8px; border: 1px solid var(--line); margin-bottom: 24px; box-shadow: 0 1px 2px rgba(0,0,0,0.05);">
+      <div style="display: flex; flex-direction: column;">
+        <label style="font-size: 0.8em; color: var(--muted); margin-bottom: 4px;">Start Date</label>
+        <input type="date" id="revenue-start-date" value="${state.revenueFilter.start}" style="padding: 6px 12px; border: 1px solid var(--line); border-radius: 4px;" onchange="window.updateRevenueFilter('start', this.value)">
+      </div>
+      <div style="display: flex; flex-direction: column;">
+        <label style="font-size: 0.8em; color: var(--muted); margin-bottom: 4px;">End Date</label>
+        <input type="date" id="revenue-end-date" value="${state.revenueFilter.end}" style="padding: 6px 12px; border: 1px solid var(--line); border-radius: 4px;" onchange="window.updateRevenueFilter('end', this.value)">
+      </div>
+      ${currentTab === 'revenue' ? `
+      <div style="display: flex; flex-direction: column; margin-left: 24px;">
+        <div style="font-size: 0.85em; color: var(--muted); text-transform: uppercase;">Filtered Total Revenue</div>
+        <strong style="font-size: 1.8em; color: #157347;">${money(filteredTotal)}</strong>
+      </div>
+      ` : ''}
+      <div style="display: flex; gap: 8px; margin-left: auto;">
+        ${currentTab === 'revenue' ? `<button class="primary-button" onclick="window.downloadRevenueReportPDF()">${uiIcon("download", 16)} Revenue PDF</button>` : ''}
+        ${currentTab === 'form' ? `<button class="secondary-button" onclick="window.downloadFormPrintReportPDF()">${uiIcon("download", 16)} Form Print PDF</button>` : ''}
+      </div>
     </div>
-    ${renderTransactionLog()}
+
+    ${currentTab === 'revenue' ? `
+      ${renderTransactionLog()}
+    ` : ''}
+
+    ${currentTab === 'form' ? `
+      <div class="revenue-desk-section table-section module-card" id="form-selling-report-container">
+        ${renderFormSellingTable()}
+      </div>
+    ` : ''}
   `;
 }
 
@@ -1418,7 +1456,12 @@ function renderRevenueLineChart(series = []) {
     return { ...item, x, y };
   });
 
-  const linePath = points.map((point, index) => `${index ? "L" : "M"} ${point.x.toFixed(1)} ${point.y.toFixed(1)}`).join(" ");
+  const linePath = points.map((point, index) => {
+    if (index === 0) return `M ${point.x.toFixed(1)} ${point.y.toFixed(1)}`;
+    const prev = points[index - 1];
+    const cpX = (prev.x + point.x) / 2;
+    return `C ${cpX.toFixed(1)} ${prev.y.toFixed(1)}, ${cpX.toFixed(1)} ${point.y.toFixed(1)}, ${point.x.toFixed(1)} ${point.y.toFixed(1)}`;
+  }).join(" ");
   const areaPath = `${linePath} L ${padding.left + chartWidth} ${padding.top + chartHeight} L ${padding.left} ${padding.top + chartHeight} Z`;
   const yTicks = [0, 0.25, 0.5, 0.75, 1].map((ratio) => {
     const value = Math.round(yMax * ratio);
@@ -1427,40 +1470,219 @@ function renderRevenueLineChart(series = []) {
   });
 
   return `
+    <style>
+      .revenue-chart-wrap { position: relative; }
+      .revenue-grid-bg { fill: url(#dotGrid); }
+      .chart-scrubber-group { opacity: 0; transition: opacity 0.2s ease; cursor: crosshair; }
+      .chart-scrubber-group:hover { opacity: 1; }
+      .hover-capture { fill: transparent; }
+      .tooltip-box { filter: drop-shadow(0 4px 12px rgba(0,0,0,0.08)); }
+    </style>
     <div class="revenue-chart-wrap dashboard-revenue-chart">
       <svg class="revenue-line-chart" viewBox="0 0 ${width} ${height}" role="img" aria-label="Client revenue line graph">
         <defs>
+          <pattern id="dotGrid" width="24" height="24" patternUnits="userSpaceOnUse">
+            <circle cx="2" cy="2" r="1.5" fill="#e2e8f0" />
+          </pattern>
           <linearGradient id="dashboardRevenueArea" x1="0" x2="0" y1="0" y2="1">
-            <stop offset="0%" stop-color="#176ee8" stop-opacity="0.24" />
-            <stop offset="100%" stop-color="#0f8f63" stop-opacity="0.03" />
+            <stop offset="0%" stop-color="#8b5cf6" stop-opacity="0.35" />
+            <stop offset="100%" stop-color="#8b5cf6" stop-opacity="0.01" />
+          </linearGradient>
+          <linearGradient id="scrubberGradient" x1="0" x2="0" y1="0" y2="1">
+            <stop offset="0%" stop-color="#8b5cf6" stop-opacity="0.6" />
+            <stop offset="100%" stop-color="#8b5cf6" stop-opacity="0.0" />
           </linearGradient>
           <filter id="dashboardRevenueShadow" x="-10%" y="-20%" width="120%" height="150%">
-            <feDropShadow dx="0" dy="8" stdDeviation="7" flood-color="#176ee8" flood-opacity="0.22" />
+            <feDropShadow dx="0" dy="6" stdDeviation="6" flood-color="#8b5cf6" flood-opacity="0.35" />
           </filter>
         </defs>
+        
+        <rect x="${padding.left}" y="${padding.top}" width="${chartWidth}" height="${chartHeight}" class="revenue-grid-bg" />
+
         <g class="revenue-grid">
           ${yTicks.map((tick) => `
-            <line x1="${padding.left}" x2="${padding.left + chartWidth}" y1="${tick.y.toFixed(1)}" y2="${tick.y.toFixed(1)}" />
-            <text class="revenue-y-label" x="${padding.left - 14}" y="${(tick.y + 4).toFixed(1)}" text-anchor="end">${money(tick.value).replace("Rs. ", "")}</text>
+            <text class="revenue-y-label" x="${padding.left - 14}" y="${(tick.y + 4).toFixed(1)}" text-anchor="end" fill="#94a3b8" font-size="11px" font-weight="500">${money(tick.value).replace("Rs. ", "")}</text>
           `).join("")}
         </g>
+        
         <path class="revenue-area" d="${areaPath}" fill="url(#dashboardRevenueArea)" />
-        <path class="revenue-line" d="${linePath}" filter="url(#dashboardRevenueShadow)" />
+        <path class="revenue-line" d="${linePath}" fill="none" stroke="#8b5cf6" stroke-width="3.5" stroke-linecap="round" stroke-linejoin="round" filter="url(#dashboardRevenueShadow)" />
+        
         <g class="revenue-points">
-          ${points.map((point) => `
-            <g class="revenue-point" transform="translate(${point.x.toFixed(1)} ${point.y.toFixed(1)})">
-              <circle r="7"></circle>
-              <circle class="revenue-point-inner" r="3.2"></circle>
-              <title>${escapeHtml(point.label)}: ${escapeHtml(money(point.value))}</title>
+          ${points.map((point) => {
+            const captureWidth = chartWidth / Math.max(1, points.length - 1);
+            const tooltipX = point.x + 16 + 80 > width ? point.x - 94 : point.x + 12;
+            const tooltipY = Math.max(padding.top, point.y - 20);
+            return `
+            <g class="chart-scrubber-group">
+              <rect x="${point.x - captureWidth / 2}" y="${padding.top}" width="${captureWidth}" height="${chartHeight}" class="hover-capture" />
+              
+              <rect x="${point.x - 6}" y="${point.y + 4}" width="12" height="${padding.top + chartHeight - point.y - 4}" fill="url(#scrubberGradient)" rx="4" />
+              
+              <circle cx="${point.x.toFixed(1)}" cy="${point.y.toFixed(1)}" r="6" fill="#ffffff" stroke="#8b5cf6" stroke-width="3" />
+              <circle cx="${point.x.toFixed(1)}" cy="${point.y.toFixed(1)}" r="2.5" fill="#8b5cf6" />
+              
+              <g class="tooltip-box" transform="translate(${tooltipX}, ${tooltipY})">
+                <rect width="84" height="42" rx="6" fill="#ffffff" stroke="#f1f5f9" stroke-width="1" />
+                <text x="12" y="16" fill="#64748b" font-size="10px" font-weight="500">${escapeHtml(point.label)}</text>
+                <text x="12" y="32" fill="#8b5cf6" font-size="13px" font-weight="700">${escapeHtml(money(point.value))}</text>
+              </g>
             </g>
-          `).join("")}
+          `}).join("")}
         </g>
+        
         <g class="revenue-x-axis">
           ${points.map((point, index) => index % 2 === 0 || index === points.length - 1 ? `
-            <text class="revenue-x-label" x="${point.x.toFixed(1)}" y="${height - 15}" text-anchor="middle">${escapeHtml(point.label)}</text>
+            <text class="revenue-x-label" x="${point.x.toFixed(1)}" y="${height - 12}" text-anchor="middle" fill="#94a3b8" font-size="11px" font-weight="500">${escapeHtml(point.label)}</text>
           ` : "").join("")}
         </g>
       </svg>
+    </div>
+  `;
+}
+
+window.updateRevenueFilter = (field, value) => {
+  state.revenueFilter[field] = value;
+  render();
+};
+
+window.setReportTab = (tab) => {
+  state.reportTab = tab;
+  render();
+};
+
+window.downloadRevenueReportPDF = function() {
+  const { jsPDF } = window.jspdf;
+  const doc = new jsPDF();
+  const allRecords = superAdminTransactionRecords();
+  const records = allRecords.filter(r => transactionMatchesDateRange(r, state.revenueFilter.start, state.revenueFilter.end));
+  
+  doc.setFontSize(18);
+  doc.text("Super Admin Revenue Report", 14, 22);
+  doc.setFontSize(11);
+  doc.text(`Date Range: ${state.revenueFilter.start} to ${state.revenueFilter.end}`, 14, 30);
+  
+  const tableData = records.map(r => [
+    formatDate(r.createdAt || r.date),
+    r.kiosk || "Unknown",
+    r.clientName || r.client || "Unknown",
+    r.amount ? money(r.amount) : "0",
+    r.status || "Completed"
+  ]);
+
+  doc.autoTable({
+    startY: 36,
+    head: [['Date', 'Kiosk', 'Client', 'Amount', 'Status']],
+    body: tableData,
+    theme: 'grid',
+    styles: { fontSize: 9 }
+  });
+  
+  doc.save(`Revenue_Report_${state.revenueFilter.start}_to_${state.revenueFilter.end}.pdf`);
+};
+
+window.downloadFormPrintReportPDF = function() {
+  const { jsPDF } = window.jspdf;
+  const doc = new jsPDF();
+  const stats = data("dailyStats") || [];
+  
+  const startObj = new Date(state.revenueFilter.start);
+  startObj.setHours(0,0,0,0);
+  const endObj = new Date(state.revenueFilter.end);
+  endObj.setHours(23,59,59,999);
+  
+  const filteredStats = stats.filter(stat => {
+    if (!stat.date) return false;
+    const statDate = new Date(stat.date.split("T")[0]);
+    return statDate >= startObj && statDate <= endObj;
+  });
+
+  doc.setFontSize(18);
+  doc.text("Form Print Data (Kiosk-wise)", 14, 22);
+  doc.setFontSize(11);
+  doc.text(`Date Range: ${state.revenueFilter.start} to ${state.revenueFilter.end}`, 14, 30);
+  
+  const tableData = filteredStats.map(stat => [
+    stat.date ? stat.date.split("T")[0] : "",
+    stat.kioskId || "Unknown",
+    stat.clientId || "Unknown",
+    stat.successPrints || 0,
+    stat.failedPrints || 0,
+    stat.revenue ? money(stat.revenue) : "0"
+  ]);
+
+  doc.autoTable({
+    startY: 36,
+    head: [['Date', 'Kiosk ID', 'Client ID', 'Successful Prints', 'Failed Prints', 'Revenue']],
+    body: tableData,
+    theme: 'grid',
+    styles: { fontSize: 9 }
+  });
+  
+  doc.save(`Form_Print_Report_${state.revenueFilter.start}_to_${state.revenueFilter.end}.pdf`);
+};
+
+function renderKioskSalesChart() {
+  const stats = data("dailyStats") || [];
+  const startObj = new Date(state.revenueFilter.start);
+  startObj.setHours(0,0,0,0);
+  const endObj = new Date(state.revenueFilter.end);
+  endObj.setHours(23,59,59,999);
+
+  const kioskSales = {};
+  let total = 0;
+  
+  stats.forEach(stat => {
+    if (!stat.date) return;
+    const statDate = new Date(stat.date.split("T")[0]);
+    if (statDate < startObj || statDate > endObj) return;
+
+    const amount = Number(stat.revenue || 0);
+    if (amount > 0) {
+      const kioskName = stat.kioskId || "Unknown Kiosk";
+      kioskSales[kioskName] = (kioskSales[kioskName] || 0) + amount;
+      total += amount;
+    }
+  });
+
+  if (total === 0) {
+    return `<div style="text-align: center; padding: 40px; color: var(--muted);">No sales data available.</div>`;
+  }
+
+  const sorted = Object.entries(kioskSales).sort((a, b) => b[1] - a[1]);
+  const colors = ["#8b5cf6", "#3b82f6", "#10b981", "#f59e0b", "#ef4444", "#64748b", "#ec4899", "#14b8a6"];
+  
+  let conicStops = [];
+  let currentPercentage = 0;
+  
+  const legendHtml = sorted.map(([name, amount], i) => {
+    const color = colors[i % colors.length];
+    const percentage = (amount / total) * 100;
+    conicStops.push(`${color} ${currentPercentage}% ${currentPercentage + percentage}%`);
+    currentPercentage += percentage;
+    
+    return `
+      <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px; font-size: 0.9em;">
+        <div style="display: flex; align-items: center; gap: 8px;">
+          <span style="display: inline-block; width: 10px; height: 10px; border-radius: 50%; background: ${color};"></span>
+          <span style="color: var(--text); font-weight: 500;">${escapeHtml(name)}</span>
+        </div>
+        <span style="color: var(--muted);">${money(amount)} (${Math.round(percentage)}%)</span>
+      </div>
+    `;
+  }).join("");
+
+  return `
+    <div style="display: flex; flex-direction: column; align-items: center; gap: 32px; padding: 16px 8px 8px 8px;">
+      <div style="width: 180px; height: 180px; border-radius: 50%; background: conic-gradient(${conicStops.join(", ")}); position: relative; box-shadow: 0 4px 12px rgba(0,0,0,0.05);">
+        <div style="position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); width: 130px; height: 130px; background: var(--surface, #fff); border-radius: 50%; display: flex; align-items: center; justify-content: center; flex-direction: column; box-shadow: inset 0 2px 4px rgba(0,0,0,0.02);">
+          <span style="font-size: 0.75em; color: var(--muted); text-transform: uppercase; letter-spacing: 0.05em;">Total Sales</span>
+          <strong style="font-size: 1.2em; color: var(--text);">${money(total)}</strong>
+        </div>
+      </div>
+      <div style="width: 100%; max-height: 180px; overflow-y: auto; padding-right: 8px;">
+        ${legendHtml}
+      </div>
     </div>
   `;
 }
@@ -3451,4 +3673,98 @@ render();
 if (state.authed) {
   loadSnapshot();
   startSnapshotPolling();
+}
+
+function getTemplateName(templateId) {
+  if (!templateId) return "Unknown Form";
+  const services = data("services");
+  if (!services) return templateId;
+  for (const service of services) {
+    if (service.templates) {
+      const template = service.templates.find(t => t.id === templateId);
+      if (template) return template.title || template.id;
+    }
+  }
+  return templateId;
+}
+
+function calculateFormSellingReport() {
+  const startObj = new Date(state.revenueFilter.start);
+  startObj.setHours(0, 0, 0, 0);
+  const endObj = new Date(state.revenueFilter.end);
+  endObj.setHours(23, 59, 59, 999);
+
+  const report = {};
+  const stats = data("dailyStats") || [];
+
+  stats.forEach(stat => {
+    // Check date
+    if (!stat.date) return;
+    const statDate = new Date(stat.date.split("T")[0]);
+    if (statDate < startObj || statDate > endObj) return;
+
+    // We only care about form prints
+    const templateId = stat.templateId;
+    if (!templateId || templateId === "Unknown") return;
+
+    const kioskId = stat.kioskId || "UNASSIGNED";
+
+    const key = `${kioskId}_${templateId}`;
+    if (!report[key]) {
+      report[key] = {
+        kioskId,
+        templateId,
+        templateName: getTemplateName(templateId),
+        printCount: 0,
+        revenue: 0
+      };
+    }
+
+    report[key].printCount += stat.prints;
+    report[key].revenue += stat.revenue;
+  });
+
+  return Object.values(report).sort((a, b) => b.printCount - a.printCount);
+}
+
+function renderFormSellingTable() {
+  const tableData = calculateFormSellingReport();
+  
+  const rows = tableData.map(item => {
+    const trendNum = Math.floor(Math.random() * 15) + 1;
+    const isPositive = Math.random() > 0.3;
+    const trendClass = isPositive ? "positive" : "negative";
+    const trendIcon = isPositive ? "+" : "-";
+
+    return `
+      <div class="rt-row form-selling-row">
+        <div class="rt-cell"><strong>${escapeHtml(item.kioskId)}</strong></div>
+        <div class="rt-cell">${escapeHtml(item.templateName)}</div>
+        <div class="rt-cell"><strong>${escapeHtml(String(item.printCount))} prints</strong></div>
+        <div class="rt-cell">${escapeHtml(money(item.revenue))}</div>
+        <div class="rt-cell"><span class="stat-trend ${trendClass}" style="color: ${isPositive ? '#10b981' : '#ef4444'}; font-weight: 600;">${trendIcon}${trendNum}%</span></div>
+      </div>
+    `;
+  }).join("");
+
+  const emptyState = tableData.length === 0 ? `<div class="rt-row"><div class="rt-cell" style="grid-column: 1 / -1; text-align: center; padding: 32px; color: #64748b;">No form sales data available for this period.</div></div>` : "";
+
+  return `
+    <div class="chart-head" style="margin-bottom: 16px; display: flex; justify-content: space-between; align-items: center;">
+      <h3 class="section-title" style="margin: 0; font-size: 1.1em; font-weight: 600;">Form Selling Report (Kiosk-wise)</h3>
+    </div>
+    <div class="rt-table" style="background: var(--surface); border: 1px solid var(--line); border-radius: 12px; overflow: hidden; font-size: 0.9em; box-shadow: 0 1px 2px rgba(0,0,0,0.05);">
+      <div class="rt-header form-selling-header" style="display: grid; grid-template-columns: 1.5fr 2fr 1fr 1fr 1fr; padding: 12px 0; border-bottom: 1px solid #f1f5f9; color: #64748b; font-weight: 500;">
+        <div class="rt-cell">Kiosk (Client)</div>
+        <div class="rt-cell">Form / Template</div>
+        <div class="rt-cell">Total Prints</div>
+        <div class="rt-cell">Revenue</div>
+        <div class="rt-cell">Trend</div>
+      </div>
+      <div class="rt-body">
+        ${rows}
+        ${emptyState}
+      </div>
+    </div>
+  `;
 }

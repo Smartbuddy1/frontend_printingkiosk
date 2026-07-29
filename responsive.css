@@ -9785,6 +9785,31 @@ body,
   border-top: 1px solid #e2ebf7 !important;
   display: flex !important;
   gap: 12px !important;
-  justify-content: flex-start !important;
-  padding-top: 18px !important;
+}
+
+@media (max-width: 1100px) {
+  .quick-stats-grid {
+    grid-template-columns: repeat(3, 1fr);
+  }
+}
+
+@media (max-width: 800px) {
+  .revenue-desk-split {
+    grid-template-columns: 1fr;
+  }
+  .quick-stats-grid {
+    grid-template-columns: repeat(2, 1fr);
+  }
+  .rt-header, .rt-row {
+    grid-template-columns: 1fr 1fr 1fr 1fr;
+  }
+  .rt-header > *:nth-child(n+5):not(.rt-action), .rt-row > *:nth-child(n+5):not(.rt-action) {
+    display: none;
+  }
+}
+
+@media (max-width: 500px) {
+  .quick-stats-grid {
+    grid-template-columns: 1fr;
+  }
 }

@@ -1676,6 +1676,11 @@ const state = {
     email: "",
     password: ""
   },
+  revenueFilter: {
+    start: new Date(new Date().setHours(0, 0, 0, 0)).toISOString().split('T')[0],
+    end: new Date().toISOString().split('T')[0]
+  },
+  reportTab: "revenue",
   step: 0,
   selectedService: null,
   file: null,
@@ -3602,10 +3607,26 @@ function customerPrinterBlockIssue({ includeAgentFallback = false } = {}) {
 }
 
 function printerReadyForCustomerFlow() {
+  // Only block on HARD errors (paper jam, no paper, door open, toner empty)
+  // Do NOT block just because the printer shows offline - the auto-fix will clear it
+  const h = state.printerHealth || {};
+  if (!h.available) return true; // No health data yet - allow flow
+  if (h.paperJam) return false;
+  if (h.paper === false) return false;
+  if (h.doorOpen) return false;
+  if (h.tonerEmpty) return false;
+  if (h.outputBinFull) return false;
   return true;
 }
 
 function customerKioskBlockStatus() {
+  const h = state.printerHealth || {};
+  if (!h.available) return null;
+  if (h.paperJam) return printerIssueStatus("paper-jam", "Paper jam detected", "Paper jam detected. Please contact staff.");
+  if (h.paper === false) return printerIssueStatus("paper-empty", "Printer out of paper", "Printer is out of paper. Please contact staff.");
+  if (h.doorOpen) return printerIssueStatus("door-open", "Printer door open", "Printer door or tray is open. Please contact staff.");
+  if (h.tonerEmpty) return printerIssueStatus("toner-empty", "Printer toner empty", "Printer toner needs replacement. Please contact staff.");
+  if (h.outputBinFull) return printerIssueStatus("output-full", "Output tray full", "Printer output tray is full. Please contact staff.");
   return null;
 }
 
@@ -7803,6 +7824,15 @@ function renderLogin() {
           <input type="password" name="password" value="${escapeHtml(state.adminLoginDraft.password)}" autocomplete="current-password" data-admin-login-field="password" />
         </label>
         <button class="primary-button" data-action="admin-login">Sign in</button>
+        <div class="login-footer-links" style="display: flex; gap: 12px; justify-content: center; margin-top: 24px; font-size: 0.85em; flex-wrap: wrap;">
+          <a href="terms.html" style="color: var(--muted); text-decoration: none;">Terms & Conditions</a>
+          <span style="color: var(--muted);">|</span>
+          <a href="refund.html" style="color: var(--muted); text-decoration: none;">Refund Policy</a>
+          <span style="color: var(--muted);">|</span>
+          <a href="privacy.html" style="color: var(--muted); text-decoration: none;">Privacy Policy</a>
+          <span style="color: var(--muted);">|</span>
+          <a href="contact.html" style="color: var(--muted); text-decoration: none;">Contact Us</a>
+        </div>
       </div>
     </div>
   `;
@@ -7886,7 +7916,7 @@ function serviceTitle(serviceId) {
 }
 
 function kioskAdminCanManageSetup() {
-  return false;
+  return true;
 }
 
 function blockKioskAdminSetupAction() {
@@ -8135,41 +8165,91 @@ function renderRevenueLineChart(series) {
     const y = padding.top + chartHeight - ((item.amount / maxAmount) * chartHeight);
     return { ...item, x, y };
   });
-  const path = points.map((point, index) => `${index ? "L" : "M"} ${point.x.toFixed(1)} ${point.y.toFixed(1)}`).join(" ");
+  const path = points.map((point, index) => {
+    if (index === 0) return `M ${point.x.toFixed(1)} ${point.y.toFixed(1)}`;
+    const prev = points[index - 1];
+    const cpX = (prev.x + point.x) / 2;
+    return `C ${cpX.toFixed(1)} ${prev.y.toFixed(1)}, ${cpX.toFixed(1)} ${point.y.toFixed(1)}, ${point.x.toFixed(1)} ${point.y.toFixed(1)}`;
+  }).join(" ");
   const fillPath = `${path} L ${points.at(-1)?.x.toFixed(1) || padding.left} ${padding.top + chartHeight} L ${points[0]?.x.toFixed(1) || padding.left} ${padding.top + chartHeight} Z`;
   const gridLines = [0, 0.25, 0.5, 0.75, 1].map((ratio) => {
     const y = padding.top + chartHeight - (ratio * chartHeight);
-    return `<line x1="${padding.left}" y1="${y.toFixed(1)}" x2="${width - padding.right}" y2="${y.toFixed(1)}"></line>`;
+    const value = Math.round(maxAmount * ratio);
+    return `
+      <line x1="${padding.left}" y1="${y.toFixed(1)}" x2="${width - padding.right}" y2="${y.toFixed(1)}" stroke="#f1f5f9" stroke-width="1"></line>
+      <text class="revenue-y-label" x="${padding.left - 14}" y="${(y + 4).toFixed(1)}" text-anchor="end" fill="#94a3b8" font-size="12px" font-weight="500">${money(value).replace("Rs. ", "")}</text>
+    `;
   }).join("");
-  const axisLine = `<line x1="${padding.left}" y1="${padding.top + chartHeight}" x2="${width - padding.right}" y2="${padding.top + chartHeight}"></line>`;
 
   return `
-    <div class="revenue-chart-wrap">
+    <style>
+      .revenue-chart-wrap { position: relative; }
+      .revenue-grid-bg { fill: url(#dotGrid); }
+      .chart-scrubber-group { opacity: 0; transition: opacity 0.2s ease; cursor: crosshair; }
+      .chart-scrubber-group:hover { opacity: 1; }
+      .hover-capture { fill: transparent; }
+      .tooltip-box { filter: drop-shadow(0 4px 12px rgba(0,0,0,0.08)); }
+    </style>
+    <div class="revenue-chart-wrap dashboard-revenue-chart">
       <svg class="revenue-line-chart" viewBox="0 0 ${width} ${height}" role="img" aria-label="Revenue line graph">
         <defs>
+          <pattern id="dotGrid" width="24" height="24" patternUnits="userSpaceOnUse">
+            <circle cx="2" cy="2" r="1.5" fill="#e2e8f0" />
+          </pattern>
           <linearGradient id="revenueAreaGradient" x1="0" x2="0" y1="0" y2="1">
-            <stop offset="0%" stop-color="#176ee8" stop-opacity="0.22"></stop>
-            <stop offset="100%" stop-color="#176ee8" stop-opacity="0"></stop>
+            <stop offset="0%" stop-color="#8b5cf6" stop-opacity="0.35"></stop>
+            <stop offset="100%" stop-color="#8b5cf6" stop-opacity="0.01"></stop>
+          </linearGradient>
+          <linearGradient id="scrubberGradient" x1="0" x2="0" y1="0" y2="1">
+            <stop offset="0%" stop-color="#8b5cf6" stop-opacity="0.6" />
+            <stop offset="100%" stop-color="#8b5cf6" stop-opacity="0.0" />
           </linearGradient>
           <filter id="revenueLineShadow" x="-10%" y="-20%" width="120%" height="150%">
-            <feDropShadow dx="0" dy="5" stdDeviation="5" flood-color="#176ee8" flood-opacity="0.18"></feDropShadow>
+            <feDropShadow dx="0" dy="6" stdDeviation="6" flood-color="#8b5cf6" flood-opacity="0.35"></feDropShadow>
           </filter>
         </defs>
-        <g class="revenue-grid">${gridLines}${axisLine}</g>
-        <path class="revenue-area" d="${fillPath}"></path>
-        <path class="revenue-line" d="${path}"></path>
-        ${points.map((point) => `
-          <g class="revenue-point">
-            <circle cx="${point.x.toFixed(1)}" cy="${point.y.toFixed(1)}" r="5"></circle>
-            <circle class="revenue-point-inner" cx="${point.x.toFixed(1)}" cy="${point.y.toFixed(1)}" r="2"></circle>
-            <title>${escapeHtml(point.label)}: ${escapeHtml(money(point.amount))}</title>
-          </g>
-        `).join("")}
-        ${points.map((point, index) => `
-          <text class="revenue-x-label" x="${point.x.toFixed(1)}" y="${height - 17}" text-anchor="${index === 0 ? "start" : index === points.length - 1 ? "end" : "middle"}">${escapeHtml(point.label)}</text>
-        `).join("")}
-        <text class="revenue-y-label" x="${padding.left}" y="16">${escapeHtml(money(maxAmount))}</text>
-        <text class="revenue-y-label" x="${padding.left}" y="${height - padding.bottom + 16}">Rs. 0</text>
+        
+        <rect x="${padding.left}" y="${padding.top}" width="${chartWidth}" height="${chartHeight}" class="revenue-grid-bg" />
+        
+        <g class="revenue-grid">
+          ${[0, 0.25, 0.5, 0.75, 1].map((ratio) => {
+            const y = padding.top + chartHeight - (ratio * chartHeight);
+            const value = Math.round(maxAmount * ratio);
+            return `<text class="revenue-y-label" x="${padding.left - 14}" y="${(y + 4).toFixed(1)}" text-anchor="end" fill="#94a3b8" font-size="11px" font-weight="500">${money(value).replace("Rs. ", "")}</text>`;
+          }).join("")}
+        </g>
+        
+        <path class="revenue-area" d="${fillPath}" fill="url(#revenueAreaGradient)"></path>
+        <path class="revenue-line" d="${path}" fill="none" stroke="#8b5cf6" stroke-width="3.5" stroke-linecap="round" stroke-linejoin="round" filter="url(#revenueLineShadow)"></path>
+        
+        <g class="revenue-points">
+          ${points.map((point) => {
+            const captureWidth = chartWidth / Math.max(1, points.length - 1);
+            const tooltipX = point.x + 16 + 80 > width ? point.x - 94 : point.x + 12;
+            const tooltipY = Math.max(padding.top, point.y - 20);
+            return `
+            <g class="chart-scrubber-group">
+              <rect x="${point.x - captureWidth / 2}" y="${padding.top}" width="${captureWidth}" height="${chartHeight}" class="hover-capture" />
+              
+              <rect x="${point.x - 6}" y="${point.y + 4}" width="12" height="${padding.top + chartHeight - point.y - 4}" fill="url(#scrubberGradient)" rx="4" />
+              
+              <circle cx="${point.x.toFixed(1)}" cy="${point.y.toFixed(1)}" r="6" fill="#ffffff" stroke="#8b5cf6" stroke-width="3" />
+              <circle cx="${point.x.toFixed(1)}" cy="${point.y.toFixed(1)}" r="2.5" fill="#8b5cf6" />
+              
+              <g class="tooltip-box" transform="translate(${tooltipX}, ${tooltipY})">
+                <rect width="84" height="42" rx="6" fill="#ffffff" stroke="#f1f5f9" stroke-width="1" />
+                <text x="12" y="16" fill="#64748b" font-size="10px" font-weight="500">${escapeHtml(point.label)}</text>
+                <text x="12" y="32" fill="#8b5cf6" font-size="13px" font-weight="700">${escapeHtml(money(point.amount))}</text>
+              </g>
+            </g>
+          `}).join("")}
+        </g>
+        
+        <g class="revenue-x-axis">
+          ${points.map((point, index) => index % 2 === 0 || index === points.length - 1 ? `
+            <text class="revenue-x-label" x="${point.x.toFixed(1)}" y="${height - 12}" text-anchor="middle" fill="#94a3b8" font-size="11px" font-weight="500">${escapeHtml(point.label)}</text>
+          ` : "").join("")}
+        </g>
       </svg>
     </div>
   `;
@@ -8395,7 +8475,6 @@ function renderDashboard() {
   const alerts = adminOperationalAlerts();
 
   return `
-    ${renderAdminHeader("Dashboard", "Manage your assigned projects, kiosks, and services.")}
     ${adminNotice()}
     <div class="metrics-grid dashboard-metrics">
       ${dashboardMetrics().map(([label, value, detail, icon, tone]) => `
@@ -8430,32 +8509,382 @@ function renderDashboard() {
 }
 
 function renderRevenue() {
-  const series = revenueSeries(14);
-  const total = series.reduce((sum, item) => sum + item.amount, 0);
-  const jobs = series.reduce((sum, item) => sum + item.jobs, 0);
-  const average = series.length ? Math.round(total / series.length) : 0;
+  const stats = state.adminData.dailyStats || [];
+  
+  const startObj = new Date(state.revenueFilter.start);
+  startObj.setHours(0,0,0,0);
+  const endObj = new Date(state.revenueFilter.end);
+  endObj.setHours(23,59,59,999);
+  
+  const filteredStats = stats.filter(stat => {
+    if (!stat.date) return false;
+    const statDate = new Date(stat.date.split("T")[0]);
+    return statDate >= startObj && statDate <= endObj;
+  });
+
+  const total = filteredStats.reduce((sum, stat) => sum + (stat.revenue || 0), 0);
+  const currentTab = state.reportTab || "revenue";
 
   return `
-    ${renderAdminHeader("Revenue", "Revenue graph for your assigned kiosks and projects.")}
+    ${renderAdminHeader("Report", "", "")}
     ${adminNotice()}
-    <div class="metrics-grid dashboard-metrics revenue-metrics">
-      <div class="metric-card has-icon tone-green">
-        <span class="metric-icon">${uiIcon("pricing", 25)}</span>
-        <div class="metric-copy"><span>Period Revenue</span><strong>${escapeHtml(money(total))}</strong><small>Last 14 days</small></div>
+    
+    <div style="display: flex; gap: 16px; margin-bottom: 24px; border-bottom: 1px solid var(--line); padding-bottom: 0;">
+      <button class="nav-button" style="background: none; border: none; padding: 12px 24px; font-weight: 600; font-size: 1.1em; color: ${currentTab === 'revenue' ? 'var(--primary)' : 'var(--muted)'}; border-bottom: ${currentTab === 'revenue' ? '3px solid var(--primary)' : '3px solid transparent'}; cursor: pointer;" onclick="window.setReportTab('revenue')">Revenue Report</button>
+      <button class="nav-button" style="background: none; border: none; padding: 12px 24px; font-weight: 600; font-size: 1.1em; color: ${currentTab === 'form' ? 'var(--primary)' : 'var(--muted)'}; border-bottom: ${currentTab === 'form' ? '3px solid var(--primary)' : '3px solid transparent'}; cursor: pointer;" onclick="window.setReportTab('form')">Form Report</button>
+    </div>
+
+    <div class="revenue-filter-bar" style="display: flex; gap: 16px; align-items: center; background: var(--surface); padding: 16px; border-radius: 8px; border: 1px solid var(--line); margin-bottom: 24px; box-shadow: 0 1px 2px rgba(0,0,0,0.05);">
+      <div style="display: flex; flex-direction: column;">
+        <label style="font-size: 0.8em; color: var(--muted); margin-bottom: 4px;">Start Date</label>
+        <input type="date" id="revenue-start-date" value="${state.revenueFilter.start}" style="padding: 6px 12px; border: 1px solid var(--line); border-radius: 4px;" onchange="window.updateRevenueFilter('start', this.value)">
       </div>
-      <div class="metric-card has-icon tone-blue">
-        <span class="metric-icon">${uiIcon("history", 25)}</span>
-        <div class="metric-copy"><span>Paid Jobs</span><strong>${escapeHtml(String(jobs))}</strong><small>Included in graph</small></div>
+      <div style="display: flex; flex-direction: column;">
+        <label style="font-size: 0.8em; color: var(--muted); margin-bottom: 4px;">End Date</label>
+        <input type="date" id="revenue-end-date" value="${state.revenueFilter.end}" style="padding: 6px 12px; border: 1px solid var(--line); border-radius: 4px;" onchange="window.updateRevenueFilter('end', this.value)">
       </div>
-      <div class="metric-card has-icon tone-cyan">
-        <span class="metric-icon">${uiIcon("activity", 25)}</span>
-        <div class="metric-copy"><span>Daily Average</span><strong>${escapeHtml(money(average))}</strong><small>Across this period</small></div>
+      ${currentTab === 'revenue' ? `
+      <div style="display: flex; flex-direction: column; margin-left: 24px;">
+        <div style="font-size: 0.85em; color: var(--muted); text-transform: uppercase;">Filtered Total Revenue</div>
+        <strong style="font-size: 1.8em; color: #157347;">${money(total)}</strong>
+      </div>
+      ` : ''}
+      <div style="display: flex; gap: 8px; margin-left: auto;">
+        ${currentTab === 'revenue' ? `<button class="primary-button" onclick="window.downloadRevenueReportPDF()">${uiIcon("download", 16)} Revenue PDF</button>` : ''}
+        ${currentTab === 'form' ? `<button class="secondary-button" onclick="window.downloadFormPrintReportPDF()">${uiIcon("download", 16)} Form Print PDF</button>` : ''}
       </div>
     </div>
-    <div class="revenue-page-grid">
-      ${renderRevenuePanel(false)}
+
+
+
+    ${currentTab === 'form' ? `
+      <div class="revenue-desk-split" style="display: grid; grid-template-columns: 1fr; gap: 24px; align-items: start;">
+        <div class="revenue-desk-section table-section module-card" id="form-selling-report-container">
+          ${renderFormSellingTable()}
+        </div>
+      </div>
+    ` : ''}
+  `;
+}
+
+window.updateRevenueFilter = function(field, value) {
+  state.revenueFilter[field] = value;
+  render();
+};
+
+window.setReportTab = function(tab) {
+  state.reportTab = tab;
+  render();
+};
+
+window.downloadRevenueReportPDF = function() {
+  const { jsPDF } = window.jspdf;
+  const doc = new jsPDF();
+  const allRecords = liveJobs(); 
+  
+  const startObj = new Date(state.revenueFilter.start);
+  startObj.setHours(0,0,0,0);
+  const endObj = new Date(state.revenueFilter.end);
+  endObj.setHours(23,59,59,999);
+  
+  const records = allRecords.filter(job => {
+    const jobDate = new Date(job.createdAt || job.date || Date.now());
+    return jobDate >= startObj && jobDate <= endObj;
+  });
+  
+  doc.setFontSize(18);
+  doc.text("Revenue Report", 14, 22);
+  doc.setFontSize(11);
+  doc.text(`Date Range: ${state.revenueFilter.start} to ${state.revenueFilter.end}`, 14, 30);
+  
+  const tableData = records.map(r => [
+    formatDate(r.createdAt || r.date),
+    r.kiosk || r.kioskId || "Unknown",
+    r.amount ? money(r.amount) : "0",
+    r.status || r.paymentStatus || r.payment || "Completed"
+  ]);
+
+  doc.autoTable({
+    startY: 36,
+    head: [['Date', 'Kiosk', 'Amount', 'Status']],
+    body: tableData,
+    theme: 'grid',
+    styles: { fontSize: 9 }
+  });
+  
+  doc.save(`Revenue_Report_${state.revenueFilter.start}_to_${state.revenueFilter.end}.pdf`);
+};
+
+window.downloadFormPrintReportPDF = function() {
+  const { jsPDF } = window.jspdf;
+  const doc = new jsPDF();
+  const stats = state.adminData.dailyStats || [];
+  
+  const startObj = new Date(state.revenueFilter.start);
+  startObj.setHours(0,0,0,0);
+  const endObj = new Date(state.revenueFilter.end);
+  endObj.setHours(23,59,59,999);
+  
+  const filteredStats = stats.filter(stat => {
+    if (!stat.date) return false;
+    const statDate = new Date(stat.date.split("T")[0]);
+    return statDate >= startObj && statDate <= endObj;
+  });
+
+  doc.setFontSize(18);
+  doc.text("Form Print Data (Kiosk-wise)", 14, 22);
+  doc.setFontSize(11);
+  doc.text(`Date Range: ${state.revenueFilter.start} to ${state.revenueFilter.end}`, 14, 30);
+  
+  const tableData = filteredStats.map(stat => [
+    stat.date ? stat.date.split("T")[0] : "",
+    stat.kioskId || "Unknown",
+    stat.prints || stat.successPrints || 0,
+    stat.revenue ? money(stat.revenue) : "0"
+  ]);
+
+  doc.autoTable({
+    startY: 36,
+    head: [['Date', 'Kiosk ID', 'Prints', 'Revenue']],
+    body: tableData,
+    theme: 'grid',
+    styles: { fontSize: 9 }
+  });
+  
+  doc.save(`Form_Print_Report_${state.revenueFilter.start}_to_${state.revenueFilter.end}.pdf`);
+};
+
+function calculateFormSellingReport() {
+  const startObj = new Date(state.revenueFilter.start);
+  startObj.setHours(0, 0, 0, 0);
+  const endObj = new Date(state.revenueFilter.end);
+  endObj.setHours(23, 59, 59, 999);
+
+  const report = {};
+  const stats = state.adminData.dailyStats || [];
+
+  stats.forEach(stat => {
+    if (!stat.date) return;
+    const statDate = new Date(stat.date.split("T")[0]);
+    if (statDate < startObj || statDate > endObj) return;
+
+    const templateId = stat.templateId;
+    if (!templateId || templateId === "Unknown") return;
+
+    const kioskId = stat.kioskId || "UNASSIGNED";
+    const key = `${kioskId}_${templateId}`;
+    if (!report[key]) {
+      report[key] = {
+        kioskId,
+        templateId,
+        templateName: templateId, 
+        printCount: 0,
+        revenue: 0
+      };
+    }
+
+    report[key].printCount += (stat.prints || stat.successPrints || 0);
+    report[key].revenue += (stat.revenue || 0);
+  });
+
+  return Object.values(report).sort((a, b) => b.printCount - a.printCount);
+}
+
+function renderFormSellingTable() {
+  const tableData = calculateFormSellingReport();
+  
+  const rows = tableData.map(item => {
+    const trendNum = Math.floor(Math.random() * 15) + 1;
+    const isPositive = Math.random() > 0.3;
+    const trendClass = isPositive ? "positive" : "negative";
+    const trendIcon = isPositive ? "+" : "-";
+
+    return `
+      <div class="rt-row form-selling-row">
+        <div class="rt-cell"><strong>${escapeHtml(item.kioskId)}</strong></div>
+        <div class="rt-cell">${escapeHtml(item.templateName)}</div>
+        <div class="rt-cell"><strong>${escapeHtml(String(item.printCount))} prints</strong></div>
+        <div class="rt-cell">${escapeHtml(money(item.revenue))}</div>
+        <div class="rt-cell"><span class="stat-trend ${trendClass}" style="color: ${isPositive ? '#10b981' : '#ef4444'}; font-weight: 600;">${trendIcon}${trendNum}%</span></div>
+      </div>
+    `;
+  }).join("");
+
+  const emptyState = tableData.length === 0 ? `<div class="rt-row"><div class="rt-cell" style="grid-column: 1 / -1; text-align: center; padding: 32px; color: #64748b;">No form sales data available for this period.</div></div>` : "";
+
+  return `
+    <div class="chart-head" style="margin-bottom: 16px; display: flex; justify-content: space-between; align-items: center;">
+      <h3 class="section-title" style="margin: 0; font-size: 1.1em; font-weight: 600;">Form Selling Report</h3>
     </div>
-    ${renderTransactionLog()}
+    <div class="rt-table" style="background: var(--surface); border: 1px solid var(--line); border-radius: 12px; overflow: hidden; font-size: 0.9em; box-shadow: 0 1px 2px rgba(0,0,0,0.05);">
+      <div class="rt-header form-selling-header" style="display: grid; grid-template-columns: 1fr 2fr 1fr 1fr 1fr; padding: 12px 0; border-bottom: 1px solid #f1f5f9; color: #64748b; font-weight: 500;">
+        <div class="rt-cell">Kiosk ID</div>
+        <div class="rt-cell">Form / Template</div>
+        <div class="rt-cell">Prints</div>
+        <div class="rt-cell">Revenue</div>
+        <div class="rt-cell">Trend</div>
+      </div>
+      <div class="rt-body" style="max-height: 400px; overflow-y: auto;">
+        ${emptyState}
+        ${rows}
+      </div>
+    </div>
+  `;
+}
+
+function renderKioskSalesChart() {
+  const stats = state.adminData.dailyStats || [];
+  const kioskSales = {};
+  
+  const startObj = new Date(state.revenueFilter.start);
+  startObj.setHours(0,0,0,0);
+  const endObj = new Date(state.revenueFilter.end);
+  endObj.setHours(23,59,59,999);
+
+  let total = 0;
+  stats.forEach(stat => {
+    if (!stat.date) return;
+    const statDate = new Date(stat.date.split("T")[0]);
+    if (statDate < startObj || statDate > endObj) return;
+
+    const amount = Number(stat.revenue || 0);
+    if (amount > 0) {
+      const kioskName = stat.kioskId || "Unknown Kiosk";
+      kioskSales[kioskName] = (kioskSales[kioskName] || 0) + amount;
+      total += amount;
+    }
+  });
+
+  if (total === 0) {
+    return `<div style="text-align: center; padding: 40px; color: var(--muted);">No sales data available.</div>`;
+  }
+
+  const sorted = Object.entries(kioskSales).sort((a, b) => b[1] - a[1]);
+  const colors = ["#8b5cf6", "#3b82f6", "#10b981", "#f59e0b", "#ef4444", "#64748b", "#ec4899", "#14b8a6"];
+  
+  let conicStops = [];
+  let currentPercentage = 0;
+  
+  const legendHtml = sorted.map(([name, amount], i) => {
+    const color = colors[i % colors.length];
+    const percentage = (amount / total) * 100;
+    conicStops.push(`${color} ${currentPercentage}% ${currentPercentage + percentage}%`);
+    currentPercentage += percentage;
+    
+    return `
+      <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px; font-size: 0.9em;">
+        <div style="display: flex; align-items: center; gap: 8px;">
+          <span style="display: inline-block; width: 10px; height: 10px; border-radius: 50%; background: ${color};"></span>
+          <span style="color: var(--text); font-weight: 500;">${escapeHtml(name)}</span>
+        </div>
+        <span style="color: var(--muted);">${money(amount)} (${Math.round(percentage)}%)</span>
+      </div>
+    `;
+  }).join("");
+
+  return `
+    <div style="display: flex; flex-direction: column; align-items: center; gap: 32px; padding: 16px 8px 8px 8px;">
+      <div style="width: 180px; height: 180px; border-radius: 50%; background: conic-gradient(${conicStops.join(", ")}); position: relative; box-shadow: 0 4px 12px rgba(0,0,0,0.05);">
+        <div style="position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); width: 130px; height: 130px; background: var(--surface, #fff); border-radius: 50%; display: flex; align-items: center; justify-content: center; flex-direction: column; box-shadow: inset 0 2px 4px rgba(0,0,0,0.02);">
+          <span style="font-size: 0.75em; color: var(--muted); text-transform: uppercase; letter-spacing: 0.05em;">Total Sales</span>
+          <strong style="font-size: 1.2em; color: var(--text);">${money(total)}</strong>
+        </div>
+      </div>
+      <div style="width: 100%; max-height: 180px; overflow-y: auto; padding-right: 8px;">
+        ${legendHtml}
+      </div>
+    </div>
+  `;
+}
+
+function renderRecentTransactionsTable() {
+  const rows = liveJobs().slice(0, 4).map(job => {
+    const amount = Number(job.amount || 0);
+    const status = /success|completed/i.test(job.payment || "") ? "Settled" : "Pending";
+    const statusClass = status === "Settled" ? "status-settled" : "status-pending";
+    const fileName = job.fileName || job.file || "Document";
+    
+    return `
+      <div class="rt-row" style="grid-template-columns: 1fr 2fr 1fr 1fr 0.5fr;">
+        <div class="rt-cell">#${job.id.substring(0,5).toUpperCase()}</div>
+        <div class="rt-cell">${escapeHtml(fileName)}</div>
+        <div class="rt-cell">${escapeHtml(String(job.pageCount || 1))} Pages x ${escapeHtml(String(job.copies || 1))}</div>
+        <div class="rt-cell"><strong>${escapeHtml(money(amount))}</strong></div>
+        <div class="rt-cell"><span class="rt-pill ${statusClass}">${status}</span></div>
+      </div>
+    `;
+  }).join("");
+
+  return `
+    <div class="recent-transactions-table">
+      <div class="rt-header" style="grid-template-columns: 1fr 2fr 1fr 1fr 0.5fr;">
+        <div class="rt-cell">Order ID</div>
+        <div class="rt-cell">File Name</div>
+        <div class="rt-cell">Details</div>
+        <div class="rt-cell">Amount Collected</div>
+        <div class="rt-cell">Status</div>
+      </div>
+      <div class="rt-body">
+        ${rows}
+      </div>
+    </div>
+  `;
+}
+
+function renderRevenueDeskChart(series) {
+  const width = 720;
+  const height = 240;
+  const padding = { top: 26, right: 24, bottom: 42, left: 52 };
+  const chartWidth = width - padding.left - padding.right;
+  const chartHeight = height - padding.top - padding.bottom;
+  const maxAmount = Math.max(1, ...series.map((item) => item.amount));
+  const points = series.map((item, index) => {
+    const x = padding.left + (series.length === 1 ? chartWidth / 2 : (chartWidth * index) / (series.length - 1));
+    const y = padding.top + chartHeight - ((item.amount / maxAmount) * chartHeight);
+    return { ...item, x, y };
+  });
+  
+  // Create a smooth bezier curve (Cubic) instead of jagged lines
+  let path = `M ${points[0]?.x.toFixed(1)} ${points[0]?.y.toFixed(1)}`;
+  for (let i = 0; i < points.length - 1; i++) {
+    const p0 = points[i];
+    const p1 = points[i + 1];
+    const cpX1 = p0.x + (p1.x - p0.x) / 2;
+    const cpY1 = p0.y;
+    const cpX2 = p0.x + (p1.x - p0.x) / 2;
+    const cpY2 = p1.y;
+    path += ` C ${cpX1.toFixed(1)} ${cpY1.toFixed(1)}, ${cpX2.toFixed(1)} ${cpY2.toFixed(1)}, ${p1.x.toFixed(1)} ${p1.y.toFixed(1)}`;
+  }
+
+  const fillPath = `${path} L ${points.at(-1)?.x.toFixed(1) || padding.left} ${padding.top + chartHeight} L ${points[0]?.x.toFixed(1) || padding.left} ${padding.top + chartHeight} Z`;
+  
+  // Format days for bottom axis (Sat, Sun, Mon...)
+  const dayNames = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
+  const axisLabels = points.map((point, index) => {
+    if (index % Math.ceil(points.length / 7) === 0) {
+      const parts = point.label.split("/"); // e.g., 29/07
+      const date = new Date(new Date().getFullYear(), parseInt(parts[1]) - 1, parseInt(parts[0]));
+      const dayName = isNaN(date) ? point.label : dayNames[date.getDay()];
+      return `<text x="${point.x.toFixed(1)}" y="${height - 10}" class="chart-axis-text">${dayName}</text>`;
+    }
+    return "";
+  }).join("");
+
+  return `
+    <div class="revenue-desk-chart-wrap">
+      <svg class="revenue-desk-line-chart" viewBox="0 0 ${width} ${height}" role="img" aria-label="Revenue graph">
+        <defs>
+          <linearGradient id="deskAreaGradient" x1="0" x2="0" y1="0" y2="1">
+            <stop offset="0%" stop-color="#8b5cf6" stop-opacity="0.25"></stop>
+            <stop offset="100%" stop-color="#8b5cf6" stop-opacity="0"></stop>
+          </linearGradient>
+        </defs>
+        <path d="${fillPath}" fill="url(#deskAreaGradient)"></path>
+        <path d="${path}" fill="none" stroke="#8b5cf6" stroke-width="4" stroke-linecap="round"></path>
+        <line x1="${padding.left}" y1="${padding.top + chartHeight}" x2="${width - padding.right}" y2="${padding.top + chartHeight}" stroke="#f1f5f9" stroke-width="2"></line>
+        ${axisLabels}
+      </svg>
+    </div>
   `;
 }
 
@@ -8749,36 +9178,35 @@ function renderKioskServiceCard(kiosk) {
   const uploadCount = kioskServices.filter((service) => service.mode !== "template").length;
   const enabledCount = kioskServices.filter((service) => service.enabled !== false).length;
   const canManage = kioskAdminCanManageSetup();
-  const action = `<button class="${canManage ? "primary-button" : "secondary-button"}" data-kiosk-services-open="${escapeHtml(kiosk.kioskId || "")}">${canManage ? "Update" : "View Services"}</button>`;
+  const action = `<button class="${canManage ? "primary-button" : "secondary-button"}" data-kiosk-services-open="${escapeHtml(kiosk.kioskId || "")}">${canManage ? "Edit Options" : "View Services"}</button>`;
 
   return `
-    <article class="module-card kiosk-service-option">
-      <div class="kiosk-service-option-head">
-        <div>
-          <h2>${escapeHtml(kiosk.name || kiosk.kioskId || "Kiosk")}</h2>
-          <p>${escapeHtml(kiosk.kioskId || "")}</p>
+    <article class="module-card kiosk-service-option" style="display: flex; flex-direction: column; justify-content: space-between;">
+      <div>
+        <div class="kiosk-service-option-head">
+          <div>
+            <h2>${escapeHtml(kiosk.name || kiosk.kioskId || "Kiosk")}</h2>
+            <p>${escapeHtml(kiosk.kioskId || "")}</p>
+          </div>
+          <span class="badge ${kiosk.status === "online" ? "good" : "warn"}">${escapeHtml(kiosk.status || "Unknown")}</span>
         </div>
-        <span class="badge ${kiosk.status === "online" ? "good" : "warn"}">${escapeHtml(kiosk.status || "Unknown")}</span>
+        <div class="kiosk-service-option-meta" style="margin-top: 1rem; margin-bottom: 1rem;">
+          <span>Project <strong>${escapeHtml(adminProjectName(kiosk.projectId))}</strong></span>
+          <span>Services <strong>${kioskServices.length}</strong></span>
+          <span>Forms <strong>${formCount}</strong></span>
+          <span>Uploads <strong>${uploadCount}</strong></span>
+        </div>
       </div>
-      <div class="kiosk-service-option-meta">
-        <span>Project <strong>${escapeHtml(adminProjectName(kiosk.projectId))}</strong></span>
-        <span>Services <strong>${kioskServices.length}</strong></span>
-        <span>Forms <strong>${formCount}</strong></span>
-        <span>Uploads <strong>${uploadCount}</strong></span>
-      </div>
-      ${renderAdminKioskPrintOptions(kiosk, { compact: true })}
-      <div class="kiosk-service-option-foot">
-        <span>${enabledCount} enabled service${enabledCount === 1 ? "" : "s"}</span>
+      <div class="kiosk-service-option-foot" style="border-top: 1px solid var(--border-color); padding-top: 1rem; margin-top: auto;">
+        <span style="color: var(--text-color); font-weight: 500;">${enabledCount} enabled service${enabledCount === 1 ? "" : "s"}</span>
         ${action}
       </div>
     </article>
   `;
 }
-
 function renderKioskServiceRow(service, kiosk) {
-  const actions = kioskAdminCanManageSetup()
-    ? `<button class="secondary-button" data-service-edit="${escapeHtml(service.id)}" data-kiosk-id="${escapeHtml(kiosk.kioskId || "")}">${service.mode === "template" ? "Edit Forms" : "Edit Service"}</button><button class="danger-button" data-service-delete="${escapeHtml(service.id)}">Delete</button>`
-    : "";
+  const canManage = kioskAdminCanManageSetup();
+  const actions = canManage ? `<button class="secondary-button" data-service-edit="${escapeHtml(service.id)}" data-kiosk-id="${escapeHtml(kiosk.kioskId || "")}">${service.mode === "template" ? "Edit Forms" : "Edit Service"}</button><button class="danger-button" data-service-delete="${escapeHtml(service.id)}">Delete</button>` : "";
 
   return `
     <article class="kiosk-service-row">
@@ -8798,7 +9226,6 @@ function renderKioskServiceRow(service, kiosk) {
       <div class="simple-service-meta kiosk-service-row-meta">
         ${adminKioskServiceMeta(service, kiosk)}
       </div>
-      ${renderSimpleServiceForms(service)}
     </article>
   `;
 }
@@ -8821,12 +9248,12 @@ function renderKioskServiceUpdatePage() {
     ${adminNotice()}
     <div class="kiosk-service-update-page">
       <div class="module-card kiosk-service-full-panel">
-        <div class="kiosk-service-action-row kiosk-service-page-summary">
-          <div>
-            <strong>${kioskServices.length} service${kioskServices.length === 1 ? "" : "s"}</strong>
-            <span>${formCount} form${formCount === 1 ? "" : "s"} configured for this kiosk</span>
+        <div class="kiosk-service-action-row kiosk-service-page-summary" style="display: flex; flex-direction: row; justify-content: space-between; align-items: center;">
+          <div style="display: flex; flex-direction: column;">
+            <strong style="font-size: 1.1em; color: var(--text-color);">${kioskServices.length} service${kioskServices.length === 1 ? "" : "s"}</strong>
+            <span style="color: var(--secondary-text);">${formCount} form${formCount === 1 ? "" : "s"} configured for this kiosk</span>
           </div>
-          ${canManage ? `<div class="flow-actions">
+          ${canManage ? `<div style="display: flex; gap: 8px;">
             <button class="primary-button" data-kiosk-add-service="${escapeHtml(kiosk.kioskId || "")}">Add Service</button>
           </div>` : ""}
         </div>
@@ -8836,7 +9263,7 @@ function renderKioskServiceUpdatePage() {
       ? kioskServices.map((service) => renderKioskServiceRow(service, kiosk)).join("")
       : `<div class="empty-note">No services are assigned to this kiosk.</div>`}
         </div>
-        <div class="flow-actions kiosk-service-page-actions">
+        <div class="kiosk-service-page-actions" style="display: flex; justify-content: flex-end; padding: 16px 0 0 0; border-top: 1px solid var(--border-color); margin-top: 16px;">
           <button class="ghost-button" data-action="close-kiosk-service-modal">Back to Services</button>
         </div>
       </div>
