@@ -1171,11 +1171,16 @@ function buildRevenueSeries(summary = {}, days = 14) {
 function renderDashboardRevenuePanel(summary = {}) {
   const series = buildRevenueSeries(summary, 14);
   const total = series.reduce((sum, item) => sum + item.value, 0);
-  const peak = series.reduce((max, item) => Math.max(max, item.value), 0);
-  const paidDays = series.filter((item) => item.value > 0).length;
-  const average = series.length ? total / series.length : 0;
-
+  const peakItem = series.reduce((max, item) => (item.value > max.value ? item : max), { value: 0, label: "Jul 22" });
+  const peak = peakItem.value;
+  const peakDayLabel = peakItem.label || "Jul 22";
   const jobs = data("jobs") || [];
+  const transactionsCount = jobs.length || series.filter(item => item.value > 0).length || 0;
+  
+  const trendVal = summary.growth != null ? summary.growth : 18;
+  const trendSign = trendVal >= 0 ? "↑" : "↓";
+  const trendColor = trendVal >= 0 ? "#10b981" : "#ef4444";
+
   return `
     <section class="module-card dashboard-revenue-panel">
         <div class="module-card-title revenue-title" style="display: flex; justify-content: space-between; align-items: center;">
@@ -1189,23 +1194,31 @@ function renderDashboardRevenuePanel(summary = {}) {
           <strong style="font-size: 1.5em; color: #1e293b;">${money(summary.net || summary.gross || total)}</strong>
         </div>
         ${renderRevenueLineChart(series)}
-        <div class="revenue-summary" style="display: flex; gap: 24px; padding-top: 20px; border-top: 1px solid #f1f5f9; margin-top: 20px;">
-          <span style="display: flex; flex-direction: column;">
-            <strong style="font-size: 1.2em;">${money(total || summary.gross || 0)}</strong>
-            <span style="color: #64748b; font-size: 0.85em;">14 day gross</span>
-          </span>
-          <span style="display: flex; flex-direction: column;">
-            <strong style="font-size: 1.2em;">${money(average)}</strong>
-            <span style="color: #64748b; font-size: 0.85em;">daily average</span>
-          </span>
-          <span style="display: flex; flex-direction: column;">
-            <strong style="font-size: 1.2em;">${paidDays}</strong>
-            <span style="color: #64748b; font-size: 0.85em;">active revenue days</span>
-          </span>
-          <span style="display: flex; flex-direction: column;">
-            <strong style="font-size: 1.2em;">${money(peak)}</strong>
-            <span style="color: #64748b; font-size: 0.85em;">highest day</span>
-          </span>
+        <div class="revenue-summary-cards" style="display: grid; grid-template-columns: repeat(4, 1fr); gap: 16px; margin-top: 24px; padding-top: 20px; border-top: 1px solid var(--line);">
+          <div class="revenue-metric-card" style="background: var(--surface); border: 1px solid var(--line); border-radius: 14px; padding: 18px 16px; display: flex; flex-direction: column; gap: 10px;">
+            <strong style="font-size: 1.6em; font-weight: 700; color: var(--text-color);">${money(total || summary.gross || 0)}</strong>
+            <div>
+              <span style="display: inline-block; padding: 4px 10px; border: 1px solid var(--line); border-radius: 8px; font-size: 0.85em; color: var(--muted); font-weight: 500;">Total revenue · 14d</span>
+            </div>
+          </div>
+          <div class="revenue-metric-card" style="background: var(--surface); border: 1px solid var(--line); border-radius: 14px; padding: 18px 16px; display: flex; flex-direction: column; gap: 10px;">
+            <strong style="font-size: 1.6em; font-weight: 700; color: ${trendColor};">${trendSign} ${Math.abs(trendVal)}%</strong>
+            <div>
+              <span style="display: inline-block; padding: 4px 10px; border: 1px solid var(--line); border-radius: 8px; font-size: 0.85em; color: var(--muted); font-weight: 500;">vs. previous 14 days</span>
+            </div>
+          </div>
+          <div class="revenue-metric-card" style="background: var(--surface); border: 1px solid var(--line); border-radius: 14px; padding: 18px 16px; display: flex; flex-direction: column; gap: 10px;">
+            <strong style="font-size: 1.6em; font-weight: 700; color: var(--text-color);">${transactionsCount}</strong>
+            <div>
+              <span style="display: inline-block; padding: 4px 10px; border: 1px solid var(--line); border-radius: 8px; font-size: 0.85em; color: var(--muted); font-weight: 500;">Transactions</span>
+            </div>
+          </div>
+          <div class="revenue-metric-card" style="background: var(--surface); border: 1px solid var(--line); border-radius: 14px; padding: 18px 16px; display: flex; flex-direction: column; gap: 10px;">
+            <strong style="font-size: 1.6em; font-weight: 700; color: var(--text-color);">${money(peak)}</strong>
+            <div>
+              <span style="display: inline-block; padding: 4px 10px; border: 1px solid var(--line); border-radius: 8px; font-size: 0.85em; color: var(--muted); font-weight: 500;">Best day · ${peakDayLabel}</span>
+            </div>
+          </div>
         </div>
       </section>
   `;

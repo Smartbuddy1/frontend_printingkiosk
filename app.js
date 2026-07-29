@@ -1671,6 +1671,10 @@ const state = {
   policyPage: runtimeConfig.get("page") === "privacy" || window.location.hash === "#privacy-policy" ? "privacy" : "privacy",
   adminPage: runtimeConfig.get("adminPage") || "dashboard",
   adminNavOpen: false,
+  adminProfileMenuOpen: false,
+  adminSettingsModalOpen: false,
+  adminSettingsDraft: { username: "", currentPassword: "", newPassword: "", confirmPassword: "" },
+  adminSettingsStatus: "",
   adminLoginError: "",
   adminLoginDraft: {
     email: "",
@@ -6010,8 +6014,12 @@ function renderAdminTopbar() {
               <div class="profile-dropdown-menu">
                 <div class="profile-dropdown-header">
                   <strong>Admin Account</strong>
-                  <span>Project Admin</span>
+                  <span>${escapeHtml(adminLabel)}</span>
                 </div>
+                <div class="profile-dropdown-divider"></div>
+                <button class="profile-dropdown-item" data-action="admin-open-settings">
+                  ${uiIcon("settings", 16)} <span>Account Settings</span>
+                </button>
                 <div class="profile-dropdown-divider"></div>
                 <button class="profile-dropdown-item danger" data-action="admin-logout">
                   ${uiIcon("logout", 16)} <span>Logout</span>
@@ -6022,6 +6030,44 @@ function renderAdminTopbar() {
         ` : ""}
       </div>
     </header>
+  `;
+}
+
+function renderAdminSettingsModal() {
+  if (!state.adminSettingsModalOpen) return "";
+
+  return `
+    <div class="settings-modal-overlay" data-action="admin-close-settings">
+      <div class="settings-modal-card" onclick="event.stopPropagation()">
+        <div class="settings-modal-header">
+          <h3>Account Settings</h3>
+          <button class="ghost-button" data-action="admin-close-settings" style="padding: 4px 8px; min-height: 32px;">✕</button>
+        </div>
+        <div class="settings-modal-body">
+          ${state.adminSettingsStatus ? `<div class="save-note" style="margin-bottom: 12px;">${escapeHtml(state.adminSettingsStatus)}</div>` : ""}
+          <label>
+            Admin ID / Email
+            <input type="text" data-admin-settings-field="username" value="${escapeHtml(state.adminSettingsDraft.username || state.adminAccount?.email || "admin@printingkiosk.local")}" placeholder="Enter admin email or ID" />
+          </label>
+          <label>
+            Current Password
+            <input type="password" data-admin-settings-field="currentPassword" value="${escapeHtml(state.adminSettingsDraft.currentPassword || "")}" placeholder="Enter current password" />
+          </label>
+          <label>
+            New Password
+            <input type="password" data-admin-settings-field="newPassword" value="${escapeHtml(state.adminSettingsDraft.newPassword || "")}" placeholder="Enter new password" />
+          </label>
+          <label>
+            Confirm New Password
+            <input type="password" data-admin-settings-field="confirmPassword" value="${escapeHtml(state.adminSettingsDraft.confirmPassword || "")}" placeholder="Confirm new password" />
+          </label>
+        </div>
+        <div class="settings-modal-footer" style="display: flex; justify-content: flex-end; gap: 12px; margin-top: 20px;">
+          <button class="secondary-button" data-action="admin-close-settings">Cancel</button>
+          <button class="primary-button" data-action="admin-save-settings">Save Changes</button>
+        </div>
+      </div>
+    </div>
   `;
 }
 
@@ -7815,16 +7861,12 @@ function renderAdmin() {
             `).join("")}
           </div>
         `).join("")}
-        <div class="admin-nav-help">
-          <span class="admin-nav-help-icon">${uiIcon("support", 22)}</span>
-          <div><strong>Need Help?</strong><p>Check kiosk devices and connection status.</p></div>
-          <button data-admin-page="system">Open System Status</button>
-        </div>
       </nav>
       <section class="admin-main">
         ${renderAdminPage()}
       </section>
     </div>
+    ${renderAdminSettingsModal()}
   `;
 }
 
@@ -7972,6 +8014,90 @@ function adminNotice() {
 
 function liveJobs() {
   return state.adminData.jobs.length ? state.adminData.jobs : [];
+}
+
+function kioskPrinterHealthAlerts(kiosk = {}) {
+  const printerHealth = kiosk.printerHealth && typeof kiosk.printerHealth === "object"
+    ? kiosk.printerHealth
+    : null;
+  if (!printerHealth) return [];
+
+  const kioskId = kiosk.kioskId || "Kiosk";
+  const printerName = printerHealth.printerName || kiosk.printer || "Printer";
+  const paperStatus = String(printerHealth.paperStatus || "").toLowerCase();
+  const tonerStatus = String(printerHealth.tonerStatus || "").toLowerCase();
+  const lastUpdated = printerHealth.lastUpdated ? ` Last updated: ${formatDateTime(printerHealth.lastUpdated)}.` : "";
+  const alerts = [];
+  const add = (category, title, detail, tone = "bad") => {
+    alerts.push({
+      title: `${kioskId} - ${title}`,
+      detail: `${printerName}: ${detail}.${lastUpdated}`,
+      tone,
+      source: "printer",
+      category,
+      kioskId,
+      lastUpdated: printerHealth.lastUpdated || kiosk.lastOnline || ""
+    });
+  };
+
+  const paperJam = Boolean(printerHealth.paperJam) || paperStatus.includes("jam");
+  const noPaper = printerHealth.paper === false || paperStatus.includes("no paper") || paperStatus.includes("out of paper") || paperStatus.includes("empty");
+  const paperLow = Boolean(printerHealth.paperLow) || paperStatus.includes("low");
+  const doorOpen = Boolean(printerHealth.doorOpen) || paperStatus.includes("door");
+  const tonerEmpty = Boolean(printerHealth.tonerEmpty) || tonerStatus.includes("no toner") || tonerStatus.includes("empty") || tonerStatus.includes("replace");
+  const tonerLow = Boolean(printerHealth.tonerLow) || tonerStatus.includes("low");
+  const queueError = Boolean(printerHealth.queueError);
+
+  if (paperJam) add("paper", "Paper jam detected", "clear the paper jam and close all trays");
+  else if (noPaper) add("paper", "Paper empty", "load paper in the tray");
+  else if (paperLow) add("paper", "Paper low", "refill paper soon", "warn");
+
+  if (doorOpen) add("paper", "Printer door open", "close the printer door or tray");
+  if (tonerEmpty) add("toner", "Toner empty", "replace the toner cartridge");
+  else if (tonerLow) add("toner", "Toner low", "keep a replacement toner ready", "warn");
+  if (printerHealth.outputBinFull) add("paper", "Output tray full", "remove printed pages from the output tray");
+  if (printerHealth.serviceRequested) add("service", "Printer service required", printerHealth.errorMessage || "service intervention required");
+  if (queueError) add("queue", "Print queue blocked", printerHealth.errorMessage || "clear the Windows print queue");
+
+  if (alerts.length === 0 && printerHealth.status === "offline" && printerHealth.errorMessage) {
+    add("queue", "Printer Offline", printerHealth.errorMessage);
+  }
+
+  return alerts;
+}
+
+function adminOperationalAlerts() {
+  const kiosks = state.adminData.kiosks || [];
+  return kiosks
+    .flatMap(kioskPrinterHealthAlerts)
+    .sort((a, b) => (Date.parse(b.lastUpdated || "") || 0) - (Date.parse(a.lastUpdated || "") || 0));
+}
+
+function renderAlerts() {
+  const alerts = adminOperationalAlerts();
+  return `
+    ${renderAdminHeader("Operational Alerts", "Real-time printer and kiosk alerts for your assigned kiosk(s).")}
+    ${adminNotice()}
+    <div class="module-card">
+      <div class="module-card-title">
+        <span>${uiIcon("bell", 20)}</span>
+        <h2>Active Printer Alerts</h2>
+        <strong>${alerts.length} alert${alerts.length === 1 ? "" : "s"}</strong>
+      </div>
+      <div class="info-list">
+        ${alerts.length ? alerts.map((alert) => `
+          <div class="info-row is-alert" style="padding: 16px; border-bottom: 1px solid var(--line);">
+            <span class="alert-row-icon" style="color: ${alert.tone === 'bad' ? '#ef4444' : '#f59e0b'};">${uiIcon("alert", 22)}</span>
+            <div style="flex: 1;">
+              <strong style="font-size: 1.05em; color: var(--text-color);">${escapeHtml(alert.title)}</strong>
+              <p style="margin: 4px 0 0 0; color: var(--secondary-text); font-size: 0.9em;">${escapeHtml(alert.detail)}</p>
+            </div>
+            <span class="badge ${alert.tone === 'bad' ? 'bad' : 'warn'}">${alert.tone === 'bad' ? 'Action Required' : 'Warning'}</span>
+          </div>
+        `).join("") : `<div class="empty-note" style="padding: 32px; text-align: center;">No active printer alerts for your kiosk(s). All hardware systems are operating normally.</div>`}
+      </div>
+    </div>
+  `;
 }
 
 function jobRow(job) {
@@ -8272,11 +8398,6 @@ function renderRevenuePanel(compact = false) {
         <strong>${escapeHtml(money(total))}</strong>
       </div>
       ${renderRevenueLineChart(series)}
-      <div class="revenue-summary">
-        <span><strong>${escapeHtml(String(jobs))}</strong> paid job(s)</span>
-        <span><strong>${escapeHtml(money(average))}</strong> daily avg</span>
-        <span><strong>${escapeHtml(bestDay.label)}</strong> peak</span>
-      </div>
     </div>
   `;
 }
@@ -8456,18 +8577,10 @@ function dashboardMetrics() {
   const dashboard = state.adminData.dashboard || {};
   const revenue = state.adminData.revenue || {};
   const jobs = liveJobs().map(jobRow);
-  const failed = dashboard.failedJobs ?? jobs.filter((job) => job.print.includes("Failed")).length;
-  const pages = jobs.reduce((sum, job) => sum + (job.pages * job.copies), 0);
-  const pendingRefunds = state.adminData.refunds.filter((refund) => /pending/i.test(refund.status || "")).length;
-  const queueLength = jobs.filter((job) => /queue|printing|pending/i.test(job.print)).length;
 
   return [
     ["Today Revenue", money(revenue.gross ?? dashboard.revenueToday ?? 0), "Live backend total", "pricing", "green"],
-    ["Today Jobs", String(dashboard.jobsToday ?? jobs.length), `${state.adminData.kiosks.length || 1} kiosk record(s)`, "services", "blue"],
-    ["Failed Jobs", String(failed), "Managed access", "alert", failed ? "red" : "green"],
-    ["Pages Printed", String(pages), "Completed and queued jobs", "printer", "cyan"],
-    ["Pending Refunds", String(pendingRefunds), pendingRefunds ? "Pending super admin review" : "No pending records", "refunds", pendingRefunds ? "red" : "green"],
-    ["Queue Length", String(queueLength), "Live job records", "history", queueLength ? "amber" : "blue"]
+    ["Today Transactions", String(dashboard.jobsToday ?? jobs.length), `${state.adminData.kiosks.length || 1} kiosk record(s)`, "services", "blue"]
   ];
 }
 
@@ -11284,6 +11397,30 @@ async function handleClick(event) {
     case "close-kiosk-service-modal":
       closeKioskServiceModal();
       break;
+    case "admin-toggle-profile-menu":
+      state.adminProfileMenuOpen = !state.adminProfileMenuOpen;
+      render();
+      break;
+    case "admin-open-settings":
+      state.adminProfileMenuOpen = false;
+      state.adminSettingsModalOpen = true;
+      state.adminSettingsStatus = "";
+      state.adminSettingsDraft = {
+        username: state.adminAccount?.email || state.adminAccount?.name || "admin@printingkiosk.local",
+        currentPassword: "",
+        newPassword: "",
+        confirmPassword: ""
+      };
+      render();
+      break;
+    case "admin-close-settings":
+      state.adminSettingsModalOpen = false;
+      state.adminSettingsStatus = "";
+      render();
+      break;
+    case "admin-save-settings":
+      saveAdminSettings();
+      break;
     case "admin-logout":
       state.adminAuthed = false;
       state.adminNavOpen = false;
@@ -11490,6 +11627,12 @@ async function handleChange(event) {
   if (target.dataset.adminLoginField) {
     state.adminLoginDraft[target.dataset.adminLoginField] = target.value;
     state.adminLoginError = "";
+    return;
+  }
+
+  if (target.dataset.adminSettingsField) {
+    state.adminSettingsDraft[target.dataset.adminSettingsField] = target.value;
+    state.adminSettingsStatus = "";
     return;
   }
 
