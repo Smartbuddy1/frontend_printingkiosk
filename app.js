@@ -5984,7 +5984,7 @@ function renderAdminTopbar() {
   return `
     <header class="topbar admin-topbar">
       <div class="brand">
-        <div class="brand-mark"><img src="./assets/smartbuddy-logo-transparent.png" alt="Print Kiosk" draggable="false" data-no-visual-search /></div>
+        <div class="brand-mark" style="background: #ffffff !important;"><img src="./assets/smartbuddy-logo-transparent.png" alt="Print Kiosk" draggable="false" data-no-visual-search /></div>
         <div>
           <div class="brand-title">Print Kiosk Admin Console</div>
           <div class="brand-subtitle">${escapeHtml(adminLabel)} | assigned project management</div>
@@ -6000,7 +6000,25 @@ function renderAdminTopbar() {
           <button class="mobile-nav-toggle" data-action="admin-toggle-nav" aria-controls="kiosk-admin-navigation" aria-expanded="${state.adminNavOpen}" aria-label="${state.adminNavOpen ? "Close navigation" : "Open navigation"}">
             ${uiIcon(state.adminNavOpen ? "close" : "menu", 22)}
           </button>
-          <button class="topbar-logout" data-action="admin-logout" aria-label="Logout">${uiIcon("logout", 19)}<span>Logout</span></button>
+          <div class="profile-menu-container">
+            <button class="profile-avatar-button" data-action="admin-toggle-profile-menu" aria-label="User Profile">
+              <div class="avatar-circle">AD</div>
+              <span class="profile-name">Admin</span>
+              ${uiIcon("chevron-down", 14)}
+            </button>
+            ${state.adminProfileMenuOpen ? `
+              <div class="profile-dropdown-menu">
+                <div class="profile-dropdown-header">
+                  <strong>Admin Account</strong>
+                  <span>Project Admin</span>
+                </div>
+                <div class="profile-dropdown-divider"></div>
+                <button class="profile-dropdown-item danger" data-action="admin-logout">
+                  ${uiIcon("logout", 16)} <span>Logout</span>
+                </button>
+              </div>
+            ` : ""}
+          </div>
         ` : ""}
       </div>
     </header>
@@ -7949,23 +7967,7 @@ function adminNotice() {
     ? `<div class="save-note" style="margin-bottom: 16px;">${escapeHtml(state.adminPermissionStatus)}</div>`
     : "";
 
-  if (state.adminData.error) {
-    return `${permissionNote}<div class="empty-note" style="margin-bottom: 16px;">${escapeHtml(state.adminData.error)} Showing only local session data until backend reconnects.</div>`;
-  }
-
-  if (state.adminData.lastUpdated) {
-    return `
-      ${permissionNote}
-      <div class="admin-live-status">
-        <span class="live-indicator"></span>
-        <strong>Live backend data.</strong>
-        <span>Last updated: ${escapeHtml(formatDateTime(state.adminData.lastUpdated))}</span>
-        <button data-action="refresh-admin" aria-label="Refresh admin data">${uiIcon("refresh", 18)}</button>
-      </div>
-    `;
-  }
-
-  return `${permissionNote}<div class="admin-live-status loading"><span class="live-indicator"></span><strong>Loading live backend data...</strong></div>`;
+  return permissionNote;
 }
 
 function liveJobs() {
@@ -8231,7 +8233,7 @@ function renderRevenueLineChart(series) {
             <g class="chart-scrubber-group">
               <rect x="${point.x - captureWidth / 2}" y="${padding.top}" width="${captureWidth}" height="${chartHeight}" class="hover-capture" />
               
-              <rect x="${point.x - 6}" y="${point.y + 4}" width="12" height="${padding.top + chartHeight - point.y - 4}" fill="url(#scrubberGradient)" rx="4" />
+              <rect x="${point.x - 6}" y="${point.y + 4}" width="12" height="${Math.max(0, padding.top + chartHeight - point.y - 4)}" fill="url(#scrubberGradient)" rx="4" />
               
               <circle cx="${point.x.toFixed(1)}" cy="${point.y.toFixed(1)}" r="6" fill="#ffffff" stroke="#8b5cf6" stroke-width="3" />
               <circle cx="${point.x.toFixed(1)}" cy="${point.y.toFixed(1)}" r="2.5" fill="#8b5cf6" />
@@ -11405,6 +11407,10 @@ async function handleClick(event) {
     case "request-refund":
       state.alerts.unshift(`${currentJobId()} refund request created after print failure.`);
       state.printStatusMessage = "Refund request saved. Please contact kiosk staff for admin review.";
+      render();
+      break;
+    case "admin-toggle-profile-menu":
+      state.adminProfileMenuOpen = !state.adminProfileMenuOpen;
       render();
       break;
     case "admin-login":

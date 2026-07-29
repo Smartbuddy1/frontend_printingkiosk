@@ -61,6 +61,10 @@ const state = {
   selectedClientId: "",
   selectedProjectId: "",
   navOpen: false,
+  profileMenuOpen: false,
+  settingsModalOpen: false,
+  settingsDraft: { username: "superadmin@printingkiosk.local", currentPassword: "", newPassword: "", confirmPassword: "" },
+  settingsStatus: "",
   editor: null,
   pricingDraft: {},
   pricingEditor: null,
@@ -316,13 +320,13 @@ function storeAdminSession(payload = {}) {
       token: payload.token || "",
       admin: payload.admin || null
     }));
-  } catch {}
+  } catch { }
 }
 
 function clearAdminSession() {
   try {
     window.sessionStorage.removeItem(ADMIN_SESSION_KEY);
-  } catch {}
+  } catch { }
 }
 
 function isSessionAuthError(error) {
@@ -808,6 +812,7 @@ function renderShell() {
           </section>
         </div>
       </main>
+      ${renderSettingsModal()}
     </div>
   `;
 }
@@ -818,10 +823,9 @@ function renderTopbar() {
   return `
     <header class="topbar admin-topbar">
       <div class="brand">
-        <div class="brand-mark"><img src="./assets/printhub-mark.png" alt="Print Kiosk" /></div>
+        <div class="brand-mark" style="background: #ffffff !important;"><img src="./assets/printhub-mark.png" alt="Print Kiosk" /></div>
         <div>
-          <div class="brand-title">Print Kiosk Super Admin</div>
-          <div class="brand-subtitle">Printing Kiosk | Kiosks, projects, jobs, payments, refunds</div>
+          <div class="brand-title">Super Admin</div>
         </div>
       </div>
       <div class="topbar-actions">
@@ -829,12 +833,35 @@ function renderTopbar() {
           ${uiIcon("bell", 22)}
           ${alertCount ? `<span>${Math.min(alertCount, 99)}</span>` : ""}
         </button>
-        <button class="topbar-action" data-action="refresh">${uiIcon("refresh", 18)}<span>Refresh</span></button>
-        <button class="topbar-action" data-action="export-json">${uiIcon("download", 18)}<span>Export</span></button>
         <button class="mobile-nav-toggle" data-action="toggle-nav" aria-controls="super-admin-navigation" aria-expanded="${state.navOpen}" aria-label="${state.navOpen ? "Close navigation" : "Open navigation"}">
           ${uiIcon(state.navOpen ? "close" : "menu", 22)}
         </button>
-        <button class="topbar-logout" data-action="logout">${uiIcon("logout", 19)}<span>Logout</span></button>
+        <div class="profile-menu-container">
+          <button class="profile-avatar-button" data-action="toggle-profile-menu" aria-label="User Profile">
+            <div class="avatar-circle">SA</div>
+            <span class="profile-name">Super Admin</span>
+            ${uiIcon("chevron-down", 14)}
+          </button>
+          ${state.profileMenuOpen ? `
+            <div class="profile-dropdown-menu">
+              <div class="profile-dropdown-header">
+                <strong>Super Admin</strong>
+                <span>Administrator</span>
+              </div>
+              <div class="profile-dropdown-divider"></div>
+              <button class="profile-dropdown-item" data-action="open-settings">
+                ${uiIcon("settings", 16)} <span>Account Settings</span>
+              </button>
+              <button class="profile-dropdown-item" data-action="export-json">
+                ${uiIcon("download", 16)} <span>Export System Data</span>
+              </button>
+              <div class="profile-dropdown-divider"></div>
+              <button class="profile-dropdown-item danger" data-action="logout">
+                ${uiIcon("logout", 16)} <span>Logout</span>
+              </button>
+            </div>
+          ` : ""}
+        </div>
       </div>
     </header>
   `;
@@ -859,11 +886,6 @@ function renderNav() {
           `).join("")}
         </div>
       `).join("")}
-      <div class="admin-nav-help">
-        <span class="admin-nav-help-icon">${uiIcon("support", 22)}</span>
-        <div><strong>Control Center</strong><p>Review kiosks, pricing, and operational records.</p></div>
-        <button data-page="kiosks">Open Kiosks</button>
-      </div>
     </nav>
   `;
 }
@@ -903,19 +925,49 @@ function renderHeader(title, subtitle, action = "") {
 
 function renderNotice() {
   const notices = [
-    state.notice ? `<div class="save-note">${escapeHtml(state.notice)}</div>` : "",
-    state.error ? `<div class="empty-note" style="margin-bottom: 16px;">${escapeHtml(state.error)}</div>` : "",
-    !state.error && state.snapshot?.updatedAt ? `
-      <div class="admin-live-status">
-        <span class="live-indicator"></span>
-        <strong>Live backend data.</strong>
-        <span>Last updated: ${escapeHtml(formatDateTime(state.snapshot.updatedAt))}</span>
-        <button data-action="refresh" aria-label="Refresh super admin data">${uiIcon("refresh", 18)}</button>
-      </div>
-    ` : ""
+    state.notice ? `<div class="save-note" style="margin-bottom: 12px;">${escapeHtml(state.notice)}</div>` : "",
+    state.error ? `<div class="empty-note" style="margin-bottom: 12px;">${escapeHtml(state.error)}</div>` : ""
   ].filter(Boolean);
 
   return notices.join("");
+}
+
+function renderSettingsModal() {
+  if (!state.settingsModalOpen) return "";
+
+  return `
+    <div class="settings-modal-overlay" data-action="close-settings">
+      <div class="settings-modal-card" onclick="event.stopPropagation()">
+        <div class="settings-modal-header">
+          <h3>Account Settings</h3>
+          <button class="ghost-button" data-action="close-settings" style="padding: 4px 8px; min-height: 32px;">✕</button>
+        </div>
+        <div class="settings-modal-body">
+          ${state.settingsStatus ? `<div class="save-note">${escapeHtml(state.settingsStatus)}</div>` : ""}
+          <label>
+            Admin Email / ID
+            <input type="text" data-settings-field="username" value="${escapeHtml(state.settingsDraft.username || "superadmin@printingkiosk.local")}" placeholder="Enter admin email or ID" />
+          </label>
+          <label>
+            Current Password
+            <input type="password" data-settings-field="currentPassword" value="${escapeHtml(state.settingsDraft.currentPassword || "")}" placeholder="Enter current password" />
+          </label>
+          <label>
+            New Password
+            <input type="password" data-settings-field="newPassword" value="${escapeHtml(state.settingsDraft.newPassword || "")}" placeholder="Enter new password" />
+          </label>
+          <label>
+            Confirm New Password
+            <input type="password" data-settings-field="confirmPassword" value="${escapeHtml(state.settingsDraft.confirmPassword || "")}" placeholder="Confirm new password" />
+          </label>
+        </div>
+        <div class="settings-modal-footer">
+          <button class="ghost-button" data-action="close-settings">Cancel</button>
+          <button class="primary-button" data-action="save-settings">Save Changes</button>
+        </div>
+      </div>
+    </div>
+  `;
 }
 
 function superAdminOperationalAlerts() {
@@ -987,12 +1039,12 @@ function renderDashboard() {
     ${renderNotice()}
     <div class="metrics-grid dashboard-metrics">
       ${[
-        ["Kiosks", summary.kiosks || 0, `${summary.activeKiosks || 0} online`, "kiosks", "purple"],
-        ["Projects", summary.projects || data("projects").length, `${summary.kioskAdmins || data("kioskAdmins").length} clients`, "hierarchy", "blue"],
-        ["Payments", summary.payments || 0, money(summary.gross || 0), "payments", "green"],
-        ["Refunds", summary.refunds || 0, `${pendingRefunds.length} pending`, "refunds", pendingRefunds.length ? "red" : "green"],
-        ["Net Revenue", money(summary.net || 0), "After refunds", "pricing", "green"]
-      ].map(([label, value, detail, icon, tone]) => `
+      ["Kiosks", summary.kiosks || 0, `${summary.activeKiosks || 0} online`, "kiosks", "purple"],
+      ["Projects", summary.projects || data("projects").length, `${summary.kioskAdmins || data("kioskAdmins").length} clients`, "hierarchy", "blue"],
+      ["Payments", summary.payments || 0, money(summary.gross || 0), "payments", "green"],
+      ["Refunds", summary.refunds || 0, `${pendingRefunds.length} pending`, "refunds", pendingRefunds.length ? "red" : "green"],
+      ["Net Revenue", money(summary.net || 0), "After refunds", "pricing", "green"]
+    ].map(([label, value, detail, icon, tone]) => `
         <div class="metric-card has-icon tone-${tone}">
           <span class="metric-icon">${uiIcon(icon, 25)}</span>
           <div class="metric-copy">
@@ -1032,12 +1084,12 @@ function renderAlerts() {
     ${renderNotice()}
     <div class="metrics-grid dashboard-metrics">
       ${[
-        ["Open Alerts", alerts.length, "Live printer issues only", "alert", alerts.length ? "red" : "green"],
-        ["Kiosks", affectedKiosks, "Kiosk IDs with alerts", "kiosks", affectedKiosks ? "amber" : "green"],
-        ["Paper / Jam", paperAlerts, "Paper empty, low, jam, door", "printer", paperAlerts ? "red" : "green"],
-        ["Toner", tonerAlerts, "Low or empty cartridge", "pricing", tonerAlerts ? "red" : "green"],
-        ["Queue / Service", queueAlerts + serviceAlerts, "Blocked queue or service", "history", queueAlerts + serviceAlerts ? "red" : "green"]
-      ].map(([label, value, detail, icon, tone]) => `
+      ["Open Alerts", alerts.length, "Live printer issues only", "alert", alerts.length ? "red" : "green"],
+      ["Kiosks", affectedKiosks, "Kiosk IDs with alerts", "kiosks", affectedKiosks ? "amber" : "green"],
+      ["Paper / Jam", paperAlerts, "Paper empty, low, jam, door", "printer", paperAlerts ? "red" : "green"],
+      ["Toner", tonerAlerts, "Low or empty cartridge", "pricing", tonerAlerts ? "red" : "green"],
+      ["Queue / Service", queueAlerts + serviceAlerts, "Blocked queue or service", "history", queueAlerts + serviceAlerts ? "red" : "green"]
+    ].map(([label, value, detail, icon, tone]) => `
         <div class="metric-card has-icon tone-${tone}">
           <span class="metric-icon">${uiIcon(icon, 25)}</span>
           <div class="metric-copy">
@@ -1122,7 +1174,7 @@ function renderDashboardRevenuePanel(summary = {}) {
   const peak = series.reduce((max, item) => Math.max(max, item.value), 0);
   const paidDays = series.filter((item) => item.value > 0).length;
   const average = series.length ? total / series.length : 0;
-  
+
   const jobs = data("jobs") || [];
   return `
     <section class="module-card dashboard-revenue-panel">
@@ -1398,7 +1450,7 @@ function renderRevenue() {
   const records = allRecords.filter(r => transactionMatchesDateRange(r, state.revenueFilter.start, state.revenueFilter.end));
   const filteredTotal = records.reduce((sum, record) => sum + Number(record.amount || 0), 0);
   const currentTab = state.reportTab || "revenue";
-  
+
   return `
     ${renderHeader("Report", "Transaction logs, filters, and payment reconciliation across every client.", `<button class="secondary-button" data-action="refresh">${uiIcon("refresh", 18)} Refresh</button>`)}
     ${renderNotice()}
@@ -1510,14 +1562,14 @@ function renderRevenueLineChart(series = []) {
         
         <g class="revenue-points">
           ${points.map((point) => {
-            const captureWidth = chartWidth / Math.max(1, points.length - 1);
-            const tooltipX = point.x + 16 + 80 > width ? point.x - 94 : point.x + 12;
-            const tooltipY = Math.max(padding.top, point.y - 20);
-            return `
+    const captureWidth = chartWidth / Math.max(1, points.length - 1);
+    const tooltipX = point.x + 16 + 80 > width ? point.x - 94 : point.x + 12;
+    const tooltipY = Math.max(padding.top, point.y - 20);
+    return `
             <g class="chart-scrubber-group">
               <rect x="${point.x - captureWidth / 2}" y="${padding.top}" width="${captureWidth}" height="${chartHeight}" class="hover-capture" />
               
-              <rect x="${point.x - 6}" y="${point.y + 4}" width="12" height="${padding.top + chartHeight - point.y - 4}" fill="url(#scrubberGradient)" rx="4" />
+              <rect x="${point.x - 6}" y="${point.y + 4}" width="12" height="${Math.max(0, padding.top + chartHeight - point.y - 4)}" fill="url(#scrubberGradient)" rx="4" />
               
               <circle cx="${point.x.toFixed(1)}" cy="${point.y.toFixed(1)}" r="6" fill="#ffffff" stroke="#8b5cf6" stroke-width="3" />
               <circle cx="${point.x.toFixed(1)}" cy="${point.y.toFixed(1)}" r="2.5" fill="#8b5cf6" />
@@ -1551,17 +1603,17 @@ window.setReportTab = (tab) => {
   render();
 };
 
-window.downloadRevenueReportPDF = function() {
+window.downloadRevenueReportPDF = function () {
   const { jsPDF } = window.jspdf;
   const doc = new jsPDF();
   const allRecords = superAdminTransactionRecords();
   const records = allRecords.filter(r => transactionMatchesDateRange(r, state.revenueFilter.start, state.revenueFilter.end));
-  
+
   doc.setFontSize(18);
   doc.text("Super Admin Revenue Report", 14, 22);
   doc.setFontSize(11);
   doc.text(`Date Range: ${state.revenueFilter.start} to ${state.revenueFilter.end}`, 14, 30);
-  
+
   const tableData = records.map(r => [
     formatDate(r.createdAt || r.date),
     r.kiosk || "Unknown",
@@ -1577,20 +1629,20 @@ window.downloadRevenueReportPDF = function() {
     theme: 'grid',
     styles: { fontSize: 9 }
   });
-  
+
   doc.save(`Revenue_Report_${state.revenueFilter.start}_to_${state.revenueFilter.end}.pdf`);
 };
 
-window.downloadFormPrintReportPDF = function() {
+window.downloadFormPrintReportPDF = function () {
   const { jsPDF } = window.jspdf;
   const doc = new jsPDF();
   const stats = data("dailyStats") || [];
-  
+
   const startObj = new Date(state.revenueFilter.start);
-  startObj.setHours(0,0,0,0);
+  startObj.setHours(0, 0, 0, 0);
   const endObj = new Date(state.revenueFilter.end);
-  endObj.setHours(23,59,59,999);
-  
+  endObj.setHours(23, 59, 59, 999);
+
   const filteredStats = stats.filter(stat => {
     if (!stat.date) return false;
     const statDate = new Date(stat.date.split("T")[0]);
@@ -1601,7 +1653,7 @@ window.downloadFormPrintReportPDF = function() {
   doc.text("Form Print Data (Kiosk-wise)", 14, 22);
   doc.setFontSize(11);
   doc.text(`Date Range: ${state.revenueFilter.start} to ${state.revenueFilter.end}`, 14, 30);
-  
+
   const tableData = filteredStats.map(stat => [
     stat.date ? stat.date.split("T")[0] : "",
     stat.kioskId || "Unknown",
@@ -1618,20 +1670,20 @@ window.downloadFormPrintReportPDF = function() {
     theme: 'grid',
     styles: { fontSize: 9 }
   });
-  
+
   doc.save(`Form_Print_Report_${state.revenueFilter.start}_to_${state.revenueFilter.end}.pdf`);
 };
 
 function renderKioskSalesChart() {
   const stats = data("dailyStats") || [];
   const startObj = new Date(state.revenueFilter.start);
-  startObj.setHours(0,0,0,0);
+  startObj.setHours(0, 0, 0, 0);
   const endObj = new Date(state.revenueFilter.end);
-  endObj.setHours(23,59,59,999);
+  endObj.setHours(23, 59, 59, 999);
 
   const kioskSales = {};
   let total = 0;
-  
+
   stats.forEach(stat => {
     if (!stat.date) return;
     const statDate = new Date(stat.date.split("T")[0]);
@@ -1651,16 +1703,16 @@ function renderKioskSalesChart() {
 
   const sorted = Object.entries(kioskSales).sort((a, b) => b[1] - a[1]);
   const colors = ["#8b5cf6", "#3b82f6", "#10b981", "#f59e0b", "#ef4444", "#64748b", "#ec4899", "#14b8a6"];
-  
+
   let conicStops = [];
   let currentPercentage = 0;
-  
+
   const legendHtml = sorted.map(([name, amount], i) => {
     const color = colors[i % colors.length];
     const percentage = (amount / total) * 100;
     conicStops.push(`${color} ${currentPercentage}% ${currentPercentage + percentage}%`);
     currentPercentage += percentage;
-    
+
     return `
       <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px; font-size: 0.9em;">
         <div style="display: flex; align-items: center; gap: 8px;">
@@ -1768,11 +1820,11 @@ function renderKioskNode(kiosk) {
       <div class="hierarchy-records">
         <h3>Jobs</h3>
         ${renderSmallTable(["Job", "File", "Payment", "Print"], (kiosk.jobs || []).map((job) => [
-          job.jobId,
-          job.fileName,
-          job.paymentStatus,
-          job.printStatus
-        ]), "No jobs for this kiosk.", `hierarchy-jobs-${kiosk.kioskId}`)}
+    job.jobId,
+    job.fileName,
+    job.paymentStatus,
+    job.printStatus
+  ]), "No jobs for this kiosk.", `hierarchy-jobs-${kiosk.kioskId}`)}
       </div>
     </div>
   `;
@@ -1908,12 +1960,12 @@ function renderKioskServices() {
 
   return `
     ${renderHeader(
-      "Client Services",
-      selectedClient
-        ? `${selectedClient.name || selectedClient.email || selectedClient.adminId} | ${projects.length} project${projects.length === 1 ? "" : "s"} | ${clientKiosks.length} kiosk${clientKiosks.length === 1 ? "" : "s"}`
-        : "Create a client project with kiosks before assigning services.",
-      `<button class="secondary-button" data-action="refresh">Refresh</button>`
-    )}
+    "Client Services",
+    selectedClient
+      ? `${selectedClient.name || selectedClient.email || selectedClient.adminId} | ${projects.length} project${projects.length === 1 ? "" : "s"} | ${clientKiosks.length} kiosk${clientKiosks.length === 1 ? "" : "s"}`
+      : "Create a client project with kiosks before assigning services.",
+    `<button class="secondary-button" data-action="refresh">Refresh</button>`
+  )}
     ${renderNotice()}
     ${!clients.length ? `
       <div class="empty-note">No clients with assigned projects found. Create a client and allocate a project before adding services.</div>
@@ -1922,10 +1974,10 @@ function renderKioskServices() {
         <aside class="kiosk-picker project-picker">
           <div class="kiosk-picker-title">Clients</div>
           ${clientPage.items.map((client) => {
-            const clientProjects = projectsForClient(client.adminId, serviceAssignableProjects());
-            const kioskCount = clientProjects.reduce((total, project) => total + kiosksForProject(project.projectId).length, 0);
-            const serviceCount = clientProjectServiceCount(clientProjects);
-            return `
+    const clientProjects = projectsForClient(client.adminId, serviceAssignableProjects());
+    const kioskCount = clientProjects.reduce((total, project) => total + kiosksForProject(project.projectId).length, 0);
+    const serviceCount = clientProjectServiceCount(clientProjects);
+    return `
             <button class="${client.adminId === clientId ? "active" : ""}" data-client-select="${escapeHtml(client.adminId)}">
               <strong>${escapeHtml(client.name || client.email || client.adminId)}</strong>
               <span>${clientProjects.length} project${clientProjects.length === 1 ? "" : "s"} | ${kioskCount} kiosk${kioskCount === 1 ? "" : "s"} | ${serviceCount} service${serviceCount === 1 ? "" : "s"}</span>
@@ -1934,8 +1986,8 @@ function renderKioskServices() {
           ${renderPagination("service-client-picker", clientPage)}
           <div class="kiosk-picker-title">Projects</div>
           ${projectPage.items.map((project) => {
-            const kioskCount = kiosksForProject(project.projectId).length;
-            return `
+      const kioskCount = kiosksForProject(project.projectId).length;
+      return `
             <button class="${project.projectId === projectId ? "active" : ""}" data-project-select="${escapeHtml(project.projectId)}">
               <strong>${escapeHtml(project.name || project.projectId)}</strong>
               <span>${kioskCount} kiosk${kioskCount === 1 ? "" : "s"}</span>
@@ -2217,10 +2269,10 @@ function renderField(field, draft, disabled = false) {
         <select data-editor-field="${escapeHtml(field.key)}" ${disabled ? "disabled" : ""}>
           ${field.allowEmpty ? `<option value="">Unallocated</option>` : ""}
           ${options.map((option) => {
-            const optionValue = option[field.valueKey];
-            const optionLabel = option[field.labelKey] || optionValue;
-            return `<option value="${escapeHtml(optionValue)}" ${String(value) === String(optionValue) ? "selected" : ""}>${escapeHtml(optionLabel)}</option>`;
-          }).join("")}
+      const optionValue = option[field.valueKey];
+      const optionLabel = option[field.labelKey] || optionValue;
+      return `<option value="${escapeHtml(optionValue)}" ${String(value) === String(optionValue) ? "selected" : ""}>${escapeHtml(optionLabel)}</option>`;
+    }).join("")}
         </select>
       </label>
     `;
@@ -2398,9 +2450,9 @@ function renderPricing() {
         </thead>
         <tbody>
           ${page.items.length ? page.items.map((kiosk) => {
-            const serviceCount = servicesForKiosk(kiosk).length;
-            const overrideCount = kioskPricingOverrideCount(kiosk);
-            return `
+    const serviceCount = servicesForKiosk(kiosk).length;
+    const overrideCount = kioskPricingOverrideCount(kiosk);
+    return `
               <tr>
                 <td><strong>${escapeHtml(kiosk.kioskId || "-")}</strong></td>
                 <td>${escapeHtml([kiosk.name, kiosk.branch].filter(Boolean).join(" | ") || "-")}</td>
@@ -2415,7 +2467,7 @@ function renderPricing() {
                 </td>
               </tr>
             `;
-          }).join("") : `<tr><td colspan="6">No kiosks found.</td></tr>`}
+  }).join("") : `<tr><td colspan="6">No kiosks found.</td></tr>`}
         </tbody>
       </table>
     </div>
@@ -2479,8 +2531,8 @@ function renderPricingEditorModal() {
             </thead>
             <tbody>
               ${services.length ? services.map((service) => {
-                const rates = editor.draft?.[service.id] || pricingFor(service.id, kiosk.kioskId);
-                return `
+    const rates = editor.draft?.[service.id] || pricingFor(service.id, kiosk.kioskId);
+    return `
                   <tr>
                     <td>
                       <strong>${escapeHtml(service.title || service.id)}</strong>
@@ -2491,7 +2543,7 @@ function renderPricingEditorModal() {
                     <td><input type="number" min="0" value="${rates.color || 0}" data-kiosk-pricing-service="${escapeHtml(service.id)}" data-kiosk-pricing-key="color" /></td>
                   </tr>
                 `;
-              }).join("") : `<tr><td colspan="4">No services assigned to this kiosk.</td></tr>`}
+  }).join("") : `<tr><td colspan="4">No services assigned to this kiosk.</td></tr>`}
             </tbody>
           </table>
         </div>
@@ -2520,10 +2572,10 @@ function renderUpdates() {
     ${renderNotice()}
     <div class="metrics-grid update-metrics">
       ${[
-        ["Published Releases", releases.length, `${activeReleases} active`, "download", "blue"],
-        ["Pending Kiosks", pendingKiosks, "Waiting or installing", "activity", "purple"],
-        ["Update Failures", failedKiosks, "Includes rollbacks", "alert", "orange"]
-      ].map(([label, value, detail, icon, tone]) => `
+      ["Published Releases", releases.length, `${activeReleases} active`, "download", "blue"],
+      ["Pending Kiosks", pendingKiosks, "Waiting or installing", "activity", "purple"],
+      ["Update Failures", failedKiosks, "Includes rollbacks", "alert", "orange"]
+    ].map(([label, value, detail, icon, tone]) => `
         <article class="metric-card ${tone}">
           <span class="metric-icon">${uiIcon(icon, 22)}</span>
           <div><p>${escapeHtml(label)}</p><strong>${escapeHtml(value)}</strong><small>${escapeHtml(detail)}</small></div>
@@ -2632,8 +2684,56 @@ async function superAdminLogin() {
 }
 
 async function handleClick(event) {
+  const actionTarget = event.target.closest("[data-action]");
   const button = event.target.closest("button");
+  
+  if (actionTarget?.dataset?.action === "close-settings") {
+    state.settingsModalOpen = false;
+    state.settingsStatus = "";
+    state.profileMenuOpen = false;
+    render();
+    return;
+  }
+
+  // Close profile menu if clicking outside
+  if (!event.target.closest(".profile-menu-container") && state.profileMenuOpen) {
+    state.profileMenuOpen = false;
+    render();
+    return;
+  }
+
   if (!button || button.disabled) return;
+
+  if (button.dataset.action === "toggle-profile-menu") {
+    state.profileMenuOpen = !state.profileMenuOpen;
+    render();
+    return;
+  }
+
+  if (button.dataset.action === "open-settings") {
+    state.profileMenuOpen = false;
+    state.settingsModalOpen = true;
+    state.settingsStatus = "";
+    render();
+    return;
+  }
+
+  if (button.dataset.action === "save-settings") {
+    const draft = state.settingsDraft;
+    if (draft.newPassword && draft.newPassword !== draft.confirmPassword) {
+      state.settingsStatus = "New passwords do not match.";
+      render();
+      return;
+    }
+    state.settingsStatus = "Account settings updated successfully.";
+    setTimeout(() => {
+      state.settingsModalOpen = false;
+      state.settingsStatus = "";
+      render();
+    }, 1200);
+    render();
+    return;
+  }
 
   if (button.dataset.action === "login") {
     await superAdminLogin();
@@ -2647,6 +2747,7 @@ async function handleClick(event) {
     state.editor = null;
     state.pricingEditor = null;
     state.notice = "";
+    state.profileMenuOpen = false;
     clearAdminSession();
     render();
     return;
@@ -2846,6 +2947,11 @@ async function handleInput(event) {
     state.search = target.value;
     state.pagination = {};
     render();
+    return;
+  }
+
+  if (target.dataset.settingsField) {
+    state.settingsDraft[target.dataset.settingsField] = target.value;
     return;
   }
 
@@ -3729,7 +3835,7 @@ function calculateFormSellingReport() {
 
 function renderFormSellingTable() {
   const tableData = calculateFormSellingReport();
-  
+
   const rows = tableData.map(item => {
     const trendNum = Math.floor(Math.random() * 15) + 1;
     const isPositive = Math.random() > 0.3;
