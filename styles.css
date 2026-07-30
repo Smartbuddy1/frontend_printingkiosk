@@ -3000,24 +3000,202 @@ tbody tr:hover {
   overflow: auto;
   padding: 18px 22px;
 }
+  background: #fff7ed;
+  border: 1px solid #fed7aa;
+  border-radius: 8px;
+  color: #9a3412;
+  font-weight: var(--weight-medium);
+  padding: 14px;
+}
+
+.super-admin-layout {
+  grid-template-columns: 286px 1fr;
+}
+
+.super-tree {
+  display: grid;
+  gap: 16px;
+}
+
+.hierarchy-node {
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  box-shadow: var(--shadow);
+  display: grid;
+  gap: 16px;
+  padding: 20px;
+}
+
+.hierarchy-node-head,
+.hierarchy-service-head,
+.editor-head {
+  align-items: start;
+  display: flex;
+  gap: 14px;
+  justify-content: space-between;
+}
+
+.hierarchy-node-head h2,
+.editor-head h2 {
+  margin: 0 0 6px;
+}
+
+.hierarchy-stats {
+  display: grid;
+  gap: 10px;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+}
+
+.hierarchy-stats.compact {
+  grid-template-columns: repeat(4, minmax(86px, 1fr));
+}
+
+.mini-stat {
+  background: #f6f9f8;
+  border: 1px solid #e5edf2;
+  border-radius: 8px;
+  display: grid;
+  gap: 4px;
+  min-height: 62px;
+  padding: 10px 12px;
+}
+
+.mini-stat span {
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: var(--weight-medium);
+  text-transform: uppercase;
+}
+
+.mini-stat strong {
+  color: var(--text);
+  font-size: 17px;
+}
+
+.hierarchy-children {
+  display: grid;
+  gap: 12px;
+}
+
+.hierarchy-service {
+  border: 1px solid #e5edf2;
+  border-radius: 8px;
+  display: grid;
+  gap: 12px;
+  padding: 14px;
+}
+
+.hierarchy-service-head strong,
+.hierarchy-service-head span {
+  display: block;
+}
+
+.hierarchy-service-head span {
+  color: var(--muted);
+  margin-top: 4px;
+}
+
+.hierarchy-records h3 {
+  margin: 0 0 10px;
+}
+
+.template-chip-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.template-chip {
+  background: #eef6ff;
+  border: 1px solid #b9d6fb;
+  border-radius: 999px;
+  color: var(--blue);
+  font-size: 13px;
+  font-weight: var(--weight-medium);
+  padding: 6px 10px;
+}
+
+.compact-table table {
+  min-width: 620px;
+}
+
+.table-actions {
+  display: flex;
+  gap: 8px;
+}
+
+.small-button {
+  font-size: 13px;
+  min-height: 34px;
+  padding: 0 10px;
+}
+
+.editor-modal-shell {
+  align-items: center;
+  display: grid;
+  inset: 0;
+  justify-items: center;
+  padding: 24px;
+  position: fixed;
+  z-index: 80;
+}
+
+.editor-modal-backdrop {
+  background: rgba(15, 23, 42, 0.42);
+  border: 0;
+  cursor: pointer;
+  inset: 0;
+  padding: 0;
+  position: fixed;
+}
+
+.editor-modal-content {
+  max-height: calc(100dvh - 48px);
+  max-width: 980px;
+  overflow: auto;
+  position: relative;
+  width: min(980px, 100%);
+  z-index: 1;
+}
+
+.editor-modal-content-services {
+  max-width: 760px;
+  overflow: visible;
+  width: min(760px, 100%);
+}
+
+.editor-panel {
+  margin: 0;
+}
+
+.editor-panel .flow-actions {
+  border-top: 1px solid #eef2f7;
+  padding-top: 14px;
+}
+
+.service-editor-popup {
+  display: grid;
+  gap: 0;
+  padding: 0;
+}
+
+.service-editor-popup .editor-head {
+  align-items: center;
+  border-bottom: 1px solid var(--line);
+  padding: 20px 22px 16px;
+}
+
+.service-editor-scroll {
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+  padding: 18px 22px;
+}
 
 .service-editor-section {
   display: grid;
   gap: 12px;
-}
-
-.service-editor-popup .service-editor-grid,
-.service-editor-popup .kiosk-settings-checks {
-  grid-template-columns: 1fr;
-}
-
-.service-editor-popup .setting-field {
-  align-items: center;
-  display: grid;
-  gap: 12px;
-  grid-template-columns: minmax(160px, 0.42fr) minmax(0, 1fr);
-  min-height: 54px;
-  padding: 12px 14px;
 }
 
 .service-editor-popup .kiosk-setting-check {
@@ -5782,19 +5960,13 @@ tbody tr:hover {
 }
 
 .login-panel::before {
-  height: 88px;
-  margin-bottom: 3px;
-}
-
-.login-panel h1 {
-  color: #0a214d;
-  font-size: 27px;
-  text-align: center;
-}
-
-.login-panel > .helper-text {
-  margin: -4px 0 4px;
-  text-align: center;
+  background: url("./assets/printhub-logo.png") center / contain no-repeat;
+  content: "";
+  display: block;
+  height: 102px;
+  justify-self: center;
+  margin: 0 0 4px;
+  width: min(260px, 72vw);
 }
 
 /* Customer kiosk uses the same visual language */
@@ -7655,8 +7827,6 @@ tbody tr:hover {
   border-radius: 0;
   box-shadow: none;
   min-height: 0;
-  overflow: auto;
-  padding: 18px 22px 0;
 }
 
 .service-editor-modal-surface .service-editor-page > .flow-actions {

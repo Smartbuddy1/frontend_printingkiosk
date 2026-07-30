@@ -1684,6 +1684,7 @@ const state = {
     start: new Date(new Date().setHours(0, 0, 0, 0)).toISOString().split('T')[0],
     end: new Date().toISOString().split('T')[0]
   },
+  alertFilter: { search: "", category: "all", status: "all", kioskId: "all" },
   reportTab: "revenue",
   step: 0,
   selectedService: null,
@@ -5753,9 +5754,10 @@ function renderAdminShell() {
 function renderCustomerPrinterStatusBadge() {
   const issue = customerPrinterBlockIssue() || state.customerPrinterNotice;
   const isBlocked = Boolean(issue);
-  const text = issue?.title || (isBlocked ? "Printer Offline" : "Printer Online");
-  const icon = isBlocked ? uiIcon("alert-circle", 18) : uiIcon("check-circle", 18);
-  const colorClass = isBlocked ? "status-offline" : "status-online";
+  const text = state.printerHealth?.errorMessage || issue?.title || (isBlocked ? "Printer Offline" : "Printer Online");
+  const hasError = isBlocked || Boolean(state.printerHealth?.errorMessage);
+  const icon = hasError ? uiIcon("alert-circle", 18) : uiIcon("check-circle", 18);
+  const colorClass = hasError ? "status-offline" : "status-online";
 
   return `
     <div class="kiosk-public-printer-status ${colorClass}">
@@ -7854,7 +7856,7 @@ function renderAdmin() {
           <div class="admin-nav-group">
             <div class="admin-nav-label">${group.label}</div>
             ${group.pages.map((page) => `
-              <button class="${state.adminPage === page.id || (state.adminPage === "service-editor" && page.id === "services") ? "active" : ""}" data-admin-page="${page.id}">
+              <button class="${state.adminPage === page.id ? "active" : ""}" data-admin-page="${page.id}">
                 <span class="admin-nav-icon">${uiIcon(page.icon, 20)}</span>
                 <span>${page.label}</span>
               </button>
@@ -7906,8 +7908,8 @@ function adminNavGroups() {
         { id: "dashboard", label: "Dashboard", icon: "dashboard" },
         { id: "projects", label: "Projects", icon: "hierarchy" },
         { id: "kiosks", label: "Kiosks", icon: "kiosks" },
-        { id: "services", label: "Services", icon: "services" },
-        { id: "revenue", label: "Revenue", icon: "payments" }
+        { id: "revenue", label: "Report", icon: "payments" },
+        { id: "alerts", label: "Alerts", icon: "alert" }
       ]
     },
     {
@@ -7936,8 +7938,8 @@ function renderAdminHeader(title, subtitle, action = "") {
 }
 
 function renderAdminPage() {
-  if (state.adminPage === "pricing") {
-    state.adminPage = "services";
+  if (["services", "service-editor", "pricing"].includes(state.adminPage)) {
+    state.adminPage = "dashboard";
   }
   const page = state.adminPage;
   if (page === "dashboard") return renderDashboard();
@@ -7945,8 +7947,6 @@ function renderAdminPage() {
   if (page === "system") return renderSystemStatus();
   if (page === "projects") return renderProjects();
   if (page === "reports") return renderReports();
-  if (page === "services") return renderServicesAdmin();
-  if (page === "service-editor") return renderServiceEditorPage();
   if (page === "revenue") return renderRevenue();
   if (page === "kiosks") return renderKiosks();
   if (page === "refunds") return renderRefunds();
@@ -8073,6 +8073,86 @@ function adminOperationalAlerts() {
     .sort((a, b) => (Date.parse(b.lastUpdated || "") || 0) - (Date.parse(a.lastUpdated || "") || 0));
 }
 
+window.updateAlertFilter = (field, value) => {
+  if (!state.alertFilter) state.alertFilter = { search: "", category: "all", status: "all", kioskId: "all" };
+  state.alertFilter[field] = value;
+  renderAdminApp();
+};
+
+function renderAdminAlertLogsTable() {
+  const allLogs = state.adminData.alertLogs || [];
+  const filter = state.alertFilter || { search: "", category: "all", status: "all", kioskId: "all" };
+  
+  const searchLower = filter.search.toLowerCase();
+  
+  const filtered = allLogs.filter(log => {
+    if (filter.category !== "all" && log.category !== filter.category) return false;
+    if (filter.status !== "all" && log.status !== filter.status) return false;
+    if (filter.kioskId !== "all" && log.kioskId !== filter.kioskId) return false;
+    if (searchLower) {
+      if (!log.title?.toLowerCase().includes(searchLower) && 
+          !log.detail?.toLowerCase().includes(searchLower) && 
+          !log.kioskId?.toLowerCase().includes(searchLower)) {
+        return false;
+      }
+    }
+    return true;
+  }).sort((a, b) => (new Date(b.createdAt).getTime() || 0) - (new Date(a.createdAt).getTime() || 0));
+
+  const rows = filtered.map(log => {
+    const tone = log.tone === 'good' ? 'good' : log.status === 'resolved' ? 'good' : (log.tone || 'warn');
+    const statusText = log.status === 'resolved' ? 'Resolved' : 'Active';
+    return [
+      formatDateTime(log.createdAt),
+      log.kioskId || "Unknown",
+      log.category || "-",
+      log.title || "-",
+      log.detail || "-",
+      `<span class="badge ${tone}">${escapeHtml(statusText)}</span>`
+    ];
+  });
+
+  const uniqueKiosks = [...new Set(allLogs.map(l => l.kioskId).filter(Boolean))];
+
+  return `
+    <section class="module-card transaction-log-card" style="margin-top: 24px; display: flex; flex-direction: column;">
+      <div class="module-card-title">
+        <span>${uiIcon("history", 20)}</span>
+        <h2>Alert History</h2>
+        <strong>${escapeHtml(String(filtered.length))} record${filtered.length === 1 ? "" : "s"}</strong>
+      </div>
+      
+      <div class="transaction-filter-bar" style="margin-bottom: 24px; display: flex; gap: 12px; align-items: center; flex-wrap: wrap;">
+        <input type="text" class="input-field search-input" placeholder="Search alerts..." 
+               value="${escapeHtml(filter.search)}" 
+               oninput="window.updateAlertFilter('search', this.value)" 
+               style="flex: 1; min-width: 200px;">
+        
+        <select class="input-field filter-dropdown" onchange="window.updateAlertFilter('category', this.value)" style="min-width: 150px;">
+          <option value="all" ${filter.category === "all" ? "selected" : ""}>All Categories</option>
+          <option value="paper" ${filter.category === "paper" ? "selected" : ""}>Paper</option>
+          <option value="toner" ${filter.category === "toner" ? "selected" : ""}>Toner</option>
+          <option value="queue" ${filter.category === "queue" ? "selected" : ""}>Queue</option>
+          <option value="service" ${filter.category === "service" ? "selected" : ""}>Service</option>
+        </select>
+
+        <select class="input-field filter-dropdown" onchange="window.updateAlertFilter('status', this.value)" style="min-width: 150px;">
+          <option value="all" ${filter.status === "all" ? "selected" : ""}>All Statuses</option>
+          <option value="active" ${filter.status === "active" ? "selected" : ""}>Active</option>
+          <option value="resolved" ${filter.status === "resolved" ? "selected" : ""}>Resolved</option>
+        </select>
+        
+        <select class="input-field filter-dropdown" onchange="window.updateAlertFilter('kioskId', this.value)" style="min-width: 150px;">
+          <option value="all" ${filter.kioskId === "all" ? "selected" : ""}>All Kiosks</option>
+          ${uniqueKiosks.map(k => `<option value="${escapeHtml(k)}" ${filter.kioskId === k ? "selected" : ""}>${escapeHtml(k)}</option>`).join("")}
+        </select>
+      </div>
+
+      ${renderPaginatedTable("alert-logs", ["Date", "Kiosk", "Category", "Title", "Details", "Status"], rows, "No historical alerts found.")}
+    </section>
+  `;
+}
+
 function renderAlerts() {
   const alerts = adminOperationalAlerts();
   return `
@@ -8097,6 +8177,7 @@ function renderAlerts() {
         `).join("") : `<div class="empty-note" style="padding: 32px; text-align: center;">No active printer alerts for your kiosk(s). All hardware systems are operating normally.</div>`}
       </div>
     </div>
+    ${renderAdminAlertLogsTable()}
   `;
 }
 
@@ -8205,20 +8286,7 @@ function renderAdminKioskPrintOptions(kiosk = null, { compact = false } = {}) {
   `;
 }
 
-function adminKioskServiceMeta(service, kiosk) {
-  const rates = serviceRates(service.id, kiosk?.kioskId);
-  const kioskSettings = adminKioskCustomerSettings(kiosk);
-  const serviceSettings = normalizeKioskCustomerSettings(service.customerSettings || {});
-  const templateCount = service.templates?.length || 0;
 
-  return [
-    `<span>Type <strong>${escapeHtml(serviceModeLabel(service))}</strong></span>`,
-    `<span>Scope <strong>${escapeHtml(serviceAssignmentLabel(service))}</strong></span>`,
-    kioskSettings.bw && serviceSettings.bw ? `<span>B/W <strong>${money(rates.bw)}</strong></span>` : "",
-    kioskSettings.color && serviceSettings.color ? `<span>Color <strong>${money(rates.color)}</strong></span>` : "",
-    `<span>Forms <strong>${templateCount}</strong></span>`
-  ].filter(Boolean).join("");
-}
 
 function renderAdminPagination(key, page) {
   if (page.total <= 10) return "";
@@ -8438,7 +8506,7 @@ function adminTransactionRecords() {
 
     const dateValue = paymentDateValue(payment, job);
     return {
-      paymentId: payment.paymentId || payment.razorpayPaymentId || "",
+      paymentId: payment.razorpayPaymentId || payment.gatewayTransactionId || payment.paymentId || "",
       jobId,
       dateValue,
       date: formatDateTime(dateValue),
@@ -8550,8 +8618,6 @@ function renderTransactionLog() {
   const records = filteredAdminTransactions();
   const rows = records.map((record) => [
     record.date,
-    record.paymentId || "-",
-    record.jobId || "-",
     record.kiosk,
     record.service,
     money(record.amount),
@@ -8568,7 +8634,7 @@ function renderTransactionLog() {
         <strong>${escapeHtml(String(records.length))} record${records.length === 1 ? "" : "s"}</strong>
       </div>
       ${renderTransactionFilters()}
-      ${renderPaginatedTable("revenueTransactions", ["Date", "Payment ID", "Job ID", "Kiosk", "Service", "Amount", "Method", "Status", "Print"], rows, "No matching transaction records.")}
+      ${renderPaginatedTable("revenueTransactions", ["Date", "Kiosk", "Service", "Amount", "Method", "Status", "Print"], rows, "No matching transaction records.")}
     </div>
   `;
 }
@@ -8658,12 +8724,7 @@ function renderRevenue() {
         <label style="font-size: 0.8em; color: var(--muted); margin-bottom: 4px;">End Date</label>
         <input type="date" id="revenue-end-date" value="${state.revenueFilter.end}" style="padding: 6px 12px; border: 1px solid var(--line); border-radius: 4px;" onchange="window.updateRevenueFilter('end', this.value)">
       </div>
-      ${currentTab === 'revenue' ? `
-      <div style="display: flex; flex-direction: column; margin-left: 24px;">
-        <div style="font-size: 0.85em; color: var(--muted); text-transform: uppercase;">Filtered Total Revenue</div>
-        <strong style="font-size: 1.8em; color: #157347;">${money(total)}</strong>
-      </div>
-      ` : ''}
+
       <div style="display: flex; gap: 8px; margin-left: auto;">
         ${currentTab === 'revenue' ? `<button class="primary-button" onclick="window.downloadRevenueReportPDF()">${uiIcon("download", 16)} Revenue PDF</button>` : ''}
         ${currentTab === 'form' ? `<button class="secondary-button" onclick="window.downloadFormPrintReportPDF()">${uiIcon("download", 16)} Form Print PDF</button>` : ''}
@@ -9287,268 +9348,18 @@ function renderPricingReadOnly() {
   `;
 }
 
-function renderKioskServiceCard(kiosk) {
-  const kioskServices = servicesForAdminKiosk(kiosk);
-  const formCount = kioskServices.reduce((total, service) => total + (service.templates?.length || 0), 0);
-  const uploadCount = kioskServices.filter((service) => service.mode !== "template").length;
-  const enabledCount = kioskServices.filter((service) => service.enabled !== false).length;
-  const canManage = kioskAdminCanManageSetup();
-  const action = `<button class="${canManage ? "primary-button" : "secondary-button"}" data-kiosk-services-open="${escapeHtml(kiosk.kioskId || "")}">${canManage ? "Edit Options" : "View Services"}</button>`;
 
-  return `
-    <article class="module-card kiosk-service-option" style="display: flex; flex-direction: column; justify-content: space-between;">
-      <div>
-        <div class="kiosk-service-option-head">
-          <div>
-            <h2>${escapeHtml(kiosk.name || kiosk.kioskId || "Kiosk")}</h2>
-            <p>${escapeHtml(kiosk.kioskId || "")}</p>
-          </div>
-          <span class="badge ${kiosk.status === "online" ? "good" : "warn"}">${escapeHtml(kiosk.status || "Unknown")}</span>
-        </div>
-        <div class="kiosk-service-option-meta" style="margin-top: 1rem; margin-bottom: 1rem;">
-          <span>Project <strong>${escapeHtml(adminProjectName(kiosk.projectId))}</strong></span>
-          <span>Services <strong>${kioskServices.length}</strong></span>
-          <span>Forms <strong>${formCount}</strong></span>
-          <span>Uploads <strong>${uploadCount}</strong></span>
-        </div>
-      </div>
-      <div class="kiosk-service-option-foot" style="border-top: 1px solid var(--border-color); padding-top: 1rem; margin-top: auto;">
-        <span style="color: var(--text-color); font-weight: 500;">${enabledCount} enabled service${enabledCount === 1 ? "" : "s"}</span>
-        ${action}
-      </div>
-    </article>
-  `;
-}
-function renderKioskServiceRow(service, kiosk) {
-  const canManage = kioskAdminCanManageSetup();
-  const actions = canManage ? `<button class="secondary-button" data-service-edit="${escapeHtml(service.id)}" data-kiosk-id="${escapeHtml(kiosk.kioskId || "")}">${service.mode === "template" ? "Edit Forms" : "Edit Service"}</button><button class="danger-button" data-service-delete="${escapeHtml(service.id)}">Delete</button>` : "";
 
-  return `
-    <article class="kiosk-service-row">
-      <div class="simple-service-head">
-        <div class="simple-service-title">
-          ${serviceMediaMarkup(service, "simple-service-icon")}
-          <div>
-            <h2>${escapeHtml(service.title)}</h2>
-            <p class="helper-text">${escapeHtml(service.description || serviceModeLabel(service))}</p>
-          </div>
-        </div>
-        <div class="simple-service-actions">
-          <span class="badge ${service.enabled ? "good" : "bad"}">${service.enabled ? "Enabled" : "Off"}</span>
-          ${actions}
-        </div>
-      </div>
-      <div class="simple-service-meta kiosk-service-row-meta">
-        ${adminKioskServiceMeta(service, kiosk)}
-      </div>
-    </article>
-  `;
-}
 
-function renderKioskServiceUpdatePage() {
-  const kiosk = adminKioskById(state.adminSelectedServiceKioskId);
-  if (!kiosk) {
-    state.adminSelectedServiceKioskId = "";
-    return renderServicesAdmin();
-  }
 
-  const kioskServices = servicesForAdminKiosk(kiosk);
-  const formCount = kioskServices.reduce((total, service) => total + (service.templates?.length || 0), 0);
-  const canManage = kioskAdminCanManageSetup();
 
-  return `
-    ${renderAdminHeader(canManage ? "Update Services" : "Service Details", `${escapeHtml(kiosk.name || kiosk.kioskId || "Kiosk")} | ${escapeHtml(kiosk.kioskId || "")} | ${escapeHtml(adminProjectName(kiosk.projectId))}`, `<button class="ghost-button" data-action="close-kiosk-service-modal">Back to Services</button>${canManage ? `<button class="primary-button" data-action="save-services">Save Changes</button>` : ""}`)}
-    ${canManage && state.servicesDirty ? `<div class="save-note">Unsaved service changes. Use Save Changes to publish them to the kiosk backend.</div>` : ""}
-    ${state.pricingSaveStatus ? `<div class="save-note">${escapeHtml(state.pricingSaveStatus)}</div>` : ""}
-    ${adminNotice()}
-    <div class="kiosk-service-update-page">
-      <div class="module-card kiosk-service-full-panel">
-        <div class="kiosk-service-action-row kiosk-service-page-summary" style="display: flex; flex-direction: row; justify-content: space-between; align-items: center;">
-          <div style="display: flex; flex-direction: column;">
-            <strong style="font-size: 1.1em; color: var(--text-color);">${kioskServices.length} service${kioskServices.length === 1 ? "" : "s"}</strong>
-            <span style="color: var(--secondary-text);">${formCount} form${formCount === 1 ? "" : "s"} configured for this kiosk</span>
-          </div>
-          ${canManage ? `<div style="display: flex; gap: 8px;">
-            <button class="primary-button" data-kiosk-add-service="${escapeHtml(kiosk.kioskId || "")}">Add Service</button>
-          </div>` : ""}
-        </div>
-        ${renderAdminKioskPrintOptions(kiosk)}
-        <div class="kiosk-service-modal-list kiosk-service-page-list">
-          ${kioskServices.length
-      ? kioskServices.map((service) => renderKioskServiceRow(service, kiosk)).join("")
-      : `<div class="empty-note">No services are assigned to this kiosk.</div>`}
-        </div>
-        <div class="kiosk-service-page-actions" style="display: flex; justify-content: flex-end; padding: 16px 0 0 0; border-top: 1px solid var(--border-color); margin-top: 16px;">
-          <button class="ghost-button" data-action="close-kiosk-service-modal">Back to Services</button>
-        </div>
-      </div>
-    </div>
-    ${renderServiceEditorModal()}
-  `;
-}
 
-function renderServiceEditorModal() {
-  if (!state.serviceEditor || !kioskAdminCanManageSetup()) return "";
 
-  return `
-    <div class="editor-modal-shell service-editor-modal-shell">
-      <button class="editor-modal-backdrop" data-action="cancel-service-editor" aria-label="Close service editor"></button>
-      <section class="editor-modal-content service-editor-modal-content">
-        <div class="service-editor-modal-surface">
-          ${renderServiceEditorPage()}
-        </div>
-      </section>
-    </div>
-  `;
-}
 
-function renderServicesAdmin() {
-  const kiosks = sortedAdminKiosks();
-  const canManage = kioskAdminCanManageSetup();
 
-  if (state.adminSelectedServiceKioskId) {
-    return renderKioskServiceUpdatePage();
-  }
 
-  return `
-    ${renderAdminHeader("Service Management", "View services and forms assigned to each kiosk.")}
-    ${canManage && state.servicesDirty ? `<div class="save-note">Unsaved service changes. Use Save Changes to publish them to the kiosk backend.</div>` : ""}
-    ${state.pricingSaveStatus && !state.adminSelectedServiceKioskId && !state.serviceEditor ? `<div class="save-note">${escapeHtml(state.pricingSaveStatus)}</div>` : ""}
-    ${adminNotice()}
-    <div class="kiosk-service-board">
-      ${kiosks.length
-      ? kiosks.map((kiosk) => renderKioskServiceCard(kiosk)).join("")
-      : `<div class="empty-note">No kiosks are assigned to this account.</div>`}
-    </div>
-    ${renderServiceEditorModal()}
-  `;
-}
 
-function renderServiceDraftTemplateEditor(service) {
-  const templates = service.templates || [];
 
-  return `
-    <div class="template-editor-section compact-template-section">
-      <div class="template-editor-header">
-        <div>
-          <h3>Forms under ${escapeHtml(service.title || "this service")}</h3>
-          <p class="helper-text">Each form uses the service B/W and color per-page rates above.</p>
-        </div>
-        <button class="secondary-button" data-draft-template-add>Add Document</button>
-      </div>
-      <div class="template-editor-list compact-template-list">
-        ${templates.length ? templates.map((template, index) => `
-          <div class="template-editor-card compact-template-card">
-            <div class="template-editor-top compact-template-top">
-              <span class="template-row-index">${index + 1}</span>
-              ${renderTemplateImagePreview(template, service)}
-              <div class="template-row-copy">
-                <h4>${escapeHtml(template.title || `Template ${index + 1}`)}</h4>
-                <p class="helper-text">${escapeHtml(templateDocumentKind(template.documentType || template.imageUrl).toUpperCase())} | ${Number(template.pages || 1)} page${Number(template.pages || 1) === 1 ? "" : "s"} | ${escapeHtml(template.imageUrl ? "Ready for kiosk" : "Upload needed")}</p>
-              </div>
-              <button class="danger-button small-button" data-draft-template-delete="${index}">Remove</button>
-            </div>
-            <div class="settings-grid compact-template-fields">
-              <label class="setting-field">Form Name
-                <input value="${escapeHtml(template.title || "")}" data-template-draft-field="title" data-template-draft-index="${index}" />
-              </label>
-              <label class="setting-field">Description
-                <input value="${escapeHtml(template.description || "")}" data-template-draft-field="description" data-template-draft-index="${index}" />
-              </label>
-              <label class="setting-field">Pages
-                <input type="number" min="1" max="20" value="${Number(template.pages || 1)}" data-template-draft-field="pages" data-template-draft-index="${index}" />
-              </label>
-            </div>
-            <label class="template-upload-row compact-template-upload">
-              <span>Replace file</span>
-              <input type="file" accept="image/*,application/pdf,.pdf" data-draft-template-image data-template-draft-index="${index}" />
-            </label>
-          </div>
-        `).join("") : `<div class="empty-note">No template documents yet. Use Add Document, then upload an image or PDF.</div>`}
-      </div>
-    </div>
-  `;
-}
-
-function renderServiceEditorPage() {
-  if (!kioskAdminCanManageSetup()) {
-    state.serviceEditor = null;
-    state.adminPage = "services";
-    return renderServicesAdmin();
-  }
-
-  const editor = state.serviceEditor;
-  if (!editor) return renderServicesAdmin();
-  const service = editor.draft;
-  const rates = service.pricing || { bw: 0, color: 0 };
-  const title = editor.mode === "create"
-    ? (service.mode === "template" ? "Add Forms" : "Add Service")
-    : (service.mode === "template" ? "Edit Forms" : "Edit Service");
-  const assignableProjects = adminServiceAssignableProjects();
-  const contextKiosk = adminKioskById(editor.kioskId);
-  const closeLabel = contextKiosk ? "Back to Kiosk" : "Back to Services";
-  const bwRateLabel = service.mode === "template" ? "Default B/W Rate" : "Phone Upload B/W Rate";
-  const colorRateLabel = service.mode === "template" ? "Default Color Rate" : "Phone Upload Color Rate";
-
-  return `
-    ${renderAdminHeader(title, contextKiosk ? `Updating services for ${escapeHtml(contextKiosk.name || contextKiosk.kioskId || "this kiosk")}.` : "Keep service setup simple. Add forms below when this is a form service.", `<button class="ghost-button" data-action="cancel-service-editor">${escapeHtml(closeLabel)}</button><button class="primary-button" data-action="save-service-editor">Save Service</button>`)}
-    ${state.pricingSaveStatus ? `<div class="save-note">${escapeHtml(state.pricingSaveStatus)}</div>` : ""}
-    <div class="module-card service-editor-page">
-      <div class="service-editor-simple-head">
-        <h2>${escapeHtml(service.title || "New Service")}</h2>
-        <span class="badge ${service.enabled === false ? "bad" : "good"}">${service.enabled === false ? "Disabled" : "Enabled"}</span>
-      </div>
-      <div class="settings-grid service-editor-grid compact-service-editor-grid">
-        <label class="setting-field">Enabled
-          <select data-service-draft-field="enabled">
-            <option value="true" ${service.enabled !== false ? "selected" : ""}>Yes</option>
-            <option value="false" ${service.enabled === false ? "selected" : ""}>No</option>
-          </select>
-        </label>
-        <label class="setting-field">Mode
-          <select data-service-draft-field="mode">
-            <option value="upload" ${service.mode === "upload" ? "selected" : ""}>QR upload / image upload</option>
-            <option value="template" ${service.mode === "template" ? "selected" : ""}>Form templates</option>
-          </select>
-        </label>
-        <label class="setting-field">Service Name
-          <input value="${escapeHtml(service.title || "")}" data-service-draft-field="title" />
-        </label>
-        <label class="setting-field">Description
-          <input value="${escapeHtml(service.description || "")}" data-service-draft-field="description" />
-        </label>
-        ${contextKiosk ? `<div class="setting-field readonly-setting">Kiosk
-          <strong>${escapeHtml(contextKiosk.name || contextKiosk.kioskId || "")}</strong>
-        </div>` : ""}
-        ${assignableProjects.length ? `<label class="setting-field">Project
-          <select data-service-draft-field="projectIds">
-            ${assignableProjects.map((project) => `<option value="${escapeHtml(project.projectId)}" ${(service.projectIds || []).includes(project.projectId) ? "selected" : ""}>${escapeHtml(project.name || project.projectId)}</option>`).join("")}
-          </select>
-        </label>` : `<div class="empty-note">Ask the super admin to allocate a project before assigning services.</div>`}
-        <label class="setting-field">${escapeHtml(bwRateLabel)}
-          <input type="number" min="0" value="${rates.bw || 0}" data-service-draft-field="bw" />
-        </label>
-        <label class="setting-field">${escapeHtml(colorRateLabel)}
-          <input type="number" min="0" value="${rates.color || 0}" data-service-draft-field="color" />
-        </label>
-      </div>
-      ${service.mode === "template" ? renderServiceDraftTemplateEditor(service) : `
-        <div class="template-editor-section">
-          <div class="template-editor-header">
-            <div>
-              <h3>Upload Service</h3>
-              <p class="helper-text">This service will show QR upload to customers. The phone upload price uses the B/W and color rates above.</p>
-            </div>
-          </div>
-        </div>
-      `}
-      <div class="flow-actions">
-        <button class="primary-button" data-action="save-service-editor">Save Service</button>
-        <button class="ghost-button" data-action="cancel-service-editor">Cancel</button>
-      </div>
-    </div>
-  `;
-}
 
 function renderPricing() {
   if (!kioskAdminCanManageSetup()) {
@@ -9740,125 +9551,15 @@ function updateServiceField(serviceId, field, value) {
   markServicesDirty("");
 }
 
-function defaultServiceDraft(kioskId = "", mode = "upload") {
-  const id = `custom-service-${Date.now().toString().slice(-5)}`;
-  const contextKiosk = adminKioskById(kioskId);
-  const projectId = contextKiosk?.projectId || firstAdminServiceProjectId();
-  const normalizedMode = mode === "template" ? "template" : "upload";
 
-  const draft = {
-    id,
-    icon: "SV",
-    title: normalizedMode === "template" ? "New Form Service" : "New Service",
-    titleHi: "",
-    titleMr: "",
-    description: normalizedMode === "template" ? "Printable forms for this kiosk." : "Customer service.",
-    descriptionHi: "",
-    descriptionMr: "",
-    defaultPages: 1,
-    mode: normalizedMode,
-    imageUrl: "",
-    enabled: true,
-    projectIds: projectId ? [projectId] : [],
-    kioskIds: contextKiosk ? [normalizeKioskId(contextKiosk.kioskId)] : [],
-    customerSettings: { ...DEFAULT_KIOSK_CUSTOMER_SETTINGS },
-    printDefaults: { ...DEFAULT_SERVICE_PRINT_DEFAULTS },
-    pricing: { bw: 2, color: 10 },
-    templates: []
-  };
 
-  if (normalizedMode === "template") {
-    draft.templates = [{
-      id: "blank-form",
-      title: "Upload Template Document",
-      description: "Uploaded template document.",
-      pages: 1,
-      paperSize: "Auto",
-      orientation: "portrait",
-      fields: [],
-      imageUrl: "",
-      documentType: "image"
-    }];
-  }
 
-  return draft;
-}
 
-function openServiceEditor(serviceId, kioskId = "") {
-  if (!kioskAdminCanManageSetup()) {
-    blockKioskAdminSetupAction();
-    return;
-  }
 
-  const service = services.find((item) => item.id === serviceId);
-  if (!service) return;
-  const contextKioskId = normalizeKioskId(kioskId || state.adminSelectedServiceKioskId);
 
-  state.serviceEditor = {
-    mode: "edit",
-    originalId: serviceId,
-    kioskId: contextKioskId,
-    draft: JSON.parse(JSON.stringify({
-      ...service,
-      pricing: state.pricing[service.id] || service.pricing || { bw: 0, color: 0 },
-      templates: service.templates || []
-    }))
-  };
-  state.adminSelectedServiceId = serviceId;
-  state.adminSelectedServiceKioskId = contextKioskId || state.adminSelectedServiceKioskId;
-  state.adminPage = "services";
-  state.pricingSaveStatus = "";
-  render();
-}
 
-function openCreateServiceEditor(kioskId = "", mode = "upload") {
-  if (!kioskAdminCanManageSetup()) {
-    blockKioskAdminSetupAction();
-    return;
-  }
 
-  if (!firstAdminServiceProjectId()) {
-    state.pricingSaveStatus = "Ask the super admin to allocate a project before creating services.";
-    render();
-    return;
-  }
 
-  const contextKioskId = normalizeKioskId(kioskId || state.adminSelectedServiceKioskId);
-  state.serviceEditor = {
-    mode: "create",
-    originalId: null,
-    kioskId: contextKioskId,
-    draft: defaultServiceDraft(contextKioskId, mode)
-  };
-  state.adminSelectedServiceKioskId = contextKioskId || state.adminSelectedServiceKioskId;
-  state.adminPage = "services";
-  state.pricingSaveStatus = "";
-  render();
-}
-
-function closeServiceEditor() {
-  const contextKioskId = state.serviceEditor?.kioskId || state.adminSelectedServiceKioskId;
-  state.serviceEditor = null;
-  state.adminPage = "services";
-  state.adminSelectedServiceKioskId = contextKioskId;
-  state.pricingSaveStatus = "";
-  render();
-}
-
-function openKioskServiceModal(kioskId) {
-  const id = normalizeKioskId(kioskId);
-  if (!adminKioskById(id)) {
-    state.pricingSaveStatus = "Kiosk not found.";
-    render();
-    return;
-  }
-
-  state.adminSelectedServiceKioskId = id;
-  state.serviceEditor = null;
-  state.adminPage = "services";
-  state.pricingSaveStatus = "";
-  render();
-}
 
 function closeKioskServiceModal() {
   state.adminSelectedServiceKioskId = "";
@@ -9936,300 +9637,16 @@ function updateServiceDraftTemplateField(templateIndex, field, value) {
   }
 }
 
-function addDraftTemplate() {
-  if (!kioskAdminCanManageSetup()) {
-    blockKioskAdminSetupAction();
-    return;
-  }
 
-  const editor = state.serviceEditor;
-  if (!editor) return;
 
-  const templates = editor.draft.templates || [];
-  const title = `Template ${templates.length + 1}`;
-  templates.push({
-    id: slug(title, `template-${templates.length + 1}`),
-    title,
-    description: "Uploaded template document.",
-    pages: 1,
-    paperSize: "Auto",
-    orientation: "portrait",
-    fields: [],
-    imageUrl: "",
-    documentType: "image"
-  });
-  editor.draft.templates = templates;
-  editor.draft.mode = "template";
-  render();
-}
 
-function removeDraftTemplate(templateIndex) {
-  if (!kioskAdminCanManageSetup()) {
-    blockKioskAdminSetupAction();
-    return;
-  }
 
-  const editor = state.serviceEditor;
-  if (!editor) return;
 
-  editor.draft.templates = (editor.draft.templates || []).filter((_, index) => index !== templateIndex);
-  render();
-}
 
-async function saveServiceEditor() {
-  const editor = state.serviceEditor;
-  if (!editor) return;
-  if (!kioskAdminCanManageSetup()) {
-    blockKioskAdminSetupAction();
-    return;
-  }
 
-  syncServiceEditorDraftFromDom();
-  const normalized = normalizeServicesConfig([editor.draft])[0];
-  const assignableProjectIds = new Set(adminServiceAssignableProjects().map((project) => project.projectId));
-  const contextKioskId = normalizeKioskId(editor.kioskId || state.adminSelectedServiceKioskId);
-  const contextKiosk = adminKioskById(contextKioskId);
 
-  if (contextKiosk) {
-    const projectId = slug(contextKiosk.projectId || "", "");
-    normalized.projectIds = projectId && assignableProjectIds.has(projectId) ? [projectId] : [];
-    normalized.kioskIds = [normalizeKioskId(contextKiosk.kioskId)];
-  } else {
-    const allowedKioskIds = new Set(state.adminData.kiosks.map((kiosk) => normalizeKioskId(kiosk.kioskId)));
-    normalized.projectIds = (normalized.projectIds || []).filter((projectId) => assignableProjectIds.has(projectId));
-    normalized.kioskIds = (normalized.kioskIds || []).map((item) => normalizeKioskId(item)).filter((kioskId) => allowedKioskIds.has(kioskId));
-  }
 
-  if (!normalized.title) {
-    state.pricingSaveStatus = "Service name is required.";
-    render();
-    return;
-  }
 
-  if (!normalized.projectIds.length) {
-    const fallbackProjectId = firstAdminServiceProjectId();
-    if (fallbackProjectId) {
-      normalized.projectIds = [fallbackProjectId];
-    } else {
-      state.pricingSaveStatus = "No project is assigned to this account. Ask the super admin to allocate a project first.";
-      render();
-      return;
-    }
-  }
-
-  const duplicate = services.some((service) => service.id === normalized.id && service.id !== editor.originalId);
-  if (duplicate) {
-    state.pricingSaveStatus = "Another service already uses this service ID.";
-    render();
-    return;
-  }
-
-  if (editor.mode === "create") {
-    services = [...services, normalized];
-  } else {
-    services = services.map((service) => service.id === editor.originalId ? normalized : service);
-  }
-
-  const nextPricing = { ...state.pricing };
-  if (editor.originalId && editor.originalId !== normalized.id) {
-    delete nextPricing[editor.originalId];
-  }
-  nextPricing[normalized.id] = normalized.pricing;
-  state.pricing = nextPricing;
-  state.serviceEditor = null;
-  state.adminSelectedServiceId = normalized.id;
-  state.adminSelectedServiceKioskId = contextKioskId || state.adminSelectedServiceKioskId;
-  state.adminPage = "services";
-  storeServices();
-  storePricing();
-  markServicesDirty("Saving service...");
-  await saveServicesSettings();
-}
-
-function updateServiceTemplateField(serviceId, templateIndex, field, value) {
-  services = services.map((service) => {
-    if (service.id !== serviceId) return service;
-
-    const templates = [...(service.templates || [])];
-    const existing = templates[templateIndex] || {
-      id: `template-${templateIndex + 1}`,
-      title: `Template ${templateIndex + 1}`,
-      description: "Uploaded template document.",
-      pages: 1,
-      paperSize: "Auto",
-      orientation: "portrait",
-      fields: [],
-      imageUrl: "",
-      documentType: "image"
-    };
-    const next = { ...existing };
-
-    if (field === "title") {
-      next.title = String(value || "").trimStart();
-      next.id = next.id || slug(next.title, `template-${templateIndex + 1}`);
-    } else if (field === "pages") {
-      next.pages = Math.max(1, Math.min(20, Number(value) || 1));
-    } else if (field === "paperSize") {
-      next.paperSize = normalizePaperSize(value, "Auto", true);
-    } else if (field === "orientation") {
-      next.orientation = normalizeOrientation(value);
-    } else if (field === "description") {
-      next.description = String(value || "").trimStart();
-    } else if (field === "fields") {
-      next.fields = normalizeTemplateFields(value);
-    } else if (field === "imageUrl") {
-      next.imageUrl = String(value || "").trim();
-      next.documentType = templateDocumentKind(value);
-    } else if (field === "documentType") {
-      next.documentType = templateDocumentKind(value);
-    }
-
-    templates[templateIndex] = next;
-
-    return {
-      ...service,
-      mode: "template",
-      templates
-    };
-  });
-
-  storeServices();
-  markServicesDirty("");
-}
-
-function addServiceTemplate(serviceId) {
-  if (!kioskAdminCanManageSetup()) {
-    blockKioskAdminSetupAction();
-    return;
-  }
-
-  services = services.map((service) => {
-    if (service.id !== serviceId) return service;
-
-    const templates = [...(service.templates || [])];
-    const title = `Template ${templates.length + 1}`;
-
-    templates.push({
-      id: slug(title, `template-${templates.length + 1}`),
-      title,
-      description: "Blank printable template.",
-      pages: 1,
-      paperSize: "Auto",
-      orientation: "portrait",
-      fields: ["Applicant", "Address", "Mobile", "Purpose", "Signature"],
-      imageUrl: ""
-    });
-
-    return {
-      ...service,
-      mode: "template",
-      templates
-    };
-  });
-
-  storeServices();
-  markServicesDirty("Template added. Save services to update backend.");
-  render();
-}
-
-function removeServiceTemplate(serviceId, templateIndex) {
-  if (!kioskAdminCanManageSetup()) {
-    blockKioskAdminSetupAction();
-    return;
-  }
-
-  services = services.map((service) => {
-    if (service.id !== serviceId) return service;
-
-    const templates = [...(service.templates || [])];
-    if (templates.length <= 1) return service;
-    templates.splice(templateIndex, 1);
-
-    return {
-      ...service,
-      templates
-    };
-  });
-
-  storeServices();
-  markServicesDirty("Template removed. Save services to update backend.");
-  render();
-}
-
-async function uploadAdminTemplateImage(file, { serviceId, templateIndex = 0, draft = false } = {}) {
-  if (!kioskAdminCanManageSetup()) {
-    blockKioskAdminSetupAction();
-    return;
-  }
-
-  const validationError = validateAdminTemplateDocumentFile(file);
-
-  if (validationError) {
-    state.pricingSaveStatus = validationError;
-    render();
-    return;
-  }
-
-  state.imageUploadBusy = true;
-  state.pricingSaveStatus = "Uploading template document...";
-  render();
-
-  let imageUrl = "";
-  let usedLocalFallback = false;
-  const documentType = templateDocumentKind(file.type === "application/pdf" || /\.pdf$/i.test(file.name || "") ? "file.pdf" : file.name);
-  const pages = await detectTemplatePageCount(file);
-  const title = uploadedTemplateTitle(file, `Template ${templateIndex + 1}`);
-
-  try {
-    const formData = new FormData();
-    formData.append("templateImage", file, file.name);
-
-    const response = await fetch(`${BACKEND_URL}/api/admin/service-image`, {
-      method: "POST",
-      headers: adminAuthHeaders(),
-      body: formData
-    });
-    const payload = await response.json().catch(() => ({}));
-
-    if (!response.ok) {
-      throw new Error(payload.error || "Backend image upload failed.");
-    }
-
-    imageUrl = payload.imageUrl || "";
-  } catch {
-    try {
-      imageUrl = await readFileAsDataUrl(file);
-      usedLocalFallback = true;
-    } catch (error) {
-      state.imageUploadBusy = false;
-      state.pricingSaveStatus = error.message || "Could not upload or read the selected template document.";
-      render();
-      return;
-    }
-  }
-
-  if (draft && templateIndex === null) {
-    updateServiceDraftField("imageUrl", imageUrl);
-  } else if (draft) {
-    updateServiceDraftTemplateField(templateIndex, "imageUrl", imageUrl);
-  } else if (templateIndex === null) {
-    updateServiceField(serviceId, "imageUrl", imageUrl);
-  } else {
-    updateServiceTemplateField(serviceId, templateIndex, "imageUrl", imageUrl);
-  }
-
-  state.imageUploadBusy = false;
-  if (draft) {
-    state.pricingSaveStatus = usedLocalFallback
-      ? "Template document embedded locally because backend upload is unavailable."
-      : "Template document uploaded. Save this service to publish the change.";
-  } else {
-    markServicesDirty(usedLocalFallback
-      ? "Template document embedded locally because backend upload is unavailable. Save services when backend is online."
-      : "Template document uploaded. Save services to publish this change.");
-  }
-  render();
-}
 
 function addService() {
   if (!kioskAdminCanManageSetup()) {
@@ -10277,30 +9694,7 @@ function addService() {
   render();
 }
 
-function removeService(serviceId) {
-  if (!kioskAdminCanManageSetup()) {
-    blockKioskAdminSetupAction();
-    return;
-  }
 
-  if (services.length <= 1) {
-    state.pricingSaveStatus = "At least one service must remain.";
-    render();
-    return;
-  }
-
-  services = services.filter((service) => service.id !== serviceId);
-  if (state.adminSelectedServiceId === serviceId) {
-    state.adminSelectedServiceId = services[0]?.id || "";
-  }
-  const nextPricing = { ...state.pricing };
-  delete nextPricing[serviceId];
-  state.pricing = nextPricing;
-  storeServices();
-  storePricing();
-  markServicesDirty("Service removed. Save services to update backend.");
-  render();
-}
 
 async function saveServicesSettings() {
   if (!kioskAdminCanManageSetup()) {
@@ -11137,52 +10531,29 @@ async function handleClick(event) {
     return;
   }
 
-  if (target.dataset.kioskServicesOpen) {
-    openKioskServiceModal(target.dataset.kioskServicesOpen);
-    return;
-  }
 
-  if (target.dataset.kioskAddService) {
-    if (!kioskAdminCanManageSetup()) {
-      blockKioskAdminSetupAction();
-      return;
-    }
-    openCreateServiceEditor(target.dataset.kioskAddService, "upload");
-    return;
-  }
 
-  if (target.dataset.kioskAddForms) {
-    if (!kioskAdminCanManageSetup()) {
-      blockKioskAdminSetupAction();
-      return;
-    }
-    openCreateServiceEditor(target.dataset.kioskAddForms, "template");
-    return;
-  }
 
-  if (target.dataset.serviceEdit) {
-    if (!kioskAdminCanManageSetup()) {
-      blockKioskAdminSetupAction();
-      return;
-    }
-    openServiceEditor(target.dataset.serviceEdit, target.dataset.kioskId || state.adminSelectedServiceKioskId);
-    return;
-  }
 
-  if (target.dataset.adminServiceSelect) {
-    state.adminSelectedServiceId = target.dataset.adminServiceSelect;
-    render();
-    return;
-  }
 
-  if (target.dataset.serviceDelete) {
-    if (!kioskAdminCanManageSetup()) {
-      blockKioskAdminSetupAction();
-      return;
-    }
-    removeService(target.dataset.serviceDelete);
-    return;
-  }
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
   if (target.dataset.projectEdit) {
     if (!kioskAdminCanManageSetup()) {
@@ -11220,41 +10591,25 @@ async function handleClick(event) {
     return;
   }
 
-  if (target.dataset.draftTemplateAdd !== undefined) {
-    if (!kioskAdminCanManageSetup()) {
-      blockKioskAdminSetupAction();
-      return;
-    }
-    addDraftTemplate();
-    return;
-  }
 
-  if (target.dataset.draftTemplateDelete !== undefined) {
-    if (!kioskAdminCanManageSetup()) {
-      blockKioskAdminSetupAction();
-      return;
-    }
-    removeDraftTemplate(Number(target.dataset.draftTemplateDelete || 0));
-    return;
-  }
 
-  if (target.dataset.templateAdd) {
-    if (!kioskAdminCanManageSetup()) {
-      blockKioskAdminSetupAction();
-      return;
-    }
-    addServiceTemplate(target.dataset.templateAdd);
-    return;
-  }
 
-  if (target.dataset.templateDelete) {
-    if (!kioskAdminCanManageSetup()) {
-      blockKioskAdminSetupAction();
-      return;
-    }
-    removeServiceTemplate(target.dataset.templateDelete, Number(target.dataset.templateIndex || 0));
-    return;
-  }
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
   if (target.dataset.policyPage) {
     setPrivacyPolicyVisible(true, target.dataset.policyPage);
