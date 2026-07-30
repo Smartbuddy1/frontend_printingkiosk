@@ -1192,7 +1192,7 @@ function renderAlertLogsTable() {
         </select>
       </div>
 
-      ${renderPaginatedTable("alert-logs", ["Date", "Kiosk", "Category", "Title", "Details", "Status"], rows, "No historical alerts found.")}
+      ${renderSmallTable(["Date", "Kiosk", "Category", "Title", "Details", "Status"], rows, "No historical alerts found.", "alert-logs")}
     </section>
   `;
 }
