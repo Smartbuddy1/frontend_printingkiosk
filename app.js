@@ -5049,6 +5049,7 @@ async function startMobileRazorpayPayment() {
       order_id: checkout.orderId,
       prefill: checkout.prefill || {},
       notes: checkout.notes || {},
+      image: `${BACKEND_URL}/assets/aarya-innovtech-logo.png`,
       theme: {
         color: "#1f5fbf"
       },
