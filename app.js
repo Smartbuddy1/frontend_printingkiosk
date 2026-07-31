@@ -5752,6 +5752,21 @@ function renderAdminShell() {
   `;
 }
 
+function renderNmcKioskStatus(additionalClass = "") {
+  const issue = customerPrinterBlockIssue() || state.customerPrinterNotice;
+  const isBlocked = Boolean(issue);
+  const hasError = isBlocked || Boolean(state.printerHealth?.errorMessage);
+  const statusClass = hasError ? "is-offline" : "is-online";
+  const displayText = hasError ? "Offline" : "Ready";
+
+  return `
+    <div class="nmc-kiosk-status ${additionalClass} ${statusClass}">
+      <span aria-hidden="true"></span>
+      ${displayText}
+    </div>
+  `;
+}
+
 function renderCustomerPrinterStatusBadge() {
   const issue = customerPrinterBlockIssue() || state.customerPrinterNotice;
   const isBlocked = Boolean(issue);
@@ -5901,10 +5916,7 @@ function renderCustomerTopbarNmc() {
         </div>
       </div>
       <div class="topbar-actions">
-        <div class="nmc-kiosk-status is-online">
-          <span aria-hidden="true"></span>
-          Ready
-        </div>
+        ${renderNmcKioskStatus()}
         ${renderCustomerPrinterStatusBadge()}
         ${renderCustomerLanguageControl()}
         <div class="timer-widget" aria-label="Current date and time">
@@ -5930,10 +5942,7 @@ function renderCustomerTopbarFormsReference() {
         </div>
       </div>
       <div class="forms-kiosk-topbar-actions">
-        <div class="nmc-kiosk-status forms-kiosk-status is-online">
-          <span aria-hidden="true"></span>
-          Ready
-        </div>
+        ${renderNmcKioskStatus("forms-kiosk-status")}
         ${renderCustomerPrinterStatusBadge()}
         ${renderCustomerLanguageControl()}
         <div class="timer-widget forms-kiosk-timer" aria-label="Current date and time">
