@@ -411,7 +411,7 @@ const CUSTOMER_TRANSLATIONS = {
 const CUSTOMER_CLEAN_TRANSLATIONS = {
   hi: {
     "Government of Maharashtra": "महाराष्ट्र शासन",
-    "Printing Kiosk": "सेवा चुनें",
+    "Printing Kiosk": "प्रिंटिंग कियोस्क",
     "Print My Document": "मेरा दस्तावेज़ प्रिंट करें",
     "Print your PDF, Word, or photo file.": "अपनी PDF, Word या फोटो फ़ाइल प्रिंट करें.",
     "Government Forms": "सरकारी फॉर्म",
@@ -572,7 +572,7 @@ const CUSTOMER_CLEAN_TRANSLATIONS = {
   },
   mr: {
     "Government of Maharashtra": "महाराष्ट्र शासन",
-    "Printing Kiosk": "सेवा निवडा",
+    "Printing Kiosk": "प्रिंटिंग कियोस्क",
     "Print My Document": "माझे दस्तऐवज प्रिंट करा",
     "Print your PDF, Word, or photo file.": "तुमची PDF, Word किंवा फोटो फाइल प्रिंट करा.",
     "Government Forms": "शासकीय फॉर्म",
@@ -4751,9 +4751,16 @@ function applyServiceConfig(payload, { rerender = true, source = "backend" } = {
   const incomingSignature = serviceConfigSignature(payload.services, payload.pricing || state.pricing);
   const currentSignature = serviceConfigSignature(services, state.pricing);
   const hasDifferentServices = incomingSignature !== currentSignature;
+
+  // Normalize both sides before comparing so extra/reordered fields don't cause false positives.
+  const rawIncomingBrand = payload.clientBrand || (payload.kiosk ? payload.kiosk.clientBrand : null) || {};
+  const incomingBrandStr = JSON.stringify(normalizeClientBrand(rawIncomingBrand));
+  const currentBrandStr = JSON.stringify(state.clientBrand || {});
+  const hasDifferentBrand = incomingBrandStr !== currentBrandStr;
+
   // For backend polls: only apply when something actually changed (version bump or content diff).
   // For manual/admin saves: always apply.
-  const shouldApply = source === "manual" || source === "admin" || hasNewVersion || hasDifferentServices || !state.configVersion;
+  const shouldApply = source === "manual" || source === "admin" || hasNewVersion || hasDifferentServices || hasDifferentBrand || !state.configVersion;
 
   if (!shouldApply) {
     return false;

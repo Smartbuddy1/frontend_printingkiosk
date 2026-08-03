@@ -16139,3 +16139,7 @@ tbody tr:hover {
   justify-content: flex-end;
   gap: 12px;
 }
+
+/* Disable text selection on Kiosk UI */
+body, html { -webkit-touch-callout: none; -webkit-user-select: none; -khtml-user-select: none; -moz-user-select: none; -ms-user-select: none; user-select: none; }
+input, textarea { -webkit-user-select: auto; user-select: auto; }
