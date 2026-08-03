@@ -22,20 +22,41 @@ const PUBLIC_FRONTEND_URL = (
   frontendConfig.frontendUrl ||
   ""
 ).replace(/\/+$/, "");
+function configuredCustomerInactivityTimeoutMs(fallbackMs) {
+  const rawMs = runtimeConfig.get("customerInactivityTimeoutMs") ||
+    runtimeConfig.get("customerIdleTimeoutMs") ||
+    frontendConfig.customerInactivityTimeoutMs ||
+    frontendConfig.customerIdleTimeoutMs ||
+    "";
+  const rawSeconds = runtimeConfig.get("customerInactivityTimeoutSeconds") ||
+    runtimeConfig.get("customerIdleTimeoutSeconds") ||
+    frontendConfig.customerInactivityTimeoutSeconds ||
+    frontendConfig.customerIdleTimeoutSeconds ||
+    "";
+  const numericMs = Number(rawMs);
+  const numericSeconds = Number(rawSeconds);
+  const configuredMs = Number.isFinite(numericMs) && numericMs > 0
+    ? numericMs
+    : Number.isFinite(numericSeconds) && numericSeconds > 0
+      ? numericSeconds * 1000
+      : fallbackMs;
+  return Math.max(15000, Math.min(10 * 60 * 1000, Math.round(configuredMs)));
+}
 const RAZORPAY_CHECKOUT_URL = "https://checkout.razorpay.com/v1/checkout.js";
 const PRINTER_STATUS_TIMEOUT_MS = 15000;
 const PRINTER_STATUS_POLL_MS = 15000;
 const PAYMENT_STATUS_POLL_MS = 1000;
 const MAX_FILES_PER_JOB = 10;
 const RECEIPT_REDIRECT_SECONDS = 20;
+const CUSTOMER_INACTIVITY_DEFAULT_MS = configuredCustomerInactivityTimeoutMs(90 * 1000);
 const CUSTOMER_INACTIVITY_TIMEOUTS = Object.freeze({
-  uploadQr: 3 * 60 * 1000,
-  governmentFormsList: 90 * 1000,
-  formDetails: 2 * 60 * 1000,
-  documentPreview: 2 * 60 * 1000,
-  printSettings: 90 * 1000,
-  payment: 5 * 60 * 1000,
-  error: 30 * 1000
+  uploadQr: CUSTOMER_INACTIVITY_DEFAULT_MS,
+  governmentFormsList: CUSTOMER_INACTIVITY_DEFAULT_MS,
+  formDetails: CUSTOMER_INACTIVITY_DEFAULT_MS,
+  documentPreview: CUSTOMER_INACTIVITY_DEFAULT_MS,
+  printSettings: CUSTOMER_INACTIVITY_DEFAULT_MS,
+  payment: CUSTOMER_INACTIVITY_DEFAULT_MS,
+  error: CUSTOMER_INACTIVITY_DEFAULT_MS
 });
 const CUSTOMER_ACTIVITY_EVENTS = ["pointerdown", "keydown", "wheel", "touchstart", "input", "change"];
 const UNASSIGNED_KIOSK_ID = "UNASSIGNED-KIOSK";
@@ -1662,6 +1683,7 @@ const initialJobs = [];
 
 const state = {
   mode: isAdminEntry ? "admin" : "customer",
+  internetOnline: navigator.onLine,
   adminAuthed: false,
   adminToken: "",
   adminAccount: null,
@@ -1730,6 +1752,7 @@ const state = {
     online: false,
     ready: false,
     busy: false,
+    checking: false,
     paper: true,
     paperLow: false,
     paperJam: false,
@@ -1749,6 +1772,9 @@ const state = {
     detectedErrorState: 0,
     detectedErrorText: "Unknown",
     printerStatus: 0,
+    observedStatus: "unknown",
+    observedErrorMessage: null,
+    snmp: null,
     lastUpdated: null,
     errorLog: []
   },
@@ -2349,6 +2375,8 @@ const FORM_THUMBNAIL_STORAGE_PREFIX = "printingKioskFormThumbnail:";
 const FORM_THUMBNAIL_COLORS = ["#2563eb", "#0f766e", "#b45309", "#7c3aed", "#be123c", "#15803d", "#0369a1", "#9333ea"];
 const formThumbnailCache = new Map();
 const formThumbnailJobs = new Map();
+const templateDocumentCache = new Map();
+const templateDocumentCacheJobs = new Map();
 let formThumbnailObserver = null;
 
 function formTemplateAccentColor(index = 0) {
@@ -2356,7 +2384,122 @@ function formTemplateAccentColor(index = 0) {
 }
 
 function formTemplateDocumentUrl(template) {
-  return normalizeTemplateImageUrl(template?.imageUrl || "");
+  return normalizeTemplateImageUrl(template?.cachedImageUrl || template?.imageUrl || "");
+}
+
+function remoteTemplateDocumentUrl(template) {
+  const source = normalizeTemplateImageUrl(template?.originalImageUrl || template?.imageUrl || "");
+  if (!/^https?:\/\//i.test(source)) return "";
+
+  try {
+    const parsed = new URL(source);
+    if ((parsed.hostname === "localhost" || parsed.hostname === "127.0.0.1") && parsed.pathname.startsWith("/local/document-cache/")) {
+      return "";
+    }
+  } catch {
+    return "";
+  }
+
+  return source;
+}
+
+function templateDocumentVersion(template, sourceUrl = "") {
+  return String(
+    template?.documentHash ||
+    template?.hash ||
+    template?.documentVersion ||
+    template?.version ||
+    template?.documentUpdatedAt ||
+    template?.updatedAt ||
+    template?.lastModified ||
+    sourceUrl
+  ).trim();
+}
+
+function templateDocumentCacheKey(template, serviceId = state.selectedService, sourceUrl = remoteTemplateDocumentUrl(template)) {
+  const stableDocumentId = String(template?.documentId || template?.id || template?.title || "").trim();
+  return [
+    serviceId || "",
+    stableDocumentId,
+    templateDocumentVersion(template, stableDocumentId ? "" : sourceUrl),
+    stableDocumentId ? "" : sourceUrl
+  ].join("|");
+}
+
+function canUseLocalDocumentCache() {
+  return isKioskDeviceEntry || window.location.protocol === "file:" || HAS_EXPLICIT_LOCAL_AGENT;
+}
+
+function templateDocumentFileName(template, sourceUrl = "") {
+  let extension = "pdf";
+  try {
+    extension = (new URL(sourceUrl).pathname.split(".").pop() || extension).replace(/[^a-z0-9]/gi, "").toLowerCase() || extension;
+  } catch {
+    extension = templateDocumentKind(template?.documentType || sourceUrl) === "pdf" ? "pdf" : "png";
+  }
+  return `${slug(template?.id || template?.title || "template-document", "template-document")}.${extension}`;
+}
+
+async function cacheTemplateDocument(template, serviceId = state.selectedService) {
+  const sourceUrl = remoteTemplateDocumentUrl(template);
+  if (!canUseLocalDocumentCache() || !sourceUrl) return template;
+
+  const cacheKey = templateDocumentCacheKey(template, serviceId, sourceUrl);
+  if (templateDocumentCache.has(cacheKey)) {
+    const cachedUrl = templateDocumentCache.get(cacheKey);
+    return { ...template, originalImageUrl: sourceUrl, cachedImageUrl: cachedUrl, imageUrl: cachedUrl };
+  }
+  if (templateDocumentCacheJobs.has(cacheKey)) {
+    return templateDocumentCacheJobs.get(cacheKey);
+  }
+
+  const job = fetch(`${LOCAL_AGENT_URL}/local/cache-document`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      kioskId: KIOSK_ID,
+      serviceId,
+      documentId: template?.documentId || template?.id || "",
+      templateId: template?.id || "",
+      fileName: templateDocumentFileName(template, sourceUrl),
+      url: sourceUrl,
+      version: template?.documentVersion || template?.version || "",
+      documentHash: template?.documentHash || template?.hash || "",
+      updatedAt: template?.documentUpdatedAt || template?.updatedAt || template?.lastModified || ""
+    })
+  })
+    .then(async (response) => {
+      const payload = await response.json().catch(() => ({}));
+      if (!response.ok || !payload.cachedUrl) {
+        throw new Error(payload.error || "Unable to cache document.");
+      }
+      templateDocumentCache.set(cacheKey, payload.cachedUrl);
+      return { ...template, originalImageUrl: sourceUrl, cachedImageUrl: payload.cachedUrl, imageUrl: payload.cachedUrl };
+    })
+    .catch(() => template)
+    .finally(() => {
+      templateDocumentCacheJobs.delete(cacheKey);
+    });
+
+  templateDocumentCacheJobs.set(cacheKey, job);
+  return job;
+}
+
+function warmTemplateDocumentCacheForServices(serviceList = services) {
+  if (!canUseLocalDocumentCache()) return;
+
+  serviceList.forEach((service) => {
+    if (!Array.isArray(service?.templates)) return;
+    service.templates.forEach((template) => {
+      const sourceUrl = remoteTemplateDocumentUrl(template);
+      if (!sourceUrl) return;
+      cacheTemplateDocument(template, service.id).then((cachedTemplate) => {
+        if (!cachedTemplate?.cachedImageUrl || cachedTemplate.cachedImageUrl === sourceUrl) return;
+        template.originalImageUrl = sourceUrl;
+        template.cachedImageUrl = cachedTemplate.cachedImageUrl;
+      });
+    });
+  });
 }
 
 function formTemplateStaticThumbnailUrl(template) {
@@ -2762,25 +2905,39 @@ function normalizeTemplates(templates) {
 
   return templates.map((template, index) => {
     const title = String(template?.title || `Template ${index + 1}`).trim();
-    const imageUrl = normalizeTemplateImageUrl(template?.imageUrl || "");
+    const cachedImageUrl = normalizeTemplateImageUrl(template?.cachedImageUrl || "");
+    const imageUrl = normalizeTemplateImageUrl(cachedImageUrl || template?.imageUrl || "");
+    const originalImageUrl = normalizeTemplateImageUrl(template?.originalImageUrl || template?.imageUrl || imageUrl || "");
     const hasStaticPreview = typeof template?.hasStaticPreview === "boolean"
       ? template.hasStaticPreview
       : undefined;
     return {
       id: slug(template?.id || title, `template-${index + 1}`),
+      documentId: String(template?.documentId || template?.templateId || template?.id || "").trim(),
       title,
       titleHi: String(template?.titleHi || "").trim(),
       titleMr: String(template?.titleMr || "").trim(),
       description: String(template?.description || "Blank printable template.").trim(),
       descriptionHi: String(template?.descriptionHi || "").trim(),
       descriptionMr: String(template?.descriptionMr || "").trim(),
-      pages: templatePageCount({ ...template, imageUrl }),
+      pages: templatePageCount({ ...template, imageUrl: originalImageUrl || imageUrl }),
       paperSize: normalizePaperSize(template?.paperSize, "Auto", true),
       orientation: normalizeOrientation(template?.orientation),
       fields: normalizeTemplateFields(template?.fields),
       fieldsHi: normalizeTemplateFields(template?.fieldsHi),
       fieldsMr: normalizeTemplateFields(template?.fieldsMr),
       imageUrl,
+      originalImageUrl,
+      cachedImageUrl,
+      thumbnailUrl: normalizeTemplateImageUrl(template?.thumbnailUrl || ""),
+      previewImageUrl: normalizeTemplateImageUrl(template?.previewImageUrl || ""),
+      documentHash: String(template?.documentHash || template?.hash || "").trim(),
+      hash: String(template?.hash || template?.documentHash || "").trim(),
+      documentVersion: String(template?.documentVersion || template?.version || "").trim(),
+      version: String(template?.version || template?.documentVersion || "").trim(),
+      documentUpdatedAt: String(template?.documentUpdatedAt || template?.updatedAt || template?.lastModified || "").trim(),
+      updatedAt: String(template?.updatedAt || template?.documentUpdatedAt || template?.lastModified || "").trim(),
+      lastModified: String(template?.lastModified || "").trim(),
       documentType: templateDocumentKind(template?.documentType || imageUrl || ""),
       hasStaticPreview
     };
@@ -2790,12 +2947,27 @@ function normalizeTemplates(templates) {
 function mergeDefaultTemplateData(templates, defaults = []) {
   return templates.map((template) => {
     const fallback = defaults.find((item) => item.id === template.id || item.title === template.title) || {};
+    const fallbackImageUrl = normalizeTemplateImageUrl(fallback.imageUrl || "");
+    const imageUrl = normalizeTemplateImageUrl(template.imageUrl || template.cachedImageUrl || fallbackImageUrl || "");
+    const originalImageUrl = normalizeTemplateImageUrl(template.originalImageUrl || template.imageUrl || fallbackImageUrl || imageUrl || "");
 
     return {
       ...template,
-      imageUrl: normalizeTemplateImageUrl(template.imageUrl || fallback.imageUrl || ""),
+      imageUrl,
+      originalImageUrl,
+      cachedImageUrl: normalizeTemplateImageUrl(template.cachedImageUrl || ""),
+      thumbnailUrl: normalizeTemplateImageUrl(template.thumbnailUrl || fallback.thumbnailUrl || ""),
+      previewImageUrl: normalizeTemplateImageUrl(template.previewImageUrl || fallback.previewImageUrl || ""),
+      documentId: template.documentId || fallback.documentId || template.id,
+      documentHash: template.documentHash || template.hash || fallback.documentHash || fallback.hash || "",
+      hash: template.hash || template.documentHash || fallback.hash || fallback.documentHash || "",
+      documentVersion: template.documentVersion || template.version || fallback.documentVersion || fallback.version || "",
+      version: template.version || template.documentVersion || fallback.version || fallback.documentVersion || "",
+      documentUpdatedAt: template.documentUpdatedAt || template.updatedAt || template.lastModified || fallback.documentUpdatedAt || fallback.updatedAt || fallback.lastModified || "",
+      updatedAt: template.updatedAt || template.documentUpdatedAt || template.lastModified || fallback.updatedAt || fallback.documentUpdatedAt || fallback.lastModified || "",
+      lastModified: template.lastModified || fallback.lastModified || "",
       pages: templatePageCount(
-        { ...template, imageUrl: template.imageUrl || fallback.imageUrl || "" },
+        { ...template, imageUrl: originalImageUrl || imageUrl },
         fallback.pages || template.pages || 1
       ),
       titleHi: template.titleHi || fallback.titleHi || "",
@@ -2805,6 +2977,7 @@ function mergeDefaultTemplateData(templates, defaults = []) {
       fields: template.fields?.length ? template.fields : (fallback.fields || []),
       fieldsHi: template.fieldsHi?.length ? template.fieldsHi : (fallback.fieldsHi || []),
       fieldsMr: template.fieldsMr?.length ? template.fieldsMr : (fallback.fieldsMr || []),
+      documentType: templateDocumentKind(template.documentType || fallback.documentType || imageUrl || originalImageUrl || ""),
       hasStaticPreview: typeof template.hasStaticPreview === "boolean"
         ? template.hasStaticPreview
         : fallback.hasStaticPreview
@@ -3529,32 +3702,58 @@ function printerIssueStatus(kind, title, detail, tone = "error") {
   return { kind, title, detail, tone };
 }
 
+function customerPrinterOfflineStatus(kind = "offline", tone = "error") {
+  return printerIssueStatus(kind, "Printer offline", "Offline", tone);
+}
+
+function customerPrinterCheckingStatus() {
+  return printerIssueStatus("checking", "Checking printer", "Please wait while the kiosk checks the printer.", "checking");
+}
+
+function isPrinterHealthUsableForCustomer(health = state.printerHealth) {
+  const h = health || {};
+  if (!h.available) return true;
+  return Boolean(h.online) &&
+    Boolean(h.ready) &&
+    !h.workOffline &&
+    !h.paperJam &&
+    h.paper !== false &&
+    !h.doorOpen &&
+    !h.tonerEmpty &&
+    !h.outputBinFull &&
+    !h.serviceRequested &&
+    !h.queueError;
+}
+
 function customerPrinterIssueFromMessage(message) {
   const text = String(message || "").trim();
   if (!text) return null;
 
   const normalized = text.toLowerCase();
   if (normalized.includes("paper jam") || normalized.includes("jam detected")) {
-    return printerIssueStatus("paper-jam", "Paper jam detected", "Paper jam detected. Please contact staff.");
+    return customerPrinterOfflineStatus("paper-jam");
   }
   if (normalized.includes("no paper") || normalized.includes("out of paper") || normalized.includes("load paper") || normalized.includes("paper empty")) {
-    return printerIssueStatus("paper-empty", "Printer out of paper", "Printer is out of paper. Please contact staff.");
+    return customerPrinterOfflineStatus("paper-empty");
   }
   if (normalized.includes("no toner") || normalized.includes("toner empty") || normalized.includes("replace cartridge") || normalized.includes("cartridge empty")) {
-    return printerIssueStatus("toner-empty", "Printer toner empty", "Printer toner needs replacement. Please contact staff.");
+    return customerPrinterOfflineStatus("toner-empty");
   }
   if (normalized.includes("door open") || normalized.includes("cover open") || normalized.includes("tray open")) {
-    return printerIssueStatus("door-open", "Printer door open", "Printer door or tray is open. Please contact staff.");
+    return customerPrinterOfflineStatus("door-open");
   }
   if (normalized.includes("output tray full") || normalized.includes("output bin full")) {
-    return printerIssueStatus("output-full", "Printer output tray full", "Printer output tray is full. Please contact staff.");
+    return customerPrinterOfflineStatus("output-full");
   }
   if ((normalized.includes("queue") || normalized.includes("blocked") || normalized.includes("paused") || normalized.includes("intervention")) &&
     (normalized.includes("printer") || normalized.includes("print") || normalized.includes("job") || normalized.includes("queue"))) {
-    return printerIssueStatus("queue-blocked", "Printer queue blocked", "Printer queue needs attention. Please contact staff.");
+    return customerPrinterOfflineStatus("queue-blocked");
+  }
+  if (normalized.includes("snmp") || normalized.includes("hardware status") || normalized.includes("timed out for")) {
+    return customerPrinterOfflineStatus("offline");
   }
   if (normalized.includes("offline") || normalized.includes("not running") || normalized.includes("unavailable") || normalized.includes("failed to fetch") || normalized.includes("cannot reach printer agent")) {
-    return printerIssueStatus("offline", "Printer offline", "Printer is offline. Please contact staff.");
+    return customerPrinterOfflineStatus("offline");
   }
 
   return null;
@@ -3563,23 +3762,21 @@ function customerPrinterIssueFromMessage(message) {
 function customerPrinterHealthIssue() {
   const h = state.printerHealth || {};
   if (!h.available) return null;
-
-  if (!h.online || h.workOffline) {
-    return printerIssueStatus("offline", "Printer offline", customerSafePrinterMessage(h.errorMessage || "Printer offline", "Printer is offline. Please contact staff."));
+  if (isPrinterHealthUsableForCustomer(h)) return null;
+  const healthMessage = String(h.errorMessage || "").toLowerCase();
+  if (h.checking || (h.busy && !h.online && (healthMessage.includes("checking") || healthMessage.includes("not been checked")))) {
+    return customerPrinterCheckingStatus();
   }
-  if (h.paperJam) return printerIssueStatus("paper-jam", "Paper jam detected", "Paper jam detected. Please contact staff.");
-  if (h.paper === false) return printerIssueStatus("paper-empty", "Printer out of paper", "Printer is out of paper. Please contact staff.");
-  if (h.doorOpen) return printerIssueStatus("door-open", "Printer door open", "Printer door or tray is open. Please contact staff.");
-  if (h.tonerEmpty) return printerIssueStatus("toner-empty", "Printer toner empty", "Printer toner needs replacement. Please contact staff.");
-  if (h.outputBinFull) return printerIssueStatus("output-full", "Printer output tray full", "Printer output tray is full. Please contact staff.");
-  if (h.serviceRequested) return printerIssueStatus("service-required", "Printer service required", customerSafePrinterMessage(h.errorMessage || "Printer service requested", "Printer needs service. Please contact staff."));
-  if (h.queueError) return printerIssueStatus("queue-blocked", "Printer queue blocked", customerSafePrinterMessage(h.errorMessage || "Printer queue blocked", "Printer queue needs attention. Please contact staff."));
-  if (!h.ready && h.errorMessage) {
-    return customerPrinterIssueFromMessage(h.errorMessage) ||
-      printerIssueStatus("not-ready", "Printer not ready", customerSafePrinterMessage(h.errorMessage, "Printer is not ready. Please contact staff."));
-  }
-
-  return null;
+  if (!h.online || h.workOffline) return customerPrinterOfflineStatus("offline");
+  if (!h.ready) return customerPrinterOfflineStatus("not-ready");
+  if (h.paperJam) return customerPrinterOfflineStatus("paper-jam");
+  if (h.paper === false) return customerPrinterOfflineStatus("paper-empty");
+  if (h.doorOpen) return customerPrinterOfflineStatus("door-open");
+  if (h.tonerEmpty) return customerPrinterOfflineStatus("toner-empty");
+  if (h.outputBinFull) return customerPrinterOfflineStatus("output-full");
+  if (h.serviceRequested) return customerPrinterOfflineStatus("service-required");
+  if (h.queueError) return customerPrinterOfflineStatus("queue-blocked");
+  return customerPrinterOfflineStatus("not-ready");
 }
 
 function customerPrinterAgentIssue() {
@@ -3587,7 +3784,7 @@ function customerPrinterAgentIssue() {
   const p = state.printer || {};
   if (p.manualReadyOverride) return null;
   if (p.checking) {
-    return printerIssueStatus("checking", "Checking printer", "Please wait while the kiosk checks the printer.", "checking");
+    return customerPrinterCheckingStatus();
   }
 
   const combinedStatus = [p.statusText, p.paper, p.toner, p.agent].filter(Boolean).join(" ");
@@ -3595,7 +3792,7 @@ function customerPrinterAgentIssue() {
   if (messageIssue) return messageIssue;
 
   if (p.agent === "Offline" || !p.online) {
-    return printerIssueStatus("offline", "Printer offline", customerSafePrinterMessage(p.statusText || "Printer offline", "Printer is offline. Please contact staff."));
+    return customerPrinterOfflineStatus("offline");
   }
 
   return null;
@@ -3603,6 +3800,10 @@ function customerPrinterAgentIssue() {
 
 function customerPrinterBlockIssue({ includeAgentFallback = false } = {}) {
   if (DEMO_KIOSK_MODE && state.mode === "customer") return null;
+
+  if (state.internetOnline === false) {
+    return { title: "Internet Offline", detail: "Please check your network connection.", kind: "offline", tone: "alert" };
+  }
 
   const healthIssue = customerPrinterHealthIssue();
   if (healthIssue) return healthIssue;
@@ -3612,27 +3813,13 @@ function customerPrinterBlockIssue({ includeAgentFallback = false } = {}) {
 }
 
 function printerReadyForCustomerFlow() {
-  // Only block on HARD errors (paper jam, no paper, door open, toner empty)
-  // Do NOT block just because the printer shows offline - the auto-fix will clear it
-  const h = state.printerHealth || {};
-  if (!h.available) return true; // No health data yet - allow flow
-  if (h.paperJam) return false;
-  if (h.paper === false) return false;
-  if (h.doorOpen) return false;
-  if (h.tonerEmpty) return false;
-  if (h.outputBinFull) return false;
-  return true;
+  return !customerPrinterBlockIssue({ includeAgentFallback: true });
 }
 
 function customerKioskBlockStatus() {
-  const h = state.printerHealth || {};
-  if (!h.available) return null;
-  if (h.paperJam) return printerIssueStatus("paper-jam", "Paper jam detected", "Paper jam detected. Please contact staff.");
-  if (h.paper === false) return printerIssueStatus("paper-empty", "Printer out of paper", "Printer is out of paper. Please contact staff.");
-  if (h.doorOpen) return printerIssueStatus("door-open", "Printer door open", "Printer door or tray is open. Please contact staff.");
-  if (h.tonerEmpty) return printerIssueStatus("toner-empty", "Printer toner empty", "Printer toner needs replacement. Please contact staff.");
-  if (h.outputBinFull) return printerIssueStatus("output-full", "Output tray full", "Printer output tray is full. Please contact staff.");
-  return null;
+  const issue = customerPrinterBlockIssue({ includeAgentFallback: true });
+  if (!issue || issue.kind === "checking") return issue;
+  return customerPrinterOfflineStatus(issue.kind, issue.tone);
 }
 
 function userFacingConnectionMessage(message, fallback) {
@@ -3647,43 +3834,8 @@ function userFacingConnectionMessage(message, fallback) {
   return customerSafePrinterMessage(text, fallback);
 }
 
-function customerSafePrinterMessage(message, fallback = "Printer is not ready. Please contact staff.") {
-  const text = String(message || "").trim();
-  const normalized = text.toLowerCase();
-  if (!text) return fallback;
-
-  if (normalized.includes("paper jam") || normalized.includes("jam detected")) {
-    return "Paper jam detected. Please contact staff.";
-  }
-  if (normalized.includes("no paper") || normalized.includes("out of paper") || normalized.includes("load paper")) {
-    return "Printer is out of paper. Please contact staff.";
-  }
-  if (normalized.includes("low paper") || normalized.includes("paper running low")) {
-    return "Printer paper is low. Please contact staff.";
-  }
-  if (normalized.includes("no toner") || normalized.includes("toner empty") || normalized.includes("replace cartridge")) {
-    return "Printer toner needs replacement. Please contact staff.";
-  }
-  if (normalized.includes("low toner") || normalized.includes("toner low")) {
-    return "Printer toner is low. Please contact staff.";
-  }
-  if (normalized.includes("door open") || normalized.includes("tray")) {
-    return "Printer door or tray is open. Please contact staff.";
-  }
-  if (normalized.includes("output tray full") || normalized.includes("output bin full")) {
-    return "Printer output tray is full. Please contact staff.";
-  }
-  if (normalized.includes("queue") || normalized.includes("blocked")) {
-    return "Printer queue needs attention. Please contact staff.";
-  }
-  if (normalized.includes("offline") || normalized.includes("not running") || normalized.includes("unavailable")) {
-    return "Printer is offline. Please contact staff.";
-  }
-  if (normalized.includes("printer") && normalized.includes(":")) {
-    return fallback;
-  }
-
-  return text;
+function customerSafePrinterMessage(message, fallback = "Offline") {
+  return "Offline";
 }
 
 function renderCustomerServiceStatusBanner(status) {
@@ -4314,6 +4466,44 @@ async function checkMobileUpload() {
   }
 }
 
+
+function updateCustomerPrinterDOM() {
+  if (state.mode !== "customer") return false;
+  
+  // Update the badge
+  const badge = document.querySelector(".kiosk-public-printer-status");
+  if (badge && badge.parentElement) {
+    badge.outerHTML = renderPrinterHealthBadge();
+  } else if (!badge) {
+    // If badge doesn't exist, it might be the home screen, try to find the container
+    const header = document.querySelector(".tq-header-right");
+    if (header) {
+      // Find where badge should be, maybe just re-render is better if badge doesn't exist, but we try
+    }
+  }
+
+  // Update the overlay
+  const existingOverlay = document.querySelector(".printer-health-overlay");
+  const issue = customerPrinterBlockIssue() || state.customerPrinterNotice;
+  
+  if (issue && !existingOverlay) {
+    document.body.insertAdjacentHTML("beforeend", renderPrinterHealthOverlay());
+  } else if (issue && existingOverlay) {
+    const temp = document.createElement("div");
+    temp.innerHTML = renderPrinterHealthOverlay();
+    const newOverlay = temp.firstElementChild;
+    if (newOverlay) existingOverlay.replaceWith(newOverlay);
+  } else if (!issue && existingOverlay) {
+    existingOverlay.remove();
+  }
+  
+  // If we are on step 2 (PDF preview), never full render for printer status
+  if (state.step === 2) return true;
+  
+  // For other customer steps, it's safer to just return true and avoid full render
+  return true;
+}
+
 async function refreshPrinterStatus({ rerender = true, showChecking = true, markOfflineOnError = true } = {}) {
   if (printerStatusRefreshInFlight) {
     return state.printer;
@@ -4396,7 +4586,7 @@ async function refreshPrinterStatus({ rerender = true, showChecking = true, mark
         ? [...new Set(printer.paperSizes.map((size) => normalizePaperSize(size, "")).filter(Boolean))]
         : [...PRINT_PAPER_SIZES],
       agent: "Running",
-      statusText: printer.errorMessage || (printer.status === "online" ? "Ready" : "Offline")
+      statusText: printer.status === "online" ? "Ready" : "Offline"
     };
     applyPrinterPaperDefault(state.printer);
   } catch (error) {
@@ -4413,6 +4603,12 @@ async function refreshPrinterStatus({ rerender = true, showChecking = true, mark
       return;
     }
 
+    const detailedStatusText = isAbort
+      ? "Printer status check timed out. Check the printer connection or restart the local print agent."
+      : connectionFailed
+        ? "Local print service is offline. Ask staff to start the kiosk print service on this machine."
+        : rawMessage || "Local print agent unavailable";
+
     state.printer = {
       ...state.printer,
       online: false,
@@ -4423,11 +4619,7 @@ async function refreshPrinterStatus({ rerender = true, showChecking = true, mark
       queue: 0,
       supportsColor: null,
       agent: "Offline",
-      statusText: isAbort
-        ? "Printer status check timed out. Check the printer connection or restart the local print agent."
-        : connectionFailed
-          ? "Local print service is offline. Ask staff to start the kiosk print service on this machine."
-          : rawMessage || "Local print agent unavailable"
+      statusText: state.mode === "customer" ? "Offline" : detailedStatusText
     };
   } finally {
     window.clearTimeout(timeoutId);
@@ -4559,9 +4751,11 @@ function applyServiceConfig(payload, { rerender = true, source = "backend" } = {
   const incomingSignature = serviceConfigSignature(payload.services, payload.pricing || state.pricing);
   const currentSignature = serviceConfigSignature(services, state.pricing);
   const hasDifferentServices = incomingSignature !== currentSignature;
-  const shouldApply = source === "backend" || source === "manual" || hasNewVersion || hasDifferentServices || !state.configVersion;
+  // For backend polls: only apply when something actually changed (version bump or content diff).
+  // For manual/admin saves: always apply.
+  const shouldApply = source === "manual" || source === "admin" || hasNewVersion || hasDifferentServices || !state.configVersion;
 
-  if (!shouldApply && source !== "admin") {
+  if (!shouldApply) {
     return false;
   }
 
@@ -4587,6 +4781,7 @@ function applyServiceConfig(payload, { rerender = true, source = "backend" } = {
   storeServices();
   storePricing();
   storeConfigMeta(payload.config || {});
+  warmTemplateDocumentCacheForServices(services);
 
   const selectedStillAvailable = previousSelectedService
     ? services.some((service) => service.id === previousSelectedService && serviceAvailableForKiosk(service))
@@ -4654,7 +4849,9 @@ function startConfigPolling() {
 
   state.configPoller = setInterval(() => {
     if (state.mode === "customer") {
-      refreshKioskConfig({ rerender: state.step === 0 });
+      // Always rerender so prices/services/forms update immediately when admin saves,
+      // regardless of which step the customer is on.
+      refreshKioskConfig({ rerender: true });
     }
   }, 5000);
 }
@@ -5316,7 +5513,7 @@ async function startLocalPrintJob() {
         templateTitle: file.templateTitle || file.source || "",
         templateDescription: file.templateDescription || "",
         templateFields: Array.isArray(file.templateFields) ? file.templateFields : [],
-        waitForCompletion: true
+        waitForCompletion: false
       };
 
       if (file.printContentBase64) {
@@ -5627,7 +5824,14 @@ function render() {
     stopCustomerInactivityTimer();
     const app = qs("#app");
     if (app) {
-      app.innerHTML = renderMobilePaymentShell();
+      
+      const newHtml = renderMobilePaymentShell();
+      if (window.morphdom) {
+        window.morphdom(app, '<div id="app">' + newHtml + '</div>');
+      } else {
+        app.innerHTML = newHtml;
+      }
+
       bindEvents();
     }
     return;
@@ -5648,7 +5852,24 @@ function render() {
   }
 
   const app = qs("#app");
-  app.innerHTML = state.mode === "customer" ? renderCustomerShell() : renderAdminShell();
+  
+    const newHtml = state.mode === "customer" ? renderCustomerShell() : renderAdminShell();
+    if (window.morphdom) {
+      window.morphdom(app, '<div id="app">' + newHtml + '</div>', {
+        onBeforeElUpdated: function(fromEl, toEl) {
+          if (fromEl.tagName === 'IFRAME' && toEl.tagName === 'IFRAME' && fromEl.src === toEl.src) {
+            return false;
+          }
+          if (fromEl === document.activeElement && (fromEl.tagName === 'INPUT' || fromEl.tagName === 'TEXTAREA' || fromEl.tagName === 'SELECT')) {
+            return false;
+          }
+          return true;
+        }
+      });
+    } else {
+      app.innerHTML = newHtml;
+    }
+
   applyCustomerTranslations(app);
   applyAdminTranslations(app);
   bindEvents();
@@ -5736,6 +5957,7 @@ function renderCustomerShell() {
       </main>
       ${showFooter ? renderCustomerFooterFormsReference() : ""}
       ${renderPrinterHealthBadge()}
+      ${renderPrinterHealthOverlay()}
     </div>
   `;
 }
@@ -5755,9 +5977,10 @@ function renderAdminShell() {
 function renderNmcKioskStatus(additionalClass = "") {
   const issue = customerPrinterBlockIssue() || state.customerPrinterNotice;
   const isBlocked = Boolean(issue);
-  const hasError = isBlocked || Boolean(state.printerHealth?.errorMessage);
+  const isChecking = issue?.kind === "checking";
+  const hasError = isBlocked && !isChecking;
   const statusClass = hasError ? "is-offline" : "is-online";
-  const displayText = hasError ? "Offline" : "Ready";
+  const displayText = isChecking ? "Checking" : hasError ? "Offline" : "Ready";
 
   return `
     <div class="nmc-kiosk-status ${additionalClass} ${statusClass}">
@@ -5768,10 +5991,11 @@ function renderNmcKioskStatus(additionalClass = "") {
 }
 
 function renderCustomerPrinterStatusBadge() {
-  const issue = customerPrinterBlockIssue() || state.customerPrinterNotice;
+  const issue = customerKioskBlockStatus() || state.customerPrinterNotice;
   const isBlocked = Boolean(issue);
-  const text = state.printerHealth?.errorMessage || issue?.title || (isBlocked ? "Printer Offline" : "Printer Online");
-  const hasError = isBlocked || Boolean(state.printerHealth?.errorMessage);
+  const isChecking = issue?.kind === "checking";
+  const text = isChecking ? "Checking printer" : isBlocked ? "Printer offline" : "Printer Online";
+  const hasError = isBlocked && !isChecking;
   const icon = hasError ? uiIcon("alert-circle", 18) : uiIcon("check-circle", 18);
   const colorClass = hasError ? "status-offline" : "status-online";
 
@@ -5900,7 +6124,6 @@ function renderFooterHelpCall() {
         <small>Need Help? Call Us</small>
         <strong>+91 9359604384</strong>
       </span>
-      <span class="kiosk-footer-help-note">(Toll Free)</span>
     </div>
   `;
 }
@@ -7321,6 +7544,7 @@ function initPrinterHealthIpc() {
       online: Boolean(health.online),
       ready: Boolean(health.ready),
       busy: Boolean(health.busy),
+      checking: Boolean(health.checking),
       paper: health.paper !== false,
       paperLow: Boolean(health.paperLow),
       paperJam: Boolean(health.paperJam),
@@ -7340,28 +7564,40 @@ function initPrinterHealthIpc() {
       detectedErrorState: Number(health.detectedErrorState || 0),
       detectedErrorText: health.detectedErrorText || "Unknown",
       printerStatus: Number(health.printerStatus || 0),
+      observedStatus: health.observedStatus || (health.online ? "online" : "offline"),
+      observedErrorMessage: health.observedErrorMessage || null,
+      snmp: health.snmp && typeof health.snmp === "object" ? health.snmp : null,
       lastUpdated: health.lastUpdated || new Date().toISOString(),
       errorLog: Array.isArray(health.errorLog) ? health.errorLog : []
     };
+    const printerUsable = isPrinterHealthUsableForCustomer(state.printerHealth);
     state.printer = {
       ...state.printer,
-      online: Boolean(health.ready),
-      checking: false,
+      online: printerUsable,
+      checking: Boolean(health.checking),
       name: health.printerName || state.printer.name || "No printer selected",
       paper: health.paperStatus || "Unknown",
       toner: health.tonerStatus || "Unknown",
       queue: Number(health.queueLength || 0),
       agent: "Running",
-      statusText: health.errorMessage || (health.ready ? "Ready" : health.online ? "Printer not ready" : "Offline")
+      statusText: health.checking ? "Checking" : (printerUsable ? "Ready" : "Offline")
     };
     syncPrinterHealthToBackend(state.printerHealth);
 
-    if (!customerPrinterBlockIssue()) {
+    const issue = customerPrinterBlockIssue();
+    const shouldResetCustomerFlow = issue &&
+      issue.kind !== "checking" &&
+      state.mode === "customer" &&
+      Number(state.step || 0) > 0;
+
+    if (shouldResetCustomerFlow) {
+      handleCustomerPrinterIssue(issue, { resetFlow: true, rerender: false });
+    } else if (!issue) {
       state.customerPrinterNotice = null;
       state.lastAlertedPrinterIssue = null;
     }
 
-    render();
+    if (shouldResetCustomerFlow || !updateCustomerPrinterDOM()) render();
   });
 }
 
@@ -7380,10 +7616,18 @@ function syncPrinterHealthToBackend(health) {
     queueError: health.queueError,
     outputBinFull: health.outputBinFull,
     serviceRequested: health.serviceRequested,
+    checking: health.checking,
     printerName: health.printerName,
     errorMessage: health.errorMessage,
+    observedStatus: health.observedStatus,
+    observedErrorMessage: health.observedErrorMessage,
     queueLength: health.queueLength,
-    detectedErrorState: health.detectedErrorState
+    paperStatus: health.paperStatus,
+    tonerStatus: health.tonerStatus,
+    detectedErrorState: health.detectedErrorState,
+    detectedErrorText: health.detectedErrorText,
+    printerStatus: health.printerStatus,
+    snmp: health.snmp
   });
   const now = Date.now();
   if (signature === lastPrinterHealthSyncSignature && now - lastPrinterHealthSyncAt < 30000) return;
@@ -7996,7 +8240,7 @@ function blockKioskAdminSetupAction() {
   state.kioskEditorOpen = false;
   state.kioskEditId = "";
   state.serviceEditor = null;
-  render();
+  if (!updateCustomerPrinterDOM()) render();
   return false;
 }
 
@@ -8755,12 +8999,12 @@ function renderRevenue() {
 
 window.updateRevenueFilter = function(field, value) {
   state.revenueFilter[field] = value;
-  render();
+  if (!updateCustomerPrinterDOM()) render();
 };
 
 window.setReportTab = function(tab) {
   state.reportTab = tab;
-  render();
+  if (!updateCustomerPrinterDOM()) render();
 };
 
 window.downloadRevenueReportPDF = function() {
@@ -9462,7 +9706,7 @@ async function loadPricingSettings() {
       state.pricing = normalizePricing(payload.pricing);
       storePricing();
       storeConfigMeta(payload.config || {});
-      render();
+      if (!updateCustomerPrinterDOM()) render();
     }
   } catch {
     // The kiosk can still use locally stored pricing if the backend is offline.
@@ -9479,7 +9723,7 @@ async function savePricingSettings() {
   state.pricing = normalizePricing(state.pricing);
   storePricing();
   state.pricingSaveStatus = "Saving pricing...";
-  render();
+  if (!updateCustomerPrinterDOM()) render();
 
   try {
     const response = await fetch(`${BACKEND_URL}/api/admin/pricing`, {
@@ -9504,7 +9748,7 @@ async function savePricingSettings() {
     state.pricingSaveStatus = `${error.message || "Backend pricing service is offline."} Local kiosk pricing is saved.`;
   }
 
-  render();
+  if (!updateCustomerPrinterDOM()) render();
 }
 
 function syncPricingDraftFromDom() {
@@ -9575,7 +9819,7 @@ function closeKioskServiceModal() {
   state.adminSelectedServiceKioskId = "";
   state.serviceEditor = null;
   state.pricingSaveStatus = "";
-  render();
+  if (!updateCustomerPrinterDOM()) render();
 }
 
 function updateServiceDraftField(field, value) {
@@ -9666,7 +9910,7 @@ function addService() {
 
   if (!firstAdminServiceProjectId()) {
     state.pricingSaveStatus = "Ask the super admin to allocate a project before adding services.";
-    render();
+    if (!updateCustomerPrinterDOM()) render();
     return;
   }
 
@@ -9701,7 +9945,7 @@ function addService() {
   storeServices();
   storePricing();
   markServicesDirty("New service added. Edit details, then save services.");
-  render();
+  if (!updateCustomerPrinterDOM()) render();
 }
 
 
@@ -9727,7 +9971,7 @@ async function saveServicesSettings() {
   storeServices();
   storePricing();
   state.pricingSaveStatus = "Saving services...";
-  render();
+  if (!updateCustomerPrinterDOM()) render();
 
   try {
     const response = await fetch(`${BACKEND_URL}/api/admin/services`, {
@@ -9752,7 +9996,7 @@ async function saveServicesSettings() {
     state.pricingSaveStatus = `${error.message || "Backend service is offline."} Local service setup is saved.`;
   }
 
-  render();
+  if (!updateCustomerPrinterDOM()) render();
 }
 
 function syncInlineServicesDraftFromDom() {
@@ -9892,7 +10136,7 @@ function openCreateProjectEditor() {
   state.projectEditId = "";
   state.projectEditorOpen = true;
   state.projectCreateStatus = "";
-  render();
+  if (!updateCustomerPrinterDOM()) render();
 }
 
 function openEditProjectEditor(projectId) {
@@ -9904,7 +10148,7 @@ function openEditProjectEditor(projectId) {
   const project = state.adminData.projects.find((item) => item.projectId === projectId);
   if (!project) {
     state.projectCreateStatus = "Project not found.";
-    render();
+    if (!updateCustomerPrinterDOM()) render();
     return;
   }
 
@@ -9917,14 +10161,14 @@ function openEditProjectEditor(projectId) {
   state.projectEditId = project.projectId || "";
   state.projectEditorOpen = true;
   state.projectCreateStatus = "";
-  render();
+  if (!updateCustomerPrinterDOM()) render();
 }
 
 function closeProjectEditor() {
   state.projectEditorOpen = false;
   state.projectEditId = "";
   state.projectCreateStatus = "";
-  render();
+  if (!updateCustomerPrinterDOM()) render();
 }
 
 function updateProjectDraftField(field, value) {
@@ -9954,18 +10198,18 @@ async function saveProjectEditor() {
 
   if (!draft.projectId) {
     state.projectCreateStatus = "Enter a project ID.";
-    render();
+    if (!updateCustomerPrinterDOM()) render();
     return;
   }
 
   if (!draft.name) {
     state.projectCreateStatus = "Enter a project name.";
-    render();
+    if (!updateCustomerPrinterDOM()) render();
     return;
   }
 
   state.projectCreateStatus = state.projectEditId ? "Saving project..." : "Creating project...";
-  render();
+  if (!updateCustomerPrinterDOM()) render();
 
   try {
     const editing = Boolean(state.projectEditId);
@@ -9986,7 +10230,7 @@ async function saveProjectEditor() {
     state.projectCreateStatus = error.message || "Project save failed.";
   }
 
-  render();
+  if (!updateCustomerPrinterDOM()) render();
 }
 
 async function deleteProject(projectId) {
@@ -9999,7 +10243,7 @@ async function deleteProject(projectId) {
   if (!window.confirm(`Delete project ${projectId}? Kiosks under this project will also be removed.`)) return;
 
   state.projectCreateStatus = "Deleting project...";
-  render();
+  if (!updateCustomerPrinterDOM()) render();
 
   try {
     const payload = await fetchAdminJson(`/api/admin/projects/${encodeURIComponent(projectId)}`, {
@@ -10019,7 +10263,7 @@ async function deleteProject(projectId) {
     state.projectCreateStatus = error.message || "Project delete failed.";
   }
 
-  render();
+  if (!updateCustomerPrinterDOM()) render();
 }
 
 function renderKiosks() {
@@ -10141,7 +10385,7 @@ function openCreateKioskEditor() {
   const project = state.adminData.projects[0];
   if (!project) {
     state.kioskCreateStatus = "No assigned projects found. Ask the super admin to allocate a project first.";
-    render();
+    if (!updateCustomerPrinterDOM()) render();
     return;
   }
 
@@ -10157,7 +10401,7 @@ function openCreateKioskEditor() {
   state.kioskEditId = "";
   state.kioskEditorOpen = true;
   state.kioskCreateStatus = "";
-  render();
+  if (!updateCustomerPrinterDOM()) render();
 }
 
 function openEditKioskEditor(kioskId) {
@@ -10169,7 +10413,7 @@ function openEditKioskEditor(kioskId) {
   const kiosk = state.adminData.kiosks.find((item) => String(item.kioskId || "").toUpperCase() === String(kioskId || "").toUpperCase());
   if (!kiosk) {
     state.kioskCreateStatus = "Kiosk not found.";
-    render();
+    if (!updateCustomerPrinterDOM()) render();
     return;
   }
 
@@ -10183,14 +10427,14 @@ function openEditKioskEditor(kioskId) {
   state.kioskEditId = kiosk.kioskId || "";
   state.kioskEditorOpen = true;
   state.kioskCreateStatus = "";
-  render();
+  if (!updateCustomerPrinterDOM()) render();
 }
 
 function closeKioskEditor() {
   state.kioskEditorOpen = false;
   state.kioskEditId = "";
   state.kioskCreateStatus = "";
-  render();
+  if (!updateCustomerPrinterDOM()) render();
 }
 
 function updateKioskDraftField(field, value) {
@@ -10228,36 +10472,36 @@ async function saveKioskEditor() {
 
   if (!draft.kioskId) {
     state.kioskCreateStatus = "Enter a kiosk ID.";
-    render();
+    if (!updateCustomerPrinterDOM()) render();
     return;
   }
 
   if (adminKioskIdExists(draft.kioskId, originalKioskId)) {
     state.kioskCreateStatus = "Kiosk ID already exists. Use a unique kiosk ID.";
-    render();
+    if (!updateCustomerPrinterDOM()) render();
     return;
   }
 
   if (!draft.setupCode) {
     state.kioskCreateStatus = "Enter a Mini PC setup code.";
-    render();
+    if (!updateCustomerPrinterDOM()) render();
     return;
   }
 
   if (adminSetupCodeExists(draft.setupCode, originalKioskId)) {
     state.kioskCreateStatus = "Mini PC setup code already exists. Generate a new setup code.";
-    render();
+    if (!updateCustomerPrinterDOM()) render();
     return;
   }
 
   if (!draft.projectId) {
     state.kioskCreateStatus = "Select a project.";
-    render();
+    if (!updateCustomerPrinterDOM()) render();
     return;
   }
 
   state.kioskCreateStatus = state.kioskEditId ? "Saving kiosk..." : "Creating kiosk...";
-  render();
+  if (!updateCustomerPrinterDOM()) render();
 
   try {
     const path = editing
@@ -10277,7 +10521,7 @@ async function saveKioskEditor() {
     state.kioskCreateStatus = error.message || "Kiosk save failed.";
   }
 
-  render();
+  if (!updateCustomerPrinterDOM()) render();
 }
 
 async function deleteKiosk(kioskId) {
@@ -10290,7 +10534,7 @@ async function deleteKiosk(kioskId) {
   if (!window.confirm(`Delete kiosk ${kioskId}?`)) return;
 
   state.kioskCreateStatus = "Deleting kiosk...";
-  render();
+  if (!updateCustomerPrinterDOM()) render();
 
   try {
     const payload = await fetchAdminJson(`/api/admin/kiosks/${encodeURIComponent(kioskId)}`, {
@@ -10306,7 +10550,7 @@ async function deleteKiosk(kioskId) {
     state.kioskCreateStatus = error.message || "Kiosk delete failed.";
   }
 
-  render();
+  if (!updateCustomerPrinterDOM()) render();
 }
 
 function renderRefunds() {
@@ -10431,7 +10675,7 @@ async function adminLogin() {
 
   if (!email || !password) {
     state.adminLoginError = "Enter admin email and password.";
-    render();
+    if (!updateCustomerPrinterDOM()) render();
     return;
   }
 
@@ -10450,7 +10694,7 @@ async function adminLogin() {
     state.adminToken = payload.token || "";
     state.adminAccount = payload.admin || null;
     state.adminLoginError = "";
-    render();
+    if (!updateCustomerPrinterDOM()) render();
     loadAdminData();
     startAdminPolling();
   } catch (error) {
@@ -10458,11 +10702,15 @@ async function adminLogin() {
     state.adminToken = "";
     state.adminAccount = null;
     state.adminLoginError = error.message || "Admin login failed.";
-    render();
+    if (!updateCustomerPrinterDOM()) render();
   }
 }
 
 async function handleClick(event) {
+  if (state.mode === "customer" && printerHealthCriticalError()) {
+    return; // Completely lock the kiosk UI if printer is offline
+  }
+
   const target = event.target.closest("button, [data-template], [data-service], [data-action], [data-template-search-input]");
   if (!target) {
     return;
@@ -10487,6 +10735,12 @@ async function handleClick(event) {
   }
 
   if (target.dataset.service) {
+    const serviceBlockStatus = customerKioskBlockStatus();
+    if (serviceBlockStatus) {
+      handleCustomerPrinterIssue(serviceBlockStatus, { resetFlow: false, rerender: true });
+      return;
+    }
+
     state.selectedService = target.dataset.service;
     state.templateSearchQuery = "";
     state.templateSearchKeyboardActive = false;
@@ -10506,18 +10760,6 @@ async function handleClick(event) {
     state.paymentBusy = false;
     state.activeJobId = null;
     state.lastCompletedJob = null;
-
-    const selectedTemplates = formTemplatesForService(target.dataset.service);
-    if (isFormTemplateService(target.dataset.service) && selectedTemplates.length === 1) {
-      const template = selectedTemplates[0];
-      applyTemplatePrintDefaults(template);
-      setJobFiles([createTemplateFile(template)]);
-      state.uploadSession = null;
-      state.uploadError = "";
-      state.step = 2;
-      render();
-      return;
-    }
 
     render();
 
@@ -10672,8 +10914,9 @@ async function handleClick(event) {
 
     stopUploadPolling();
     clearCurrentFile();
-    applyTemplatePrintDefaults(template);
-    setJobFiles([createTemplateFile(template)]);
+    const cachedTemplate = await cacheTemplateDocument(template, state.selectedService);
+    applyTemplatePrintDefaults(cachedTemplate);
+    setJobFiles([createTemplateFile(cachedTemplate)]);
     state.uploadError = "";
     state.uploadSession = null;
     state.step = 2;
@@ -11490,6 +11733,7 @@ if (!isMobilePaymentEntry && state.mode === "customer" && !DEMO_KIOSK_MODE && KI
   state.configStatus = "Loading kiosk services...";
 }
 
+warmTemplateDocumentCacheForServices();
 render();
 loadPricingSettings();
 if (isMobilePaymentEntry) {
@@ -11507,6 +11751,27 @@ if (!isMobilePaymentEntry && state.adminAuthed) {
 }
 
 setInterval(updateKioskClock, 1000);
+
+// ── Internet connectivity: instant online / offline detection ─────────────────
+// The browser fires these events the moment the network interface changes state,
+// which is much faster than waiting for the next printer-status poll cycle.
+window.addEventListener("offline", () => {
+  if (state.internetOnline === false) return; // already offline, skip re-render
+  state.internetOnline = false;
+  render(); // immediately show the "Internet Offline" overlay
+});
+
+window.addEventListener("online", () => {
+  if (state.internetOnline === true) return; // already online, skip
+  state.internetOnline = true;
+  render(); // immediately remove the "Internet Offline" overlay
+  // Kick off an immediate printer + config refresh so the kiosk is fully
+  // ready again without waiting up to 5 seconds for the next poll cycle.
+  if (!isMobilePaymentEntry && state.mode === "customer") {
+    refreshPrinterStatus({ rerender: true, showChecking: false, markOfflineOnError: false });
+    refreshKioskConfig({ rerender: false });
+  }
+});
 
 // ── Printer Health IPC bridge (Electron-only, non-breaking) ─────────────────
 // No-op when window.kioskPrinterHealth is not exposed (non-Electron / demo mode).

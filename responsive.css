@@ -8889,6 +8889,17 @@ body,
   width: min(1280px, 100%) !important;
 }
 
+#app .customer-shell:has(.thankyou-stage.tq-phase-thankyou) .content,
+#app .customer-shell .thankyou-stage.tq-phase-thankyou,
+#app .customer-shell .thankyou-stage.tq-phase-thankyou .tq-mascot-area {
+  background: #ffffff !important;
+}
+
+#app .customer-shell .thankyou-stage.tq-phase-thankyou {
+  border-color: #ffffff !important;
+  box-shadow: none !important;
+}
+
 #app .customer-shell .tq-content,
 #app .customer-shell #tq-phase-content,
 #app .customer-shell .tq-phase {
