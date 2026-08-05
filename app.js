@@ -5777,7 +5777,7 @@ function renderCustomerPrinterStatusBadge() {
   // customer — keep the public badge generic and send staff to the admin panel for detail.
   const text = issue?.tone === "checking" ? "Checking printer..." : (isBlocked ? "Offline" : "Online");
   const hasError = isBlocked || Boolean(state.printerHealth?.errorMessage);
-  const icon = hasError ? uiIcon("alert-circle", 18) : uiIcon("check-circle", 18);
+  const icon = uiIcon("dot", 10);
   const colorClass = hasError ? "status-offline" : "status-online";
 
   return `

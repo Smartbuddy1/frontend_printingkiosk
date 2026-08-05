@@ -27,6 +27,7 @@
     upload: '<path d="M12 16V5"/><path d="m8 9 4-4 4 4"/><path d="M4 16v2a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-2"/>',
     alert: '<path d="M10.3 3.6 2.6 17a2 2 0 0 0 1.7 3h15.4a2 2 0 0 0 1.7-3L13.7 3.6a2 2 0 0 0-3.4 0Z"/><path d="M12 9v4M12 17h.01"/>',
     activity: '<path d="M3 12h4l2.5-6 5 12 2.5-6h4"/>',
+    dot: '<circle cx="12" cy="12" r="6" fill="currentColor" stroke="none"/>',
     pages: '<path d="M14 2H6a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h8a2 2 0 0 0 2-2V4a2 2 0 0 0-2-2Z"/><path d="M8 6h4M8 10h4M8 14h3"/><path d="M9 22h9a2 2 0 0 0 2-2V7"/>'
   };
 

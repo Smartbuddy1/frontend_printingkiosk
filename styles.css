@@ -15775,10 +15775,10 @@ tbody tr:hover {
   background: rgba(0,0,0,0.02);
 }
 
-.kiosk-public-printer-status { display: flex; align-items: center; gap: 6px; font-size: 14px; font-weight: 600; padding: 6px 12px; border-radius: 8px; white-space: nowrap; }
-.kiosk-public-printer-status.status-online { background-color: rgba(34, 197, 94, 0.1); color: #16a34a; }
-.kiosk-public-printer-status.status-offline { background-color: rgba(239, 68, 68, 0.1); color: #dc2626; }
-.kiosk-public-printer-status svg { width: 18px; height: 18px; }
+.kiosk-public-printer-status { display: flex; align-items: center; gap: 8px; font-size: 14px; font-weight: 700; padding: 8px 16px; border-radius: 999px; white-space: nowrap; background-color: #0a2555; border: 1px solid #193b70; }
+.kiosk-public-printer-status.status-online { color: #22c55e; }
+.kiosk-public-printer-status.status-offline { color: #ef4444; }
+.kiosk-public-printer-status svg { width: 10px; height: 10px; }
 
 /* Revenue Desk Redesign */
 .revenue-desk-actions {
