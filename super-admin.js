@@ -987,12 +987,27 @@ function superAdminOperationalAlerts() {
 }
 
 function kioskPrinterHealthAlerts(kiosk = {}) {
+  const kioskId = kiosk.kioskId || "Kiosk";
+
+  // Kiosk itself is offline/turned off — show that clearly instead of stale
+  // printer-hardware readings, which stop updating the moment the machine
+  // disconnects. This stays active until the kiosk reports back online.
+  if (kiosk.status === "offline") {
+    return [{
+      title: `${kioskId} - Kiosk Offline`,
+      detail: `This kiosk is offline or turned off.${kiosk.lastOnline ? ` Last seen: ${formatDateTime(kiosk.lastOnline)}.` : ""}`,
+      tone: "bad",
+      source: "kiosk",
+      category: "network",
+      kioskId,
+      lastUpdated: kiosk.lastOnline || ""
+    }];
+  }
+
   const printerHealth = kiosk.printerHealth && typeof kiosk.printerHealth === "object"
     ? kiosk.printerHealth
     : null;
   if (!printerHealth) return [];
-
-  const kioskId = kiosk.kioskId || "Kiosk";
   const printerName = printerHealth.printerName || kiosk.printer || "Printer";
   const paperStatus = String(printerHealth.paperStatus || "").toLowerCase();
   const tonerStatus = String(printerHealth.tonerStatus || "").toLowerCase();
@@ -1123,25 +1138,61 @@ function renderAlerts() {
   `;
 }
 
-function renderAlertLogsTable() {
+function filteredAlertLogs() {
   const allLogs = data("alertLogs") || [];
   const filter = state.alertFilter || { search: "", category: "all", status: "all", kioskId: "all" };
-  
+
   const searchLower = filter.search.toLowerCase();
-  
-  const filtered = allLogs.filter(log => {
+
+  return allLogs.filter(log => {
     if (filter.category !== "all" && log.category !== filter.category) return false;
     if (filter.status !== "all" && log.status !== filter.status) return false;
     if (filter.kioskId !== "all" && log.kioskId !== filter.kioskId) return false;
     if (searchLower) {
-      if (!log.title?.toLowerCase().includes(searchLower) && 
-          !log.detail?.toLowerCase().includes(searchLower) && 
+      if (!log.title?.toLowerCase().includes(searchLower) &&
+          !log.detail?.toLowerCase().includes(searchLower) &&
           !log.kioskId?.toLowerCase().includes(searchLower)) {
         return false;
       }
     }
     return true;
   }).sort((a, b) => (new Date(b.createdAt).getTime() || 0) - (new Date(a.createdAt).getTime() || 0));
+}
+
+window.downloadAlertsReportPDF = function () {
+  const { jsPDF } = window.jspdf;
+  const doc = new jsPDF();
+  const filtered = filteredAlertLogs();
+
+  doc.setFontSize(18);
+  doc.text("Alert History Report", 14, 22);
+  doc.setFontSize(11);
+  doc.text(`Generated: ${formatDateTime(new Date().toISOString())}`, 14, 30);
+
+  const tableData = filtered.map(log => [
+    formatDateTime(log.createdAt),
+    log.kioskId || "Unknown",
+    log.category || "-",
+    log.title || "-",
+    log.detail || "-",
+    log.status === "resolved" ? "Resolved" : "Active"
+  ]);
+
+  doc.autoTable({
+    startY: 36,
+    head: [['Date', 'Kiosk', 'Category', 'Title', 'Details', 'Status']],
+    body: tableData,
+    theme: 'grid',
+    styles: { fontSize: 8 }
+  });
+
+  doc.save(`Alert_History_Report_${new Date().toISOString().split("T")[0]}.pdf`);
+};
+
+function renderAlertLogsTable() {
+  const allLogs = data("alertLogs") || [];
+  const filter = state.alertFilter || { search: "", category: "all", status: "all", kioskId: "all" };
+  const filtered = filteredAlertLogs();
 
   const rows = filtered.map(log => {
     const tone = log.tone === 'good' ? 'good' : log.status === 'resolved' ? 'good' : (log.tone || 'warn');
@@ -1164,10 +1215,11 @@ function renderAlertLogsTable() {
         <span>${uiIcon("history", 20)}</span>
         <h2>Alert History</h2>
         <strong>${escapeHtml(String(filtered.length))} record${filtered.length === 1 ? "" : "s"}</strong>
+        <button class="secondary-button" onclick="window.downloadAlertsReportPDF()" style="margin-left: auto;">${uiIcon("download", 16)} Alerts PDF</button>
       </div>
-      
+
       <div class="transaction-filter-bar" style="margin-bottom: 24px; display: flex; gap: 12px; align-items: center; flex-wrap: wrap;">
-        <input type="text" class="input-field search-input" placeholder="Search alerts..." 
+        <input type="text" class="input-field search-input" placeholder="Search alerts..."
                value="${escapeHtml(filter.search)}" 
                oninput="window.updateAlertFilter('search', this.value)" 
                style="flex: 1; min-width: 200px;">

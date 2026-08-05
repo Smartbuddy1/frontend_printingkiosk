@@ -27,7 +27,6 @@ const PRINTER_STATUS_TIMEOUT_MS = 15000;
 const PRINTER_STATUS_POLL_MS = 15000;
 const PAYMENT_STATUS_POLL_MS = 1000;
 const MAX_FILES_PER_JOB = 10;
-const RECEIPT_REDIRECT_SECONDS = 20;
 const CUSTOMER_INACTIVITY_TIMEOUTS = Object.freeze({
   uploadQr: 3 * 60 * 1000,
   governmentFormsList: 90 * 1000,
@@ -68,6 +67,8 @@ let lastCustomerRenderedStep = null;
 let lastPrinterHealthSyncAt = 0;
 let lastPrinterHealthSyncSignature = "";
 let printerStatusRefreshInFlight = false;
+const pdfPreviewRenderCache = new Map();
+const PDF_PREVIEW_CACHE_LIMIT = 12;
 
 const ADMIN_TRANSLATION_ROWS = [
   ["Language", "लैंग्वेज", "लैंग्वेज"],
@@ -1777,8 +1778,6 @@ const state = {
   lastAlertedPrinterIssue: null,
   activeJobId: null,
   lastCompletedJob: null,
-  receiptRedirectTimer: null,
-  receiptSecondsLeft: RECEIPT_REDIRECT_SECONDS,
   thankYouPhase: "payment_done",
   jobs: [...initialJobs],
   adminData: {
@@ -3331,7 +3330,7 @@ function activePreviewFile() {
 }
 
 function colorSelectionAvailable(file = activePreviewFile()) {
-  return Boolean(file && !file.templateId
+  return Boolean(file
     && customerSettingEnabled("bw")
     && customerSettingEnabled("color"));
 }
@@ -3612,10 +3611,11 @@ function customerPrinterBlockIssue({ includeAgentFallback = false } = {}) {
 }
 
 function printerReadyForCustomerFlow() {
-  // Only block on HARD errors (paper jam, no paper, door open, toner empty)
-  // Do NOT block just because the printer shows offline - the auto-fix will clear it
+  // Block on the printer being offline, and on HARD errors (paper jam, no paper,
+  // door open, toner empty) — the customer only ever sees a generic "Offline" state.
   const h = state.printerHealth || {};
   if (!h.available) return true; // No health data yet - allow flow
+  if (!h.online || h.workOffline) return false;
   if (h.paperJam) return false;
   if (h.paper === false) return false;
   if (h.doorOpen) return false;
@@ -3627,11 +3627,12 @@ function printerReadyForCustomerFlow() {
 function customerKioskBlockStatus() {
   const h = state.printerHealth || {};
   if (!h.available) return null;
-  if (h.paperJam) return printerIssueStatus("paper-jam", "Paper jam detected", "Paper jam detected. Please contact staff.");
-  if (h.paper === false) return printerIssueStatus("paper-empty", "Printer out of paper", "Printer is out of paper. Please contact staff.");
-  if (h.doorOpen) return printerIssueStatus("door-open", "Printer door open", "Printer door or tray is open. Please contact staff.");
-  if (h.tonerEmpty) return printerIssueStatus("toner-empty", "Printer toner empty", "Printer toner needs replacement. Please contact staff.");
-  if (h.outputBinFull) return printerIssueStatus("output-full", "Output tray full", "Printer output tray is full. Please contact staff.");
+  if (!h.online || h.workOffline) return printerIssueStatus("offline", "Offline", "Printer is offline. Please contact staff.");
+  if (h.paperJam) return printerIssueStatus("paper-jam", "Offline", "Printer is offline. Please contact staff.");
+  if (h.paper === false) return printerIssueStatus("paper-empty", "Offline", "Printer is offline. Please contact staff.");
+  if (h.doorOpen) return printerIssueStatus("door-open", "Offline", "Printer is offline. Please contact staff.");
+  if (h.tonerEmpty) return printerIssueStatus("toner-empty", "Offline", "Printer is offline. Please contact staff.");
+  if (h.outputBinFull) return printerIssueStatus("output-full", "Offline", "Printer is offline. Please contact staff.");
   return null;
 }
 
@@ -3647,10 +3648,8 @@ function userFacingConnectionMessage(message, fallback) {
   return customerSafePrinterMessage(text, fallback);
 }
 
-function customerSafePrinterMessage(message, fallback = "Printer is not ready. Please contact staff.") {
-  const text = String(message || "").trim();
-  const normalized = text.toLowerCase();
-  if (!text) return fallback;
+function customerSafePrinterMessage(message, fallback = "Printer is offline. Please contact staff.") {
+  return fallback;
 
   if (normalized.includes("paper jam") || normalized.includes("jam detected")) {
     return "Paper jam detected. Please contact staff.";
@@ -4319,6 +4318,8 @@ async function refreshPrinterStatus({ rerender = true, showChecking = true, mark
     return state.printer;
   }
 
+  const previousPrinterStateJSON = JSON.stringify(state.printer);
+
   printerStatusRefreshInFlight = true;
 
   if (DEMO_KIOSK_MODE && state.mode === "customer") {
@@ -4436,7 +4437,7 @@ async function refreshPrinterStatus({ rerender = true, showChecking = true, mark
 
   handleCustomerPrinterStateAfterRefresh();
 
-  if (rerender) {
+  if (rerender && JSON.stringify(state.printer) !== previousPrinterStateJSON) {
     render();
   }
 
@@ -4675,8 +4676,13 @@ function startPrinterStatusPolling() {
 
   state.printerPoller = setInterval(() => {
     if (state.mode === "customer") {
+      // Steps 2 (document preview) and 4+ (thank-you/receipt) don't show printer
+      // status, but a full render() there tears down and rebuilds the whole
+      // screen every cycle — restarting PDF previews, checkmark/countdown
+      // animations, etc. Keep the background status refresh, skip the rerender.
+      const showsPrinterStatus = state.step !== 2 && state.step < 4;
       refreshPrinterStatus({
-        rerender: true,
+        rerender: showsPrinterStatus,
         showChecking: false,
         markOfflineOnError: false
       });
@@ -5254,7 +5260,6 @@ async function startLocalPrintJob() {
     state.thankYouPhase = "thankyou";
     state.step = 4;
     render();
-    startReceiptRedirect();
     return;
   }
 
@@ -5405,7 +5410,6 @@ async function startLocalPrintJob() {
     state.thankYouPhase = "thankyou";
     state.step = 4;
     render();
-    startReceiptRedirect();
   } catch (error) {
     if (state.activeJobId !== baseJobId) return;
 
@@ -5477,7 +5481,6 @@ function goToNextStep() {
 }
 
 function openAdmin(page = "dashboard") {
-  stopReceiptRedirect();
   stopCustomerInactivityTimer();
   stopPrinterStatusPolling();
   state.mode = "admin";
@@ -5770,12 +5773,10 @@ function renderNmcKioskStatus(additionalClass = "") {
 function renderCustomerPrinterStatusBadge() {
   const issue = customerPrinterBlockIssue() || state.customerPrinterNotice;
   const isBlocked = Boolean(issue);
-  let text = state.printerHealth?.errorMessage || issue?.title || (isBlocked ? "Printer Offline" : "Online");
-  // Prevent blinking by ignoring the temporary "Checking Printer" state
-  if (text.toLowerCase() === "checking printer" || text === "Printer Online") {
-    text = "Online";
-  }
-  const hasError = text !== "Online";
+  // Never surface raw hardware detail (paper jam, door open, toner empty, ...) to the
+  // customer — keep the public badge generic and send staff to the admin panel for detail.
+  const text = issue?.tone === "checking" ? "Checking printer..." : (isBlocked ? "Offline" : "Online");
+  const hasError = isBlocked || Boolean(state.printerHealth?.errorMessage);
   const icon = hasError ? uiIcon("alert-circle", 18) : uiIcon("check-circle", 18);
   const colorClass = hasError ? "status-offline" : "status-online";
 
@@ -5904,7 +5905,6 @@ function renderFooterHelpCall() {
         <small>Need Help? Call Us</small>
         <strong>+91 9359604384</strong>
       </span>
-      <span class="kiosk-footer-help-note">(Toll Free)</span>
     </div>
   `;
 }
@@ -6820,16 +6820,11 @@ function renderPreviewDocumentPanel(previewClass, paperClass, file, files = jobF
           <button type="button" data-action="fit-preview" aria-label="Fit to page">${uiIcon("refresh", 15)}</button>
         </div>
 
-        <div class="document-preview ${previewClass} ${paperClass}" data-orientation="${escapeHtml(normalizeOrientation(state.settings.orientation))}" style="--preview-zoom: ${state.previewZoom};">
+        <div class="document-preview ${previewClass} ${hasMultipleFiles ? '' : paperClass}" data-orientation="${escapeHtml(normalizeOrientation(state.settings.orientation))}" style="--preview-zoom: ${state.previewZoom}; ${hasMultipleFiles ? 'aspect-ratio: unset; width: 100%; height: 100%; max-width: 100%; max-height: 100%; min-height: 0; flex: 1; overflow: auto;' : 'height: 100%; min-height: 60vh; flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center; overflow: hidden;'}">
           ${hasMultipleFiles ? renderMultiDocumentPreview(files, paperClass) : renderPreviewContent(file, { pageNumber: currentPreviewPage })}
         </div>
 
-        ${hasMultipleFiles ? `
-          <div class="preview-page-nav preview-job-count" aria-label="Uploaded documents summary">
-            <strong>${files.length}</strong>
-            <span>documents / ${pages} pages</span>
-          </div>
-        ` : `
+        ${hasMultipleFiles ? `` : `
           <div class="preview-page-nav" aria-label="Page navigation">
           <button type="button" data-action="prev-preview-page" aria-label="Previous page" ${currentPreviewPage <= 1 ? "disabled" : ""}>&lsaquo;</button>
           <strong>${currentPreviewPage}</strong>
@@ -6873,25 +6868,6 @@ function renderPreviewControlPanel(details, files) {
       <section class="preview-side-card preview-document-info-card">
         <h2>${uiIcon("pages", 16)} Details</h2>
         <div class="preview-info-list">
-          <div>
-            <span>${hasMultipleFiles ? "Documents" : "Document"}</span>
-            <strong>${escapeHtml(documentName)}</strong>
-          </div>
-          <div>
-            <span>Pages</span>
-            <strong>${details.pages}</strong>
-          </div>
-        </div>
-        ${hasMultipleFiles ? `
-          <div class="preview-uploaded-list" aria-label="Uploaded document list">
-            ${files.map((item, index) => `
-              <div class="preview-uploaded-row">
-                <span>${index + 1}</span>
-                <em>${Math.max(1, Number(item.pages) || 1)} page${Math.max(1, Number(item.pages) || 1) === 1 ? "" : "s"}</em>
-              </div>
-            `).join("")}
-          </div>
-        ` : ""}
       </section>
 
       <section class="preview-side-card preview-settings-card">
@@ -6993,18 +6969,43 @@ function renderPreviewContent(file = activePreviewFile(), options = {}) {
   }
 
   if (file.previewKind === "image" && file.previewUrl) {
-    return `<img src="${escapeHtml(file.previewUrl)}" class="preview-media" style="max-width: 100%; max-height: 100%; object-fit: contain;" />`;
+    return `<img src="${escapeHtml(file.previewUrl)}" class="preview-media" style="width: 100%; height: 100%; max-width: 100%; max-height: 100%; object-fit: contain; display: block; flex: 1;" />`;
   }
   return renderPreviewFallback("Preview unavailable", "This file type cannot be previewed.");
 }
 
+function pdfPreviewCacheKey(fileKey, pageNumber, previewZoom, requestedOrientation) {
+  const deviceScale = Math.round(Math.max(1, window.devicePixelRatio || 1) * 100);
+  const viewportSize = `${window.innerWidth || 0}x${window.innerHeight || 0}`;
+  return `${fileKey}|p${pageNumber}|z${Math.round(previewZoom * 100)}|${requestedOrientation}|${deviceScale}|${viewportSize}`;
+}
+
 function renderPdfPreview(file, { orientation = "portrait", pageNumber = 1, zoom = 1 } = {}) {
-  const shellId = "pdf-shell-" + Math.random().toString(36).slice(2, 11);
-  const statusText = "Loading PDF preview...";
+  // Use a STABLE ID based on file identity so re-renders don't restart PDF.js
+  const fileKey = String(file?.previewUrl || file?.name || "").replace(/[^a-zA-Z0-9]/g, "").slice(-18) || "nokey";
+  const shellId = "pdf-shell-" + fileKey + "-p" + pageNumber;
   const requestedOrientation = normalizeOrientation(orientation);
   const previewZoom = Math.max(0.6, Math.min(2, Number(zoom) || 1));
+  const cacheKey = pdfPreviewCacheKey(fileKey, pageNumber, previewZoom, requestedOrientation);
+  const cached = pdfPreviewRenderCache.get(cacheKey);
+
+  // Repeat renders of an already-rendered page (e.g. triggered by unrelated polling)
+  // reuse the cached bitmap instead of re-decoding and re-rendering the PDF.
+  if (cached) {
+    return `
+      <div id="${shellId}" class="pdf-preview-shell is-ready" data-no-visual-search data-page-count="${cached.pageCount}">
+        <div class="pdf-preview-page">
+          <img class="pdf-preview-canvas" src="${cached.dataUrl}" width="${cached.cssWidth}" height="${cached.cssHeight}" alt="" />
+        </div>
+      </div>
+    `;
+  }
 
   setTimeout(() => {
+    const existing = document.getElementById(shellId);
+    // Skip re-render if already fully rendered — avoids flicker on every render() call
+    if (existing && existing.classList.contains("is-ready")) return;
+
     import("./assets/vendor/pdfjs/pdf.min.mjs").then(async (pdfjsLib) => {
       pdfjsLib.GlobalWorkerOptions.workerSrc = "./assets/vendor/pdfjs/pdf.worker.min.mjs";
       const pdf = await pdfjsLib.getDocument({ url: file.previewUrl, enableXfa: true }).promise;
@@ -7050,9 +7051,29 @@ function renderPdfPreview(file, { orientation = "portrait", pageNumber = 1, zoom
       if (!context) return;
       canvas.width = viewport.width;
       canvas.height = viewport.height;
-      canvas.style.width = `${Math.round(viewport.width / deviceScale)}px`;
-      canvas.style.height = `${Math.round(viewport.height / deviceScale)}px`;
+      const cssWidth = Math.round(viewport.width / deviceScale);
+      const cssHeight = Math.round(viewport.height / deviceScale);
+      // No inline pixel width/height here on purpose: CSS (object-fit: contain,
+      // or width:100%/height:auto for the single-doc view) must control the
+      // displayed size so the canvas actually fills its box — an inline pixel
+      // size baked in from this one-time bounding-rect measurement would win
+      // over CSS and leave the canvas the wrong size if its box is later a
+      // different shape (e.g. the 2x2 multi-document grid).
       await page.render({ canvasContext: context, viewport }).promise;
+
+      try {
+        if (pdfPreviewRenderCache.size >= PDF_PREVIEW_CACHE_LIMIT) {
+          pdfPreviewRenderCache.delete(pdfPreviewRenderCache.keys().next().value);
+        }
+        pdfPreviewRenderCache.set(cacheKey, {
+          dataUrl: canvas.toDataURL("image/png"),
+          cssWidth,
+          cssHeight,
+          pageCount: totalPages
+        });
+      } catch (cacheError) {
+        // Cross-origin canvas or storage failure — skip caching, rendering already succeeded.
+      }
     }).catch((error) => {
       console.error("PDF preview error:", error);
       const shell = document.getElementById(shellId);
@@ -7065,35 +7086,68 @@ function renderPdfPreview(file, { orientation = "portrait", pageNumber = 1, zoom
 
   return `
     <div id="${shellId}" class="pdf-preview-shell" data-no-visual-search>
-      <div class="pdf-preview-status">${statusText}</div>
+      <div class="pdf-preview-status">Loading PDF preview...</div>
     </div>
   `;
 }
+
 
 function renderMultiDocumentPreview(files, paperClass) {
+  state.multiPreviewPage = state.multiPreviewPage || 1;
+  const PAGE_SIZE = 4;
+  const totalPages = Math.ceil(files.length / PAGE_SIZE);
+
+  if (state.multiPreviewPage > totalPages && totalPages > 0) {
+    state.multiPreviewPage = totalPages;
+  }
+  if (state.multiPreviewPage < 1) {
+    state.multiPreviewPage = 1;
+  }
+
+  const startIndex = (state.multiPreviewPage - 1) * PAGE_SIZE;
+  const visibleFiles = files.slice(startIndex, startIndex + PAGE_SIZE);
+
+  let gridStyle = "";
+  let itemHeight = "100%";
+  if (visibleFiles.length === 1) {
+    gridStyle = "grid-template-columns: 1fr; grid-template-rows: 1fr;";
+  } else {
+    // Always lay out as a fixed 2x2 grid (even with only 2 files) so items
+    // sit in their own half-height cell instead of stretching to fill the
+    // full container height with no gap below them.
+    gridStyle = "grid-template-columns: repeat(2, 1fr); grid-template-rows: repeat(2, 1fr);";
+  }
+
+  let paginationHtml = "";
+  if (totalPages > 1) {
+    paginationHtml = `
+      <div class="multi-preview-pagination" style="display: flex; justify-content: center; align-items: center; gap: 15px; margin-top: 20px;">
+        <button type="button" class="btn btn-secondary" data-action="multi-preview-prev" ${state.multiPreviewPage === 1 ? 'disabled' : ''} style="padding: 10px 20px; border-radius: 8px; font-weight: bold; background: #e2e8f0; border: none; cursor: pointer; color: #1e293b;">&larr; Previous</button>
+        <span style="font-weight: bold; font-size: 16px; color: #334155;">Page ${state.multiPreviewPage} of ${totalPages}</span>
+        <button type="button" class="btn btn-primary" data-action="multi-preview-next" ${state.multiPreviewPage === totalPages ? 'disabled' : ''} style="padding: 10px 20px; border-radius: 8px; font-weight: bold; background: #2563eb; border: none; cursor: pointer; color: white;">Next &rarr;</button>
+      </div>
+    `;
+  }
+
   return `
-    <div class="multi-preview-stack" aria-label="All uploaded documents">
-      ${files.map((file, index) => renderMultiDocumentPreviewItem(file, index, paperClass)).join("")}
+    <div style="display: flex; flex-direction: column; height: 100%; width: 100%;">
+      <div class="multi-preview-stack" aria-label="All uploaded documents" style="display: grid; ${gridStyle} gap: 16px; width: 100%; height: 100%; overflow: hidden;">
+        ${visibleFiles.map((file, i) => renderMultiDocumentPreviewItem(file, startIndex + i, paperClass, itemHeight)).join("")}
+      </div>
+      ${paginationHtml}
     </div>
   `;
 }
 
-function renderMultiDocumentPreviewItem(file, index, paperClass) {
+function renderMultiDocumentPreviewItem(file, index, paperClass, itemHeight = "100%") {
   const pages = Math.max(1, Number(file?.pages) || 1);
   const title = file?.source || file?.name || `Document ${index + 1}`;
   return `
-    <article class="multi-preview-item ${index === state.previewFileIndex ? "is-active" : ""}">
-      <header>
-        <strong>Document ${index + 1}</strong>
-        <span>${pages} page${pages === 1 ? "" : "s"}</span>
-      </header>
-      <div class="multi-preview-paper ${paperClass}">
+    <article class="multi-preview-item ${index === state.previewFileIndex ? "is-active" : ""}" style="position: relative; height: ${itemHeight}; margin: 0; overflow: hidden; background: transparent; border: 2px solid #dde5f0; border-radius: 16px; padding: 0;">
+      <button class="remove-document-btn" data-action="remove-document" data-index="${index}" aria-label="Remove document" style="position: absolute; top: 8px; right: 8px; z-index: 50; background: white; border: 2px solid #e2e8f0; border-radius: 50%; width: 32px; height: 32px; cursor: pointer; display: flex; align-items: center; justify-content: center; box-shadow: 0 4px 6px rgba(0,0,0,0.15); color: #ef4444; font-weight: bold; font-size: 16px; padding: 0; line-height: 1;">&#10005;</button>
+      <div class="multi-preview-paper" style="height: 100%; width: 100%; border: none; overflow: hidden; display: flex; align-items: center; justify-content: center; background: transparent;">
         ${renderPreviewContent(file, { pageNumber: 1 })}
       </div>
-      <footer>
-        <strong>${escapeHtml(title)}</strong>
-        <span>${escapeHtml(file?.type || "FILE")}</span>
-      </footer>
     </article>
   `;
 }
@@ -7364,6 +7418,12 @@ function initPrinterHealthIpc() {
       state.customerPrinterNotice = null;
       state.lastAlertedPrinterIssue = null;
     }
+
+    // This fires roughly every 2s from Electron's IPC health monitor — far more
+    // often than the page needs a full teardown/rebuild. Steps 2 (preview) and
+    // 4+ (thank-you) don't show printer status, so skip the rerender there to
+    // avoid restarting animations/previews on a loop.
+    if (state.mode === "customer" && (state.step === 2 || state.step >= 4)) return;
 
     render();
   });
@@ -7773,23 +7833,11 @@ function renderThankYouFinal() {
   return `
     <div class="tq-phase tq-phase-in">
       <div class="tq-mascot-area">
-        <img src="./assets/smartbuddy-last-step.jpeg" alt="SmartBuddy" class="tq-mascot" draggable="false" data-no-visual-search />
+        <img src="./assets/smartbuddy-last-step.png" alt="SmartBuddy" class="tq-mascot" draggable="false" data-no-visual-search />
       </div>
       <div class="tq-message">
         <h1 class="tq-title tq-title-gradient">Thank You!</h1>
         <p class="tq-subtitle">Your document has been printed successfully.<br>We hope to see you again!</p>
-      </div>
-      <div class="tq-redirect">
-        <div class="tq-redirect-ring">
-          <svg viewBox="0 0 36 36" class="tq-countdown-ring">
-            <circle cx="18" cy="18" r="15" fill="none" stroke="rgba(255,255,255,0.15)" stroke-width="2.5"/>
-            <circle id="tq-countdown-circle" cx="18" cy="18" r="15" fill="none" stroke="#22c55e" stroke-width="2.5"
-              stroke-dasharray="94.25" stroke-dashoffset="0"
-              stroke-linecap="round" transform="rotate(-90 18 18)"/>
-            <text id="tq-seconds-left" x="18" y="23" text-anchor="middle" font-size="10" font-weight="700" fill="#ffffff">${state.receiptSecondsLeft}</text>
-          </svg>
-        </div>
-        <p class="tq-redirect-text">Returning home in <strong id="tq-seconds-left-text">${state.receiptSecondsLeft}</strong>s</p>
       </div>
       <button class="tq-home-btn" data-action="finish-session">
         <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/></svg>
@@ -8031,12 +8079,27 @@ function liveJobs() {
 }
 
 function kioskPrinterHealthAlerts(kiosk = {}) {
+  const kioskId = kiosk.kioskId || "Kiosk";
+
+  // Kiosk itself is offline/turned off — show that clearly instead of stale
+  // printer-hardware readings, which stop updating the moment the machine
+  // disconnects. This stays active until the kiosk reports back online.
+  if (kiosk.status === "offline") {
+    return [{
+      title: `${kioskId} - Kiosk Offline`,
+      detail: `This kiosk is offline or turned off.${kiosk.lastOnline ? ` Last seen: ${formatDateTime(kiosk.lastOnline)}.` : ""}`,
+      tone: "bad",
+      source: "kiosk",
+      category: "network",
+      kioskId,
+      lastUpdated: kiosk.lastOnline || ""
+    }];
+  }
+
   const printerHealth = kiosk.printerHealth && typeof kiosk.printerHealth === "object"
     ? kiosk.printerHealth
     : null;
   if (!printerHealth) return [];
-
-  const kioskId = kiosk.kioskId || "Kiosk";
   const printerName = printerHealth.printerName || kiosk.printer || "Printer";
   const paperStatus = String(printerHealth.paperStatus || "").toLowerCase();
   const tonerStatus = String(printerHealth.tonerStatus || "").toLowerCase();
@@ -8093,25 +8156,61 @@ window.updateAlertFilter = (field, value) => {
   renderAdminApp();
 };
 
-function renderAdminAlertLogsTable() {
+function filteredAlertLogs() {
   const allLogs = state.adminData.alertLogs || [];
   const filter = state.alertFilter || { search: "", category: "all", status: "all", kioskId: "all" };
-  
+
   const searchLower = filter.search.toLowerCase();
-  
-  const filtered = allLogs.filter(log => {
+
+  return allLogs.filter(log => {
     if (filter.category !== "all" && log.category !== filter.category) return false;
     if (filter.status !== "all" && log.status !== filter.status) return false;
     if (filter.kioskId !== "all" && log.kioskId !== filter.kioskId) return false;
     if (searchLower) {
-      if (!log.title?.toLowerCase().includes(searchLower) && 
-          !log.detail?.toLowerCase().includes(searchLower) && 
+      if (!log.title?.toLowerCase().includes(searchLower) &&
+          !log.detail?.toLowerCase().includes(searchLower) &&
           !log.kioskId?.toLowerCase().includes(searchLower)) {
         return false;
       }
     }
     return true;
   }).sort((a, b) => (new Date(b.createdAt).getTime() || 0) - (new Date(a.createdAt).getTime() || 0));
+}
+
+window.downloadAlertsReportPDF = function() {
+  const { jsPDF } = window.jspdf;
+  const doc = new jsPDF();
+  const filtered = filteredAlertLogs();
+
+  doc.setFontSize(18);
+  doc.text("Alert History Report", 14, 22);
+  doc.setFontSize(11);
+  doc.text(`Generated: ${formatDateTime(new Date().toISOString())}`, 14, 30);
+
+  const tableData = filtered.map(log => [
+    formatDateTime(log.createdAt),
+    log.kioskId || "Unknown",
+    log.category || "-",
+    log.title || "-",
+    log.detail || "-",
+    log.status === "resolved" ? "Resolved" : "Active"
+  ]);
+
+  doc.autoTable({
+    startY: 36,
+    head: [['Date', 'Kiosk', 'Category', 'Title', 'Details', 'Status']],
+    body: tableData,
+    theme: 'grid',
+    styles: { fontSize: 8 }
+  });
+
+  doc.save(`Alert_History_Report_${new Date().toISOString().split("T")[0]}.pdf`);
+};
+
+function renderAdminAlertLogsTable() {
+  const allLogs = state.adminData.alertLogs || [];
+  const filter = state.alertFilter || { search: "", category: "all", status: "all", kioskId: "all" };
+  const filtered = filteredAlertLogs();
 
   const rows = filtered.map(log => {
     const tone = log.tone === 'good' ? 'good' : log.status === 'resolved' ? 'good' : (log.tone || 'warn');
@@ -8134,10 +8233,11 @@ function renderAdminAlertLogsTable() {
         <span>${uiIcon("history", 20)}</span>
         <h2>Alert History</h2>
         <strong>${escapeHtml(String(filtered.length))} record${filtered.length === 1 ? "" : "s"}</strong>
+        <button class="secondary-button" onclick="window.downloadAlertsReportPDF()" style="margin-left: auto;">${uiIcon("download", 16)} Alerts PDF</button>
       </div>
-      
+
       <div class="transaction-filter-bar" style="margin-bottom: 24px; display: flex; gap: 12px; align-items: center; flex-wrap: wrap;">
-        <input type="text" class="input-field search-input" placeholder="Search alerts..." 
+        <input type="text" class="input-field search-input" placeholder="Search alerts..."
                value="${escapeHtml(filter.search)}" 
                oninput="window.updateAlertFilter('search', this.value)" 
                style="flex: 1; min-width: 200px;">
@@ -8808,41 +8908,39 @@ window.downloadRevenueReportPDF = function() {
 window.downloadFormPrintReportPDF = function() {
   const { jsPDF } = window.jspdf;
   const doc = new jsPDF();
-  const stats = state.adminData.dailyStats || [];
-  
-  const startObj = new Date(state.revenueFilter.start);
-  startObj.setHours(0,0,0,0);
-  const endObj = new Date(state.revenueFilter.end);
-  endObj.setHours(23,59,59,999);
-  
-  const filteredStats = stats.filter(stat => {
-    if (!stat.date) return false;
-    const statDate = new Date(stat.date.split("T")[0]);
-    return statDate >= startObj && statDate <= endObj;
-  });
+  const tableData = calculateFormSellingReport().map(row => [
+    row.kioskId,
+    row.templateName,
+    row.printCount,
+    money(row.revenue)
+  ]);
 
   doc.setFontSize(18);
   doc.text("Form Print Data (Kiosk-wise)", 14, 22);
   doc.setFontSize(11);
   doc.text(`Date Range: ${state.revenueFilter.start} to ${state.revenueFilter.end}`, 14, 30);
-  
-  const tableData = filteredStats.map(stat => [
-    stat.date ? stat.date.split("T")[0] : "",
-    stat.kioskId || "Unknown",
-    stat.prints || stat.successPrints || 0,
-    stat.revenue ? money(stat.revenue) : "0"
-  ]);
 
   doc.autoTable({
     startY: 36,
-    head: [['Date', 'Kiosk ID', 'Prints', 'Revenue']],
+    head: [['Kiosk ID', 'Form', 'Prints', 'Revenue']],
     body: tableData,
     theme: 'grid',
     styles: { fontSize: 9 }
   });
-  
+
   doc.save(`Form_Print_Report_${state.revenueFilter.start}_to_${state.revenueFilter.end}.pdf`);
 };
+
+function getTemplateName(templateId) {
+  if (!templateId) return "Unknown Form";
+  for (const service of services || []) {
+    if (service.templates) {
+      const template = service.templates.find((t) => t.id === templateId);
+      if (template) return template.title || template.id;
+    }
+  }
+  return templateId;
+}
 
 function calculateFormSellingReport() {
   const startObj = new Date(state.revenueFilter.start);
@@ -8851,30 +8949,32 @@ function calculateFormSellingReport() {
   endObj.setHours(23, 59, 59, 999);
 
   const report = {};
-  const stats = state.adminData.dailyStats || [];
+  const jobs = state.adminData.jobs || [];
 
-  stats.forEach(stat => {
-    if (!stat.date) return;
-    const statDate = new Date(stat.date.split("T")[0]);
-    if (statDate < startObj || statDate > endObj) return;
+  jobs.forEach(job => {
+    if (!job.createdAt) return;
+    const jobDate = new Date(job.createdAt);
+    if (jobDate < startObj || jobDate > endObj) return;
 
-    const templateId = stat.templateId;
+    if (String(job.printStatus || "").toLowerCase() !== "completed") return;
+
+    const templateId = job.templateId;
     if (!templateId || templateId === "Unknown") return;
 
-    const kioskId = stat.kioskId || "UNASSIGNED";
+    const kioskId = job.kioskId || "UNASSIGNED";
     const key = `${kioskId}_${templateId}`;
     if (!report[key]) {
       report[key] = {
         kioskId,
         templateId,
-        templateName: templateId, 
+        templateName: getTemplateName(templateId) || job.fileName || templateId,
         printCount: 0,
         revenue: 0
       };
     }
 
-    report[key].printCount += (stat.prints || stat.successPrints || 0);
-    report[key].revenue += (stat.revenue || 0);
+    report[key].printCount += (job.copies || 1);
+    report[key].revenue += (job.amount || 0);
   });
 
   return Object.values(report).sort((a, b) => b.printCount - a.printCount);
@@ -10491,6 +10591,13 @@ async function handleClick(event) {
   }
 
   if (target.dataset.service) {
+    // The service card's wrapping <div> also carries data-service so the whole
+    // card is clickable, but only the inner <button> gets the HTML `disabled`
+    // attribute — gate here too so an offline printer can't be bypassed by
+    // clicking the card body instead of the button.
+    if (!printerReadyForCustomerFlow()) {
+      return;
+    }
     state.selectedService = target.dataset.service;
     state.templateSearchQuery = "";
     state.templateSearchKeyboardActive = false;
@@ -10744,6 +10851,16 @@ async function handleClick(event) {
   }
 
   switch (target.dataset.action) {
+    case "multi-preview-prev":
+      if (state.multiPreviewPage > 1) {
+        state.multiPreviewPage--;
+        render();
+      }
+      break;
+    case "multi-preview-next":
+      state.multiPreviewPage = (state.multiPreviewPage || 1) + 1;
+      render();
+      break;
     case "open-privacy-policy":
       setPrivacyPolicyVisible(true);
       render();
@@ -10866,6 +10983,33 @@ async function handleClick(event) {
       const pages = Math.max(1, Number(activePreviewFile()?.pages) || 1);
       state.previewPage = Math.min(pages, Number(state.previewPage || 1) + 1);
       render();
+      break;
+    }
+    case "remove-document": {
+      const index = parseInt(target.dataset.index, 10);
+      const files = state.files || (state.file ? [state.file] : []);
+      if (!isNaN(index) && index >= 0 && index < files.length) {
+        files.splice(index, 1);
+        if (files.length === 0) {
+          clearCurrentFile();
+          state.step = 1;
+          if (!isFormTemplateService()) {
+            startMobileUploadSession();
+          }
+        } else {
+          state.files = files;
+          state.file = files[0] || null;
+          const PAGE_SIZE = 4;
+          const totalPages = Math.ceil(files.length / PAGE_SIZE);
+          if (state.multiPreviewPage > totalPages) {
+            state.multiPreviewPage = totalPages || 1;
+          }
+          if (state.previewFileIndex >= files.length) {
+            state.previewFileIndex = Math.max(0, files.length - 1);
+          }
+        }
+        render();
+      }
       break;
     }
     case "delete-file":
@@ -11227,35 +11371,6 @@ function handleInput(event) {
   }
 }
 
-function stopReceiptRedirect() {
-  if (state.receiptRedirectTimer) {
-    clearInterval(state.receiptRedirectTimer);
-    state.receiptRedirectTimer = null;
-  }
-}
-
-function startReceiptRedirect() {
-  if (state.receiptRedirectTimer) return;
-
-  state.thankYouPhase = "thankyou";
-  state.receiptSecondsLeft = RECEIPT_REDIRECT_SECONDS;
-
-  state.receiptRedirectTimer = setInterval(() => {
-    state.receiptSecondsLeft -= 1;
-
-    const secEl = document.getElementById("tq-seconds-left");
-    const secEl2 = document.getElementById("tq-seconds-left-text");
-    if (secEl) secEl.textContent = state.receiptSecondsLeft;
-    if (secEl2) secEl2.textContent = state.receiptSecondsLeft;
-
-    if (state.receiptSecondsLeft <= 0) {
-      stopReceiptRedirect();
-      resetCustomer();
-      render();
-      refreshPrinterStatus();
-    }
-  }, 1000);
-}
 function addJob(printStatus, failureReason = state.printError) {
   const service = selectedService();
   const details = priceDetails();
@@ -11290,7 +11405,6 @@ function addJob(printStatus, failureReason = state.printError) {
 function resetCustomer() {
   stopUploadPolling();
   stopPaymentPolling();
-  stopReceiptRedirect();
   stopCustomerInactivityTimer();
   state.mode = "customer";
   setPrivacyPolicyVisible(false);
@@ -11328,7 +11442,6 @@ function resetCustomer() {
   state.lastAlertedPrinterIssue = null;
   state.activeJobId = null;
   state.lastCompletedJob = null;
-  state.receiptSecondsLeft = RECEIPT_REDIRECT_SECONDS;
   state.thankYouPhase = "payment_done";
   state.printer = {
     ...state.printer,
@@ -11350,7 +11463,6 @@ function resetCustomer() {
 
 if (TEST_HOOKS_ENABLED) {
   window.kioskTestOpenAdmin = function kioskTestOpenAdmin(page = "dashboard") {
-    stopReceiptRedirect();
     state.adminAuthed = true;
     state.adminToken = "ui-test-session";
     state.adminAccount = { name: "Client" };
@@ -11425,9 +11537,9 @@ if (TEST_HOOKS_ENABLED) {
   window.kioskTestCompletePrint = function kioskTestCompletePrint() {
     state.printProgress = 5;
     addJob("Completed");
+    state.thankYouPhase = "thankyou";
     state.step = 4;
     render();
-    startReceiptRedirect();
     return state.lastCompletedJob;
   };
 
