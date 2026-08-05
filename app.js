@@ -8080,11 +8080,54 @@ function liveJobs() {
 
 function kioskPrinterHealthAlerts(kiosk = {}) {
   const kioskId = kiosk.kioskId || "Kiosk";
+  const printerHealth = kiosk.printerHealth && typeof kiosk.printerHealth === "object"
+    ? kiosk.printerHealth
+    : null;
+  const alerts = [];
 
-  // Kiosk itself is offline/turned off — show that clearly instead of stale
-  // printer-hardware readings, which stop updating the moment the machine
-  // disconnects. This stays active until the kiosk reports back online.
-  if (kiosk.status === "offline") {
+  if (printerHealth) {
+    const printerName = printerHealth.printerName || kiosk.printer || "Printer";
+    const paperStatus = String(printerHealth.paperStatus || "").toLowerCase();
+    const tonerStatus = String(printerHealth.tonerStatus || "").toLowerCase();
+    const lastUpdated = printerHealth.lastUpdated ? ` Last updated: ${formatDateTime(printerHealth.lastUpdated)}.` : "";
+    const add = (category, title, detail, tone = "bad") => {
+      alerts.push({
+        title: `${kioskId} - ${title}`,
+        detail: `${printerName}: ${detail}.${lastUpdated}`,
+        tone,
+        source: "printer",
+        category,
+        kioskId,
+        lastUpdated: printerHealth.lastUpdated || kiosk.lastOnline || ""
+      });
+    };
+
+    const paperJam = Boolean(printerHealth.paperJam) || paperStatus.includes("jam");
+    const noPaper = printerHealth.paper === false || paperStatus.includes("no paper") || paperStatus.includes("out of paper") || paperStatus.includes("empty");
+    const paperLow = Boolean(printerHealth.paperLow) || paperStatus.includes("low");
+    const doorOpen = Boolean(printerHealth.doorOpen) || paperStatus.includes("door");
+    const tonerEmpty = Boolean(printerHealth.tonerEmpty) || tonerStatus.includes("no toner") || tonerStatus.includes("empty") || tonerStatus.includes("replace");
+    const tonerLow = Boolean(printerHealth.tonerLow) || tonerStatus.includes("low");
+    const queueError = Boolean(printerHealth.queueError);
+
+    if (paperJam) add("paper", "Paper jam detected", "clear the paper jam and close all trays");
+    else if (noPaper) add("paper", "Paper empty", "load paper in the tray");
+    else if (paperLow) add("paper", "Paper low", "refill paper soon", "warn");
+
+    if (doorOpen) add("paper", "Printer door open", "close the printer door or tray");
+    if (tonerEmpty) add("toner", "Toner empty", "replace the toner cartridge");
+    else if (tonerLow) add("toner", "Toner low", "keep a replacement toner ready", "warn");
+    if (printerHealth.outputBinFull) add("paper", "Output tray full", "remove printed pages from the output tray");
+    if (printerHealth.serviceRequested) add("service", "Printer service required", printerHealth.errorMessage || "service intervention required");
+    if (queueError) add("queue", "Print queue blocked", printerHealth.errorMessage || "clear the Windows print queue");
+  }
+
+  // Only fall back to the generic "Kiosk Offline" alert when there is no specific
+  // printer-hardware reading to report. Admins should always see the exact reading
+  // (door open, paper jam, ...) when it's known — never have it masked by network
+  // status. The generic message is reserved for when the kiosk PC itself can't be
+  // reached and there's nothing more specific to say.
+  if (alerts.length === 0 && kiosk.status === "offline") {
     return [{
       title: `${kioskId} - Kiosk Offline`,
       detail: `This kiosk is offline or turned off.${kiosk.lastOnline ? ` Last seen: ${formatDateTime(kiosk.lastOnline)}.` : ""}`,
@@ -8094,50 +8137,6 @@ function kioskPrinterHealthAlerts(kiosk = {}) {
       kioskId,
       lastUpdated: kiosk.lastOnline || ""
     }];
-  }
-
-  const printerHealth = kiosk.printerHealth && typeof kiosk.printerHealth === "object"
-    ? kiosk.printerHealth
-    : null;
-  if (!printerHealth) return [];
-  const printerName = printerHealth.printerName || kiosk.printer || "Printer";
-  const paperStatus = String(printerHealth.paperStatus || "").toLowerCase();
-  const tonerStatus = String(printerHealth.tonerStatus || "").toLowerCase();
-  const lastUpdated = printerHealth.lastUpdated ? ` Last updated: ${formatDateTime(printerHealth.lastUpdated)}.` : "";
-  const alerts = [];
-  const add = (category, title, detail, tone = "bad") => {
-    alerts.push({
-      title: `${kioskId} - ${title}`,
-      detail: `${printerName}: ${detail}.${lastUpdated}`,
-      tone,
-      source: "printer",
-      category,
-      kioskId,
-      lastUpdated: printerHealth.lastUpdated || kiosk.lastOnline || ""
-    });
-  };
-
-  const paperJam = Boolean(printerHealth.paperJam) || paperStatus.includes("jam");
-  const noPaper = printerHealth.paper === false || paperStatus.includes("no paper") || paperStatus.includes("out of paper") || paperStatus.includes("empty");
-  const paperLow = Boolean(printerHealth.paperLow) || paperStatus.includes("low");
-  const doorOpen = Boolean(printerHealth.doorOpen) || paperStatus.includes("door");
-  const tonerEmpty = Boolean(printerHealth.tonerEmpty) || tonerStatus.includes("no toner") || tonerStatus.includes("empty") || tonerStatus.includes("replace");
-  const tonerLow = Boolean(printerHealth.tonerLow) || tonerStatus.includes("low");
-  const queueError = Boolean(printerHealth.queueError);
-
-  if (paperJam) add("paper", "Paper jam detected", "clear the paper jam and close all trays");
-  else if (noPaper) add("paper", "Paper empty", "load paper in the tray");
-  else if (paperLow) add("paper", "Paper low", "refill paper soon", "warn");
-
-  if (doorOpen) add("paper", "Printer door open", "close the printer door or tray");
-  if (tonerEmpty) add("toner", "Toner empty", "replace the toner cartridge");
-  else if (tonerLow) add("toner", "Toner low", "keep a replacement toner ready", "warn");
-  if (printerHealth.outputBinFull) add("paper", "Output tray full", "remove printed pages from the output tray");
-  if (printerHealth.serviceRequested) add("service", "Printer service required", printerHealth.errorMessage || "service intervention required");
-  if (queueError) add("queue", "Print queue blocked", printerHealth.errorMessage || "clear the Windows print queue");
-
-  if (alerts.length === 0 && printerHealth.status === "offline" && printerHealth.errorMessage) {
-    add("queue", "Printer Offline", printerHealth.errorMessage);
   }
 
   return alerts;
