@@ -1750,6 +1750,17 @@ function renderRevenue() {
   `;
 }
 
+function roundedTopRectPath(x, y, w, h, r) {
+  if (h <= 0 || w <= 0) return "";
+  const radius = Math.min(r, w / 2, h);
+  return `M${x.toFixed(1)},${(y + radius).toFixed(1)} ` +
+    `Q${x.toFixed(1)},${y.toFixed(1)} ${(x + radius).toFixed(1)},${y.toFixed(1)} ` +
+    `L${(x + w - radius).toFixed(1)},${y.toFixed(1)} ` +
+    `Q${(x + w).toFixed(1)},${y.toFixed(1)} ${(x + w).toFixed(1)},${(y + radius).toFixed(1)} ` +
+    `L${(x + w).toFixed(1)},${(y + h).toFixed(1)} ` +
+    `L${x.toFixed(1)},${(y + h).toFixed(1)} Z`;
+}
+
 function renderRevenueLineChart(series = []) {
   const width = 920;
   const height = 290;
@@ -1758,20 +1769,17 @@ function renderRevenueLineChart(series = []) {
   const chartHeight = height - padding.top - padding.bottom;
   const maxValue = Math.max(1, ...series.map((item) => item.value));
   const yMax = Math.max(10, Math.ceil(maxValue / 10) * 10);
+  const bandWidth = series.length ? chartWidth / series.length : chartWidth;
+  const barWidth = Math.max(4, Math.min(24, bandWidth * 0.55));
+  const barRadius = Math.min(4, barWidth / 2);
 
-  const points = series.map((item, index) => {
-    const x = padding.left + (series.length <= 1 ? chartWidth : (index / (series.length - 1)) * chartWidth);
-    const y = padding.top + chartHeight - (item.value / yMax) * chartHeight;
-    return { ...item, x, y };
+  const bars = series.map((item, index) => {
+    const cx = padding.left + bandWidth * (index + 0.5);
+    const barHeight = (Math.max(0, item.value) / yMax) * chartHeight;
+    const y = padding.top + chartHeight - barHeight;
+    return { ...item, cx, x: cx - barWidth / 2, y, barHeight };
   });
 
-  const linePath = points.map((point, index) => {
-    if (index === 0) return `M ${point.x.toFixed(1)} ${point.y.toFixed(1)}`;
-    const prev = points[index - 1];
-    const cpX = (prev.x + point.x) / 2;
-    return `C ${cpX.toFixed(1)} ${prev.y.toFixed(1)}, ${cpX.toFixed(1)} ${point.y.toFixed(1)}, ${point.x.toFixed(1)} ${point.y.toFixed(1)}`;
-  }).join(" ");
-  const areaPath = `${linePath} L ${padding.left + chartWidth} ${padding.top + chartHeight} L ${padding.left} ${padding.top + chartHeight} Z`;
   const yTicks = [0, 0.25, 0.5, 0.75, 1].map((ratio) => {
     const value = Math.round(yMax * ratio);
     const y = padding.top + chartHeight - ratio * chartHeight;
@@ -1782,30 +1790,24 @@ function renderRevenueLineChart(series = []) {
     <style>
       .revenue-chart-wrap { position: relative; }
       .revenue-grid-bg { fill: url(#dotGrid); }
-      .chart-scrubber-group { opacity: 0; transition: opacity 0.2s ease; cursor: crosshair; }
-      .chart-scrubber-group:hover { opacity: 1; }
-      .hover-capture { fill: transparent; }
+      .revenue-bar { fill: #8b5cf6; transition: opacity 0.15s ease; }
+      .revenue-bar-group:hover .revenue-bar,
+      .revenue-bar-group:focus-visible .revenue-bar { opacity: 0.82; }
+      .revenue-bar-group .tooltip-box { opacity: 0; transition: opacity 0.15s ease; pointer-events: none; }
+      .revenue-bar-group:hover .tooltip-box,
+      .revenue-bar-group:focus-visible .tooltip-box { opacity: 1; }
+      .hover-capture { fill: transparent; cursor: pointer; }
+      .hover-capture:focus { outline: none; }
       .tooltip-box { filter: drop-shadow(0 4px 12px rgba(0,0,0,0.08)); }
     </style>
     <div class="revenue-chart-wrap dashboard-revenue-chart">
-      <svg class="revenue-line-chart" viewBox="0 0 ${width} ${height}" role="img" aria-label="Client revenue line graph">
+      <svg class="revenue-line-chart" viewBox="0 0 ${width} ${height}" role="img" aria-label="Client revenue bar graph">
         <defs>
           <pattern id="dotGrid" width="24" height="24" patternUnits="userSpaceOnUse">
             <circle cx="2" cy="2" r="1.5" fill="#e2e8f0" />
           </pattern>
-          <linearGradient id="dashboardRevenueArea" x1="0" x2="0" y1="0" y2="1">
-            <stop offset="0%" stop-color="#8b5cf6" stop-opacity="0.35" />
-            <stop offset="100%" stop-color="#8b5cf6" stop-opacity="0.01" />
-          </linearGradient>
-          <linearGradient id="scrubberGradient" x1="0" x2="0" y1="0" y2="1">
-            <stop offset="0%" stop-color="#8b5cf6" stop-opacity="0.6" />
-            <stop offset="100%" stop-color="#8b5cf6" stop-opacity="0.0" />
-          </linearGradient>
-          <filter id="dashboardRevenueShadow" x="-10%" y="-20%" width="120%" height="150%">
-            <feDropShadow dx="0" dy="6" stdDeviation="6" flood-color="#8b5cf6" flood-opacity="0.35" />
-          </filter>
         </defs>
-        
+
         <rect x="${padding.left}" y="${padding.top}" width="${chartWidth}" height="${chartHeight}" class="revenue-grid-bg" />
 
         <g class="revenue-grid">
@@ -1813,36 +1815,30 @@ function renderRevenueLineChart(series = []) {
             <text class="revenue-y-label" x="${padding.left - 14}" y="${(tick.y + 4).toFixed(1)}" text-anchor="end" fill="#94a3b8" font-size="11px" font-weight="500">${money(tick.value).replace("Rs. ", "")}</text>
           `).join("")}
         </g>
-        
-        <path class="revenue-area" d="${areaPath}" fill="url(#dashboardRevenueArea)" />
-        <path class="revenue-line" d="${linePath}" fill="none" stroke="#8b5cf6" stroke-width="3.5" stroke-linecap="round" stroke-linejoin="round" filter="url(#dashboardRevenueShadow)" />
-        
-        <g class="revenue-points">
-          ${points.map((point) => {
-    const captureWidth = chartWidth / Math.max(1, points.length - 1);
-    const tooltipX = point.x + 16 + 80 > width ? point.x - 94 : point.x + 12;
-    const tooltipY = Math.max(padding.top, point.y - 20);
+
+        <g class="revenue-bars">
+          ${bars.map((bar) => {
+    const tooltipX = Math.min(width - padding.right - 84, Math.max(padding.left, bar.cx - 42));
+    const tooltipY = Math.max(padding.top, bar.y - 50);
     return `
-            <g class="chart-scrubber-group">
-              <rect x="${point.x - captureWidth / 2}" y="${padding.top}" width="${captureWidth}" height="${chartHeight}" class="hover-capture" />
-              
-              <rect x="${point.x - 6}" y="${point.y + 4}" width="12" height="${Math.max(0, padding.top + chartHeight - point.y - 4)}" fill="url(#scrubberGradient)" rx="4" />
-              
-              <circle cx="${point.x.toFixed(1)}" cy="${point.y.toFixed(1)}" r="6" fill="#ffffff" stroke="#8b5cf6" stroke-width="3" />
-              <circle cx="${point.x.toFixed(1)}" cy="${point.y.toFixed(1)}" r="2.5" fill="#8b5cf6" />
-              
-              <g class="tooltip-box" transform="translate(${tooltipX}, ${tooltipY})">
+            <g class="revenue-bar-group" tabindex="0">
+              <rect x="${(bar.cx - bandWidth / 2).toFixed(1)}" y="${padding.top}" width="${bandWidth.toFixed(1)}" height="${chartHeight}" class="hover-capture" />
+
+              <path class="revenue-bar" d="${roundedTopRectPath(bar.x, bar.y, barWidth, bar.barHeight, barRadius)}" />
+
+              <g class="tooltip-box" transform="translate(${tooltipX.toFixed(1)}, ${tooltipY.toFixed(1)})">
                 <rect width="84" height="42" rx="6" fill="#ffffff" stroke="#f1f5f9" stroke-width="1" />
-                <text x="12" y="16" fill="#64748b" font-size="10px" font-weight="500">${escapeHtml(point.label)}</text>
-                <text x="12" y="32" fill="#8b5cf6" font-size="13px" font-weight="700">${escapeHtml(money(point.value))}</text>
+                <text x="12" y="16" fill="#64748b" font-size="10px" font-weight="500">${escapeHtml(bar.label)}</text>
+                <text x="12" y="32" fill="#8b5cf6" font-size="13px" font-weight="700">${escapeHtml(money(bar.value))}</text>
               </g>
             </g>
-          `}).join("")}
+          `;
+  }).join("")}
         </g>
-        
+
         <g class="revenue-x-axis">
-          ${points.map((point, index) => index % 2 === 0 || index === points.length - 1 ? `
-            <text class="revenue-x-label" x="${point.x.toFixed(1)}" y="${height - 12}" text-anchor="middle" fill="#94a3b8" font-size="11px" font-weight="500">${escapeHtml(point.label)}</text>
+          ${bars.map((bar, index) => index % 2 === 0 || index === bars.length - 1 ? `
+            <text class="revenue-x-label" x="${bar.cx.toFixed(1)}" y="${height - 12}" text-anchor="middle" fill="#94a3b8" font-size="11px" font-weight="500">${escapeHtml(bar.label)}</text>
           ` : "").join("")}
         </g>
       </svg>
