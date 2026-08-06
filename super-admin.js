@@ -2088,67 +2088,115 @@ function analyticsBucketedSeries() {
   return buckets;
 }
 
+function analyticsKioskBreakdown() {
+  const totals = new Map();
+
+  analyticsFilteredRecords().forEach((record) => {
+    const key = record.kiosk || UNASSIGNED_KIOSK_ID;
+    totals.set(key, (totals.get(key) || 0) + Number(record.amount || 0));
+  });
+
+  const kiosks = data("kiosks");
+
+  return Array.from(totals.entries())
+    .map(([kioskId, amount]) => {
+      const kiosk = kiosks.find((item) => item.kioskId === kioskId);
+      const project = transactionProjectForKiosk(kioskId);
+      const client = transactionClientForKiosk(kioskId, project);
+      return {
+        kioskId,
+        name: kiosk?.name || "",
+        branch: kiosk?.branch || "",
+        clientName: client?.name || client?.email || "",
+        amount
+      };
+    })
+    .sort((left, right) => right.amount - left.amount);
+}
+
 function renderAnalytics() {
   const filter = state.analyticsFilter;
   const clients = data("kioskAdmins");
   const kiosks = analyticsKiosksForClient(filter.clientId);
   const selectedClient = filter.clientId ? clients.find((client) => client.adminId === filter.clientId) : null;
-  const buckets = selectedClient ? analyticsBucketedSeries() : [];
+  const buckets = analyticsBucketedSeries();
+  const kioskBreakdown = analyticsKioskBreakdown();
   const totalAmount = buckets.reduce((sum, bucket) => sum + bucket.amount, 0);
   const { label: rangeLabel } = analyticsFilterBounds();
+  const clientLabel = selectedClient ? (selectedClient.name || selectedClient.email || selectedClient.adminId) : "All Clients";
+  const hasData = buckets.length > 0;
 
   return `
     ${renderHeader("Graphical Analytics", "Revenue trends by financial year or custom date range, across any client or kiosk.", `
-      <button class="secondary-button" ${selectedClient ? "" : "disabled"} onclick="window.print()">${uiIcon("printer", 16)} Print</button>
-      <button class="primary-button" ${selectedClient ? "" : "disabled"} onclick="window.downloadAnalyticsPDF()">${uiIcon("download", 16)} Download PDF</button>
+      <button class="secondary-button" ${hasData ? "" : "disabled"} onclick="window.print()">${uiIcon("printer", 16)} Print</button>
+      <button class="primary-button" ${hasData ? "" : "disabled"} onclick="window.downloadAnalyticsPDF()">${uiIcon("download", 16)} Download PDF</button>
     `)}
     ${renderNotice()}
 
     <div class="analytics-layout-container">
       <div class="module-card analytics-report-area" id="analytics-print-area">
-        ${!selectedClient ? `
-          <div class="empty-note">Select a client above to generate their analytics report.</div>
-        ` : `
-          <div class="analytics-report-header">
-            ${selectedClient.logoUrl ? `<img class="analytics-report-logo" src="${escapeHtml(selectedClient.logoUrl)}" alt="${escapeHtml(selectedClient.name || "Client")}" />` : `<div class="analytics-report-logo analytics-report-logo-placeholder"></div>`}
-            <div class="analytics-report-heading">
-              <h1>Graphical Analytics Report</h1>
-              <p class="analytics-report-client">Client: ${escapeHtml(selectedClient.name || selectedClient.email || selectedClient.adminId)}</p>
-              <p class="analytics-report-meta">Kiosk ID: ${escapeHtml(filter.kioskId || "All Kiosks")} &nbsp;·&nbsp; ${escapeHtml(rangeLabel)}</p>
-            </div>
-            <img class="analytics-report-logo analytics-report-logo-wide" src="./assets/printhub-logo-transparent.png" alt="Aarya Innovtech" />
+        <div class="analytics-report-header">
+          ${selectedClient?.logoUrl ? `<img class="analytics-report-logo" src="${escapeHtml(selectedClient.logoUrl)}" alt="${escapeHtml(selectedClient.name || "Client")}" />` : `<div class="analytics-report-logo analytics-report-logo-placeholder"></div>`}
+          <div class="analytics-report-heading">
+            <h1>Graphical Analytics Report</h1>
+            <p class="analytics-report-client">Client: ${escapeHtml(clientLabel)}</p>
+            <p class="analytics-report-meta">Kiosk ID: ${escapeHtml(filter.kioskId || "All Kiosks")} &nbsp;·&nbsp; ${escapeHtml(rangeLabel)}</p>
           </div>
+          <img class="analytics-report-logo analytics-report-logo-wide" src="./assets/printhub-logo-transparent.png" alt="Aarya Innovtech" />
+        </div>
 
+        <div class="section-heading">
+          <h2>💰 ${filter.basis.charAt(0).toUpperCase() + filter.basis.slice(1)} Transaction Revenue (₹)</h2>
+        </div>
+        ${hasData ? renderAnalyticsChart(buckets) : `<div class="empty-note">No data for this range yet.</div>`}
+
+        <div class="analytics-summary-row">
+          <div class="analytics-summary-tile is-total">
+            <span>Total Revenue</span>
+            <strong>${escapeHtml(money(totalAmount))}</strong>
+          </div>
+        </div>
+
+        ${hasData ? `
+          <div class="analytics-table-wrap">
+            <table class="analytics-table">
+              <thead>
+                <tr><th>Period</th><th>Amount (₹)</th></tr>
+              </thead>
+              <tbody>
+                ${buckets.map((bucket) => `
+                  <tr>
+                    <td>${escapeHtml(bucket.label)} ${bucket.year}</td>
+                    <td>${escapeHtml(money(bucket.amount))}</td>
+                  </tr>
+                `).join("")}
+              </tbody>
+            </table>
+          </div>
+        ` : ""}
+
+        ${kioskBreakdown.length ? `
           <div class="section-heading">
-            <h2>💰 ${filter.basis.charAt(0).toUpperCase() + filter.basis.slice(1)} Transaction Revenue (₹)</h2>
+            <h2>Revenue by Kiosk</h2>
           </div>
-          ${buckets.length ? renderAnalyticsChart(buckets) : `<div class="empty-note">No data for this range yet.</div>`}
-
-          <div class="analytics-summary-row">
-            <div class="analytics-summary-tile is-total">
-              <span>Total Revenue</span>
-              <strong>${escapeHtml(money(totalAmount))}</strong>
-            </div>
+          <div class="analytics-table-wrap">
+            <table class="analytics-table">
+              <thead>
+                <tr><th>Kiosk ID</th><th>Kiosk Name</th>${selectedClient ? "" : "<th>Client</th>"}<th>Amount (₹)</th></tr>
+              </thead>
+              <tbody>
+                ${kioskBreakdown.map((row) => `
+                  <tr>
+                    <td>${escapeHtml(row.kioskId)}</td>
+                    <td>${escapeHtml([row.name, row.branch].filter(Boolean).join(" · ") || "—")}</td>
+                    ${selectedClient ? "" : `<td>${escapeHtml(row.clientName || "Unallocated")}</td>`}
+                    <td>${escapeHtml(money(row.amount))}</td>
+                  </tr>
+                `).join("")}
+              </tbody>
+            </table>
           </div>
-
-          ${buckets.length ? `
-            <div class="analytics-table-wrap">
-              <table class="analytics-table">
-                <thead>
-                  <tr><th>Period</th><th>Amount (₹)</th></tr>
-                </thead>
-                <tbody>
-                  ${buckets.map((bucket) => `
-                    <tr>
-                      <td>${escapeHtml(bucket.label)} ${bucket.year}</td>
-                      <td>${escapeHtml(money(bucket.amount))}</td>
-                    </tr>
-                  `).join("")}
-                </tbody>
-              </table>
-            </div>
-          ` : ""}
-        `}
+        ` : ""}
       </div>
 
       <div class="module-card analytics-filter-card" data-print-hide>
@@ -2427,18 +2475,13 @@ window.downloadAnalyticsPDF = async function () {
   const clients = data("kioskAdmins");
   const selectedClient = filter.clientId ? clients.find((client) => client.adminId === filter.clientId) : null;
 
-  if (!selectedClient) {
-    state.error = "Select a client before downloading the analytics report.";
-    render();
-    return;
-  }
-
   const { jsPDF } = window.jspdf;
   const doc = new jsPDF();
   const pageWidth = doc.internal.pageSize.getWidth();
   const buckets = analyticsBucketedSeries();
+  const kioskBreakdown = analyticsKioskBreakdown();
   const { label: rangeLabel } = analyticsFilterBounds();
-  const clientName = selectedClient.name || selectedClient.email || selectedClient.adminId;
+  const clientName = selectedClient ? (selectedClient.name || selectedClient.email || selectedClient.adminId) : "All Clients";
   const kioskLabel = filter.kioskId || "All Kiosks";
   const logoMaxWidth = 32;
   const logoMaxHeight = 24;
@@ -2446,7 +2489,7 @@ window.downloadAnalyticsPDF = async function () {
   const logoY = 12;
 
   const [clientLogo, companyLogo] = await Promise.all([
-    loadImageAsDataUrl(selectedClient.logoUrl),
+    loadImageAsDataUrl(selectedClient?.logoUrl || ""),
     loadImageAsDataUrl("./assets/printhub-logo-transparent.png")
   ]);
   const [clientLogoSize, companyLogoSize] = await Promise.all([
@@ -2522,6 +2565,33 @@ window.downloadAnalyticsPDF = async function () {
       }
     }
   });
+
+  if (kioskBreakdown.length) {
+    const kioskTableY = (doc.lastAutoTable?.finalY || cursorY) + 10;
+    doc.setFont(undefined, "bold");
+    doc.setFontSize(13);
+    doc.setTextColor(27, 175, 122);
+    doc.text("Revenue by Kiosk", 14, kioskTableY);
+    doc.setTextColor(0);
+
+    const kioskTableHead = selectedClient
+      ? [["Kiosk ID", "Kiosk Name", "Amount (Rs.)"]]
+      : [["Kiosk ID", "Kiosk Name", "Client", "Amount (Rs.)"]];
+    const kioskTableBody = kioskBreakdown.map((row) => {
+      const name = [row.name, row.branch].filter(Boolean).join(" - ") || "-";
+      return selectedClient
+        ? [row.kioskId, name, money(row.amount)]
+        : [row.kioskId, name, row.clientName || "Unallocated", money(row.amount)];
+    });
+
+    doc.autoTable({
+      startY: kioskTableY + 4,
+      head: kioskTableHead,
+      body: kioskTableBody,
+      theme: "grid",
+      ...PDF_TABLE_STYLE
+    });
+  }
 
   doc.save(`Graphical_Analytics_${clientName.replace(/[^a-z0-9]+/gi, "_")}_${rangeLabel.replace(/[^a-z0-9]+/gi, "_")}.pdf`);
 };
