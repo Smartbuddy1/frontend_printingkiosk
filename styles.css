@@ -503,6 +503,10 @@ th {
   min-height: 100%;
 }
 
+.app-shell.login-app-shell {
+  grid-template-rows: 1fr;
+}
+
 .admin-shell {
   background: #eef3f2;
 }
@@ -1837,6 +1841,258 @@ button:disabled:hover {
   accent-color: var(--blue);
   height: 18px;
   width: 18px;
+}
+
+.idle-media-section {
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  margin-top: 14px;
+  padding: 14px;
+  transition: opacity 0.15s ease;
+}
+
+.idle-media-section.is-dimmed {
+  opacity: 0.55;
+}
+
+.idle-media-section h3 {
+  font-size: 0.95em;
+  margin: 0 0 10px;
+}
+
+.idle-image-grid {
+  display: grid;
+  gap: 12px;
+  grid-template-columns: repeat(auto-fill, minmax(110px, 1fr));
+  margin-top: 12px;
+}
+
+.idle-image-item {
+  display: grid;
+  gap: 6px;
+}
+
+.idle-image-item-actions {
+  display: flex;
+  gap: 4px;
+}
+
+.idle-image-item-actions .small-button {
+  flex: 1;
+  padding: 4px 6px;
+}
+
+.idle-video-preview {
+  background: #000;
+  border-radius: 8px;
+  margin-top: 10px;
+  max-height: 220px;
+  width: 100%;
+}
+
+.analytics-layout-container {
+  display: flex;
+  gap: 24px;
+  align-items: flex-start;
+  margin-bottom: 24px;
+}
+
+.analytics-report-area {
+  flex: 1;
+  min-width: 0;
+}
+
+.analytics-filter-card {
+  width: 320px;
+  flex-shrink: 0;
+}
+
+@media (max-width: 1024px) {
+  .analytics-layout-container {
+    flex-direction: column;
+  }
+  .analytics-filter-card {
+    width: 100%;
+  }
+}
+
+.analytics-filter-type-row {
+  display: flex;
+  gap: 24px;
+  margin: 4px 0 16px;
+}
+
+.analytics-radio {
+  align-items: center;
+  color: var(--text);
+  cursor: pointer;
+  display: flex;
+  font-weight: var(--weight-medium);
+  gap: 8px;
+}
+
+.analytics-radio input {
+  accent-color: var(--blue);
+  height: 16px;
+  width: 16px;
+}
+
+.analytics-filter-grid {
+  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+}
+
+.revenue-filter-apply-row {
+  align-items: flex-end;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 16px;
+  margin-top: 16px;
+}
+
+.revenue-filter-apply-row .setting-field {
+  flex: 1;
+  min-width: 200px;
+}
+
+.revenue-apply-filter-btn {
+  background: linear-gradient(135deg, #2563eb, #7c3aed);
+  border: none;
+  margin-left: auto;
+  white-space: nowrap;
+}
+
+.revenue-apply-filter-btn:hover {
+  background: linear-gradient(135deg, #1d4ed8, #6d28d9);
+}
+
+.analytics-report-area .section-heading {
+  margin-bottom: 16px;
+}
+
+.analytics-report-header {
+  align-items: center;
+  border-bottom: 2px solid var(--line);
+  display: flex;
+  gap: 20px;
+  margin-bottom: 28px;
+  padding-bottom: 24px;
+}
+
+.analytics-report-logo {
+  border-radius: 8px;
+  flex-shrink: 0;
+  height: 80px;
+  object-fit: contain;
+  width: 80px;
+}
+
+.analytics-report-logo-wide {
+  width: 190px;
+}
+
+.analytics-report-logo-placeholder {
+  visibility: hidden;
+}
+
+.analytics-report-heading {
+  flex: 1;
+  text-align: center;
+}
+
+.analytics-report-heading h1 {
+  color: var(--teal, #1baf7a);
+  font-size: 1.7em;
+  letter-spacing: 0.02em;
+  margin: 0 0 8px;
+  text-transform: uppercase;
+}
+
+.analytics-report-client {
+  color: var(--blue);
+  font-size: 1.2em;
+  font-weight: var(--weight-semibold, 700);
+  margin: 0 0 6px;
+}
+
+.analytics-report-meta {
+  color: var(--muted);
+  font-size: 0.95em;
+  margin: 0;
+}
+
+.analytics-summary-row {
+  display: grid;
+  gap: 12px;
+  grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+  margin-top: 20px;
+}
+
+.analytics-summary-tile {
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  padding: 14px 16px;
+}
+
+.analytics-summary-tile span {
+  color: var(--muted);
+  display: block;
+  font-size: 12px;
+  font-weight: var(--weight-medium);
+  margin-bottom: 4px;
+}
+
+.analytics-summary-tile strong {
+  color: var(--text);
+  font-size: 1.2em;
+}
+
+.analytics-summary-tile.is-total {
+  background: #eef6ff;
+  border-color: #b9ddff;
+}
+
+.analytics-table-wrap {
+  margin-top: 20px;
+  overflow-x: auto;
+}
+
+.analytics-table {
+  border-collapse: collapse;
+  width: 100%;
+}
+
+.analytics-table th,
+.analytics-table td {
+  border-bottom: 1px solid var(--line);
+  font-size: 13px;
+  padding: 8px 12px;
+  text-align: left;
+}
+
+.analytics-table th {
+  color: var(--muted);
+  font-weight: var(--weight-medium);
+}
+
+@media print {
+  .admin-topbar,
+  .admin-nav,
+  .admin-nav-backdrop,
+  [data-print-hide] {
+    display: none !important;
+  }
+
+  .admin-layout,
+  .admin-main {
+    display: block !important;
+    width: 100% !important;
+  }
+
+  .analytics-report-area {
+    border: none !important;
+    box-shadow: none !important;
+  }
 }
 
 .payment-total-card.has-controlled-summary small:not(.payment-total-detail) {
@@ -4870,7 +5126,7 @@ tbody tr:hover {
 }
 
 .login-panel::before {
-  background: url("./assets/printhub-logo.png") center / contain no-repeat;
+  background: url("./assets/printhub-logo-transparent.png") center / contain no-repeat;
   content: "";
   display: block;
   height: 102px;
@@ -5960,7 +6216,7 @@ tbody tr:hover {
 }
 
 .login-panel::before {
-  background: url("./assets/printhub-logo.png") center / contain no-repeat;
+  background: url("./assets/printhub-logo-transparent.png") center / contain no-repeat;
   content: "";
   display: block;
   height: 102px;
@@ -13897,6 +14153,13 @@ tbody tr:hover {
   transform: translateY(-2px);
   box-shadow: 0 12px 32px rgba(37, 99, 235, 0.5);
 }
+.tq-home-countdown {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--muted);
+  margin: 4px 0 0;
+  animation: tqFadeUp 0.5s 1s ease both;
+}
 
 /* ===== 3-Phase Thank You Flow ===== */
 
@@ -15686,6 +15949,66 @@ tbody tr:hover {
   padding: 12px 14px;
 }
 
+.alert-metrics-grid.metrics-grid {
+  gap: 10px;
+}
+
+.alert-metrics-grid .metric-card.has-icon {
+  gap: 10px;
+  grid-template-columns: 30px minmax(0, 1fr);
+  min-height: auto;
+  padding: 12px 14px;
+}
+
+.alert-metrics-grid .metric-icon {
+  height: 30px;
+  width: 30px;
+}
+
+.alert-metrics-grid .metric-copy {
+  gap: 2px;
+}
+
+.alert-metrics-grid .metric-copy > span {
+  font-size: 11px;
+}
+
+.alert-metrics-grid .metric-copy > strong {
+  font-size: 18px;
+  line-height: 1.15;
+}
+
+.alert-metrics-grid .metric-copy > small {
+  font-size: 10.5px;
+  line-height: 1.25;
+}
+
+.alert-cards-grid.module-grid {
+  gap: 10px;
+  grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
+}
+
+.admin-alert-card {
+  min-height: auto;
+  padding: 12px 14px;
+}
+
+.admin-alert-card h2 {
+  font-size: 14px;
+  margin: 0 0 4px;
+}
+
+.admin-alert-card .helper-text {
+  font-size: 12px;
+  line-height: 1.35;
+  margin: 0 0 8px;
+}
+
+.admin-alert-card .badge {
+  font-size: 11px;
+  padding: 3px 9px;
+}
+
 .printer-alert-strip__item--bad,
 .admin-alert-card--bad {
   border-left-color: #dc2626;
@@ -15775,7 +16098,7 @@ tbody tr:hover {
   background: rgba(0,0,0,0.02);
 }
 
-.kiosk-public-printer-status { display: flex; align-items: center; gap: 8px; font-size: 14px; font-weight: 700; padding: 8px 16px; border-radius: 999px; white-space: nowrap; background-color: #0a2555; border: 1px solid #193b70; }
+.kiosk-public-printer-status { display: flex; align-items: center; gap: 8px; font-size: 14px; font-weight: 700; padding: 8px 16px; border-radius: 999px; white-space: nowrap; background-color: #ffffff; border: 1px solid #e2e8f0; box-shadow: 0 1px 2px rgba(15, 23, 42, 0.06); }
 .kiosk-public-printer-status.status-online { color: #22c55e; }
 .kiosk-public-printer-status.status-offline { color: #ef4444; }
 .kiosk-public-printer-status svg { width: 10px; height: 10px; }
@@ -16081,6 +16404,30 @@ tbody tr:hover {
   align-items: center;
   justify-content: center;
   z-index: 9999;
+}
+
+.idle-screensaver-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 100000;
+  background: #000;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+}
+
+.idle-screensaver-overlay img,
+.idle-screensaver-overlay video {
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+  animation: idleScreensaverFadeIn 0.6s ease both;
+}
+
+@keyframes idleScreensaverFadeIn {
+  from { opacity: 0; }
+  to { opacity: 1; }
 }
 
 .settings-modal-card {

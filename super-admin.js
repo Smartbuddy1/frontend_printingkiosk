@@ -43,11 +43,36 @@ const state = {
     email: "",
     password: ""
   },
-  revenueFilter: {
+  revenueFilter: (() => {
+    const now = new Date();
+    const fyStartYear = now.getMonth() >= 3 ? now.getFullYear() : now.getFullYear() - 1;
+    return {
+      start: `${fyStartYear}-04-01`,
+      end: `${fyStartYear + 1}-03-31`,
+      filterType: "financialYear",
+      clientId: "",
+      kioskId: "",
+      financialYear: "current"
+    };
+  })(),
+  revenueFilterDraft: {
+    filterType: "financialYear",
+    clientId: "",
+    kioskId: "",
+    financialYear: "current",
     start: new Date(new Date().setHours(0, 0, 0, 0)).toISOString().split('T')[0],
     end: new Date().toISOString().split('T')[0]
   },
   reportTab: "revenue",
+  analyticsFilter: {
+    basis: "monthly",
+    filterType: "financialYear",
+    clientId: "",
+    kioskId: "",
+    financialYear: "current",
+    start: new Date(new Date().setHours(0, 0, 0, 0)).toISOString().split('T')[0],
+    end: new Date().toISOString().split('T')[0]
+  },
   search: "",
   transactionFilters: {
     search: "",
@@ -66,6 +91,7 @@ const state = {
   pagination: {},
   selectedClientId: "",
   selectedProjectId: "",
+  serviceKioskFocusId: "",
   navOpen: false,
   profileMenuOpen: false,
   settingsModalOpen: false,
@@ -97,9 +123,9 @@ const pageGroups = [
       { id: "kioskAdmins", label: "Clients", icon: "users" },
       { id: "projects", label: "Projects", icon: "hierarchy" },
       { id: "kiosks", label: "Kiosks", icon: "kiosks" },
-      { id: "services", label: "Services", icon: "services" },
       { id: "pricing", label: "Pricing", icon: "pricing" },
       { id: "revenue", label: "Report", icon: "payments" },
+      { id: "analytics", label: "Analytics", icon: "activity" },
       { id: "alerts", label: "Alerts", icon: "alert" }
     ]
   }
@@ -148,6 +174,10 @@ const collections = {
       logoUrl: "",
       kioskTitle: "",
       kioskSubtitle: "Printing Kiosk",
+      idleMediaMode: "none",
+      idleImageUrls: [],
+      idleVideoUrl: "",
+      idleTimeoutSeconds: 60,
       projectIds: []
     })
   },
@@ -770,16 +800,7 @@ function render() {
 
 function renderLogin() {
   return `
-    <div class="app-shell admin-shell">
-      <header class="topbar admin-topbar">
-        <div class="brand">
-          <div class="brand-mark"><img src="./assets/printhub-mark.png" alt="Print Kiosk" /></div>
-          <div>
-            <div class="brand-title">Print Kiosk Admin Login</div>
-            <div class="brand-subtitle">Printing Kiosk | One sign-in for client and super admin</div>
-          </div>
-        </div>
-      </header>
+    <div class="app-shell admin-shell login-app-shell">
       <main class="main admin-screen">
         <div class="login-view">
           <div class="login-panel">
@@ -916,6 +937,7 @@ function renderCurrentPage() {
   if (state.page === "pricing") return renderPricing();
   if (state.page === "services") return renderKioskServices();
   if (state.page === "revenue") return renderRevenue();
+  if (state.page === "analytics") return renderAnalytics();
   if (collections[state.page] && state.page !== "services") return renderCollection(state.page);
   return renderDashboard();
 }
@@ -1106,7 +1128,7 @@ function renderAlerts() {
   return `
     ${renderHeader("Alert Center", "Live printer hardware alerts by kiosk ID.", `<button class="primary-button" data-action="refresh">${uiIcon("refresh", 18)} Refresh</button>`)}
     ${renderNotice()}
-    <div class="metrics-grid dashboard-metrics">
+    <div class="metrics-grid dashboard-metrics alert-metrics-grid">
       ${[
       ["Open Alerts", alerts.length, "Live printer issues only", "alert", alerts.length ? "red" : "green"],
       ["Kiosks", affectedKiosks, "Kiosk IDs with alerts", "kiosks", affectedKiosks ? "amber" : "green"],
@@ -1115,7 +1137,7 @@ function renderAlerts() {
       ["Queue / Service", queueAlerts + serviceAlerts, "Blocked queue or service", "history", queueAlerts + serviceAlerts ? "red" : "green"]
     ].map(([label, value, detail, icon, tone]) => `
         <div class="metric-card has-icon tone-${tone}">
-          <span class="metric-icon">${uiIcon(icon, 25)}</span>
+          <span class="metric-icon">${uiIcon(icon, 16)}</span>
           <div class="metric-copy">
             <span>${escapeHtml(label)}</span>
             <strong>${escapeHtml(String(value))}</strong>
@@ -1124,7 +1146,7 @@ function renderAlerts() {
         </div>
       `).join("")}
     </div>
-    <div class="module-grid">
+    <div class="module-grid alert-cards-grid">
       ${(alerts.length ? alerts : [{ title: "No live printer alerts", detail: "Paper, toner, door, and queue checks are clear.", tone: "good", source: "system" }]).map((alert) => `
         <div class="module-card admin-alert-card admin-alert-card--${escapeHtml(alert.tone || "warn")}">
           <h2>${escapeHtml(alert.title)}</h2>
@@ -1590,10 +1612,93 @@ function renderTransactionLog() {
   `;
 }
 
+function revenueRecordMatchesFilter(record) {
+  const filter = state.revenueFilter;
+  if (!transactionMatchesDateRange(record, filter.start, filter.end)) return false;
+  if (filter.clientId && record.clientId !== filter.clientId) return false;
+  if (filter.kioskId && String(record.kiosk || "").toUpperCase() !== filter.kioskId.toUpperCase()) return false;
+  return true;
+}
+
+function renderRevenueFilterCard() {
+  const draft = state.revenueFilterDraft;
+  const clients = data("kioskAdmins");
+  const kiosks = analyticsKiosksForClient(draft.clientId);
+
+  return `
+    <div class="module-card analytics-filter-card">
+      <div class="settings-grid analytics-filter-grid">
+        <label class="setting-field">Client Name
+          <select onchange="window.updateRevenueFilterDraft('clientId', this.value)">
+            <option value="" ${!draft.clientId ? "selected" : ""}>-- All Clients --</option>
+            ${clients.map((client) => `<option value="${escapeHtml(client.adminId)}" ${draft.clientId === client.adminId ? "selected" : ""}>${escapeHtml(client.name || client.email || client.adminId)}</option>`).join("")}
+          </select>
+        </label>
+        <label class="setting-field">Kiosk ID
+          <select onchange="window.updateRevenueFilterDraft('kioskId', this.value)">
+            <option value="" ${!draft.kioskId ? "selected" : ""}>-- All Kiosks --</option>
+            ${kiosks.map((kiosk) => `<option value="${escapeHtml(kiosk.kioskId)}" ${draft.kioskId === kiosk.kioskId ? "selected" : ""}>${escapeHtml(kiosk.kioskId)}${kiosk.branch ? ` | ${escapeHtml(kiosk.branch)}` : ""}</option>`).join("")}
+          </select>
+        </label>
+      </div>
+
+      <div class="analytics-filter-type-row" style="margin-top: 16px;">
+        <label class="analytics-radio">
+          <input type="radio" name="revenue-filter-type" value="financialYear" ${draft.filterType === "financialYear" ? "checked" : ""} onchange="window.updateRevenueFilterDraft('filterType', this.value)" />
+          <span>Financial Year</span>
+        </label>
+        <label class="analytics-radio">
+          <input type="radio" name="revenue-filter-type" value="dateRange" ${draft.filterType === "dateRange" ? "checked" : ""} onchange="window.updateRevenueFilterDraft('filterType', this.value)" />
+          <span>Date Range</span>
+        </label>
+      </div>
+
+      <div class="revenue-filter-apply-row">
+        ${draft.filterType === "financialYear" ? `
+          <label class="setting-field">Financial Year
+            <select onchange="window.updateRevenueFilterDraft('financialYear', this.value)">
+              <option value="current" ${draft.financialYear === "current" ? "selected" : ""}>Current FY (Apr-Mar)</option>
+              <option value="last" ${draft.financialYear === "last" ? "selected" : ""}>Last FY</option>
+              <option value="previous" ${draft.financialYear === "previous" ? "selected" : ""}>Previous FY</option>
+            </select>
+          </label>
+        ` : `
+          <label class="setting-field">Start Date
+            <input type="date" value="${escapeHtml(draft.start)}" onchange="window.updateRevenueFilterDraft('start', this.value)" />
+          </label>
+          <label class="setting-field">End Date
+            <input type="date" value="${escapeHtml(draft.end)}" onchange="window.updateRevenueFilterDraft('end', this.value)" />
+          </label>
+        `}
+        <button class="primary-button revenue-apply-filter-btn" onclick="window.applyRevenueFilter()">${uiIcon("filter", 16)} Apply Filter</button>
+      </div>
+    </div>
+  `;
+}
+
+window.updateRevenueFilterDraft = (field, value) => {
+  state.revenueFilterDraft[field] = value;
+  if (field === "clientId") {
+    state.revenueFilterDraft.kioskId = "";
+  }
+  render();
+};
+
+window.applyRevenueFilter = () => {
+  const draft = state.revenueFilterDraft;
+  const bounds = draft.filterType === "financialYear"
+    ? financialYearDateStrings(draft.financialYear === "last" ? 1 : draft.financialYear === "previous" ? 2 : 0)
+    : { start: draft.start, end: draft.end };
+
+  state.revenueFilter = { ...draft, start: bounds.start, end: bounds.end };
+  state.pagination["revenue-transactions"] = 1;
+  render();
+};
+
 function renderRevenue() {
   const summary = state.snapshot?.summary || {};
   const allRecords = superAdminTransactionRecords();
-  const records = allRecords.filter(r => transactionMatchesDateRange(r, state.revenueFilter.start, state.revenueFilter.end));
+  const records = allRecords.filter(revenueRecordMatchesFilter);
   const filteredTotal = records.reduce((sum, record) => sum + Number(record.amount || 0), 0);
   const currentTab = state.reportTab || "revenue";
 
@@ -1606,20 +1711,11 @@ function renderRevenue() {
       <button class="nav-button" style="background: none; border: none; padding: 12px 24px; font-weight: 600; font-size: 1.1em; color: ${currentTab === 'form' ? 'var(--primary)' : 'var(--muted)'}; border-bottom: ${currentTab === 'form' ? '3px solid var(--primary)' : '3px solid transparent'}; cursor: pointer;" onclick="window.setReportTab('form')">Form Report</button>
     </div>
 
-    <div class="revenue-filter-bar" style="display: flex; gap: 16px; align-items: center; background: var(--surface); padding: 16px; border-radius: 8px; border: 1px solid var(--line); margin-bottom: 24px; box-shadow: 0 1px 2px rgba(0,0,0,0.05);">
-      <div style="display: flex; flex-direction: column;">
-        <label style="font-size: 0.8em; color: var(--muted); margin-bottom: 4px;">Start Date</label>
-        <input type="date" id="revenue-start-date" value="${state.revenueFilter.start}" style="padding: 6px 12px; border: 1px solid var(--line); border-radius: 4px;" onchange="window.updateRevenueFilter('start', this.value)">
-      </div>
-      <div style="display: flex; flex-direction: column;">
-        <label style="font-size: 0.8em; color: var(--muted); margin-bottom: 4px;">End Date</label>
-        <input type="date" id="revenue-end-date" value="${state.revenueFilter.end}" style="padding: 6px 12px; border: 1px solid var(--line); border-radius: 4px;" onchange="window.updateRevenueFilter('end', this.value)">
-      </div>
+    ${renderRevenueFilterCard()}
 
-      <div style="display: flex; gap: 8px; margin-left: auto;">
-        ${currentTab === 'revenue' ? `<button class="primary-button" onclick="window.downloadRevenueReportPDF()">${uiIcon("download", 16)} Revenue PDF</button>` : ''}
-        ${currentTab === 'form' ? `<button class="secondary-button" onclick="window.downloadFormPrintReportPDF()">${uiIcon("download", 16)} Form Print PDF</button>` : ''}
-      </div>
+    <div style="display: flex; gap: 8px; margin: -12px 0 24px; justify-content: flex-end;">
+      ${currentTab === 'revenue' ? `<button class="primary-button" onclick="window.downloadRevenueReportPDF()">${uiIcon("download", 16)} Revenue PDF</button>` : ''}
+      ${currentTab === 'form' ? `<button class="secondary-button" onclick="window.downloadFormPrintReportPDF()">${uiIcon("download", 16)} Form Print PDF</button>` : ''}
     </div>
 
     ${currentTab === 'revenue' ? `
@@ -1734,12 +1830,6 @@ function renderRevenueLineChart(series = []) {
   `;
 }
 
-window.updateRevenueFilter = (field, value) => {
-  state.revenueFilter[field] = value;
-  state.pagination["revenue-transactions"] = 1; 
-  render();
-};
-
 window.updateAlertFilter = (field, value) => {
   state.alertFilter[field] = value;
   state.pagination["alert-logs"] = 1;
@@ -1755,12 +1845,16 @@ window.downloadRevenueReportPDF = function () {
   const { jsPDF } = window.jspdf;
   const doc = new jsPDF();
   const allRecords = superAdminTransactionRecords();
-  const records = allRecords.filter(r => transactionMatchesDateRange(r, state.revenueFilter.start, state.revenueFilter.end));
+  const records = allRecords.filter(revenueRecordMatchesFilter);
+  const clients = data("kioskAdmins");
+  const clientLabel = state.revenueFilter.clientId ? (clients.find((client) => client.adminId === state.revenueFilter.clientId)?.name || state.revenueFilter.clientId) : "All Clients";
+  const kioskLabel = state.revenueFilter.kioskId || "All Kiosks";
 
   doc.setFontSize(18);
   doc.text("Super Admin Revenue Report", 14, 22);
   doc.setFontSize(11);
   doc.text(`Date Range: ${state.revenueFilter.start} to ${state.revenueFilter.end}`, 14, 30);
+  doc.text(`Client: ${clientLabel}    Kiosk: ${kioskLabel}`, 14, 37);
 
   const tableData = records.map(r => [
     formatDate(r.createdAt || r.date),
@@ -1771,7 +1865,7 @@ window.downloadRevenueReportPDF = function () {
   ]);
 
   doc.autoTable({
-    startY: 36,
+    startY: 43,
     head: [['Date', 'Kiosk', 'Client', 'Amount', 'Status']],
     body: tableData,
     theme: 'grid',
@@ -1794,7 +1888,10 @@ window.downloadFormPrintReportPDF = function () {
   const filteredStats = stats.filter(stat => {
     if (!stat.date) return false;
     const statDate = new Date(stat.date.split("T")[0]);
-    return statDate >= startObj && statDate <= endObj;
+    if (statDate < startObj || statDate > endObj) return false;
+    if (state.revenueFilter.clientId && stat.clientId !== state.revenueFilter.clientId) return false;
+    if (state.revenueFilter.kioskId && String(stat.kioskId || "").toUpperCase() !== state.revenueFilter.kioskId.toUpperCase()) return false;
+    return true;
   });
 
   doc.setFontSize(18);
@@ -1820,6 +1917,597 @@ window.downloadFormPrintReportPDF = function () {
   });
 
   doc.save(`Form_Print_Report_${state.revenueFilter.start}_to_${state.revenueFilter.end}.pdf`);
+};
+
+function financialYearDateStrings(offset = 0) {
+  const now = new Date();
+  const fyStartYear = (now.getMonth() >= 3 ? now.getFullYear() : now.getFullYear() - 1) - offset;
+  return { start: `${fyStartYear}-04-01`, end: `${fyStartYear + 1}-03-31` };
+}
+
+// ── Graphical Analytics (Super Admin) ────────────────────────────────
+// Monthly transaction revenue, filtered by client, kiosk, and financial
+// year or a custom date range. Only successful/completed payments count.
+
+function analyticsFinancialYearBounds(offset = 0) {
+  const now = new Date();
+  const fyStartYear = now.getMonth() >= 3 ? now.getFullYear() : now.getFullYear() - 1;
+  const targetStartYear = fyStartYear - offset;
+  const start = new Date(targetStartYear, 3, 1, 0, 0, 0, 0);
+  const end = new Date(targetStartYear + 1, 2, 31, 23, 59, 59, 999);
+  const label = `FY ${targetStartYear}-${String((targetStartYear + 1) % 100).padStart(2, "0")} (Apr-Mar)`;
+  return { start, end, label };
+}
+
+function analyticsFilterBounds() {
+  const filter = state.analyticsFilter;
+
+  if (filter.filterType === "financialYear") {
+    const offset = filter.financialYear === "last" ? 1 : filter.financialYear === "previous" ? 2 : 0;
+    return analyticsFinancialYearBounds(offset);
+  }
+
+  const start = filter.start ? new Date(`${filter.start}T00:00:00`) : null;
+  const end = filter.end ? new Date(`${filter.end}T23:59:59.999`) : null;
+  const label = filter.start && filter.end ? `${filter.start} to ${filter.end}` : "All dates";
+  return { start, end, label };
+}
+
+function analyticsBuckets(start, end, basis) {
+  if (!start || !end || start > end) return [];
+
+  const buckets = [];
+  let cursor;
+  let last;
+  let guard = 0;
+  
+  if (basis === "daily") {
+    cursor = new Date(start.getFullYear(), start.getMonth(), start.getDate());
+    last = new Date(end.getFullYear(), end.getMonth(), end.getDate());
+    
+    while (cursor <= last && guard < 400) {
+      buckets.push({
+        key: `${cursor.getFullYear()}-${cursor.getMonth() + 1}-${cursor.getDate()}`,
+        label: cursor.toLocaleString("en-US", { month: "short", day: "numeric" }),
+        year: cursor.getFullYear(),
+        amount: 0
+      });
+      cursor.setDate(cursor.getDate() + 1);
+      guard += 1;
+    }
+  } else if (basis === "weekly") {
+    cursor = new Date(start.getFullYear(), start.getMonth(), start.getDate());
+    cursor.setDate(cursor.getDate() - cursor.getDay());
+    last = new Date(end.getFullYear(), end.getMonth(), end.getDate());
+    last.setDate(last.getDate() - last.getDay());
+    
+    while (cursor <= last && guard < 60) {
+      const weekEnd = new Date(cursor);
+      weekEnd.setDate(weekEnd.getDate() + 6);
+      
+      buckets.push({
+        key: `${cursor.getFullYear()}-${cursor.getMonth() + 1}-${cursor.getDate()}`,
+        label: `${cursor.toLocaleString("en-US", { month: "short", day: "numeric" })} - ${weekEnd.toLocaleString("en-US", { month: "short", day: "numeric" })}`,
+        year: cursor.getFullYear(),
+        amount: 0
+      });
+      cursor.setDate(cursor.getDate() + 7);
+      guard += 1;
+    }
+  } else {
+    cursor = new Date(start.getFullYear(), start.getMonth(), 1);
+    last = new Date(end.getFullYear(), end.getMonth(), 1);
+    
+    while (cursor <= last && guard < 60) {
+      buckets.push({
+        key: `${cursor.getFullYear()}-${cursor.getMonth()}`,
+        label: cursor.toLocaleString("en-US", { month: "short" }),
+        year: cursor.getFullYear(),
+        amount: 0
+      });
+      cursor.setMonth(cursor.getMonth() + 1);
+      guard += 1;
+    }
+  }
+
+  return buckets;
+}
+
+function analyticsKiosksForClient(clientId) {
+  const kiosks = data("kiosks");
+  if (!clientId) return kiosks;
+
+  return kiosks.filter((kiosk) => {
+    const project = transactionProjectForKiosk(kiosk.kioskId);
+    const client = transactionClientForProject(project);
+    return client?.adminId === clientId;
+  });
+}
+
+function analyticsFilteredRecords() {
+  const filter = state.analyticsFilter;
+  const { start, end } = analyticsFilterBounds();
+
+  return superAdminTransactionRecords().filter((record) => {
+    if (!transactionMatchesStatus(record, "success")) return false;
+
+    const ts = transactionTimestamp(record.dateValue);
+    if (!ts) return false;
+    if (start && ts < start.getTime()) return false;
+    if (end && ts > end.getTime()) return false;
+    if (filter.clientId && record.clientId !== filter.clientId) return false;
+    if (filter.kioskId && String(record.kiosk || "").toUpperCase() !== filter.kioskId.toUpperCase()) return false;
+
+    return true;
+  });
+}
+
+function analyticsBucketedSeries() {
+  const { start, end } = analyticsFilterBounds();
+  const basis = state.analyticsFilter.basis || "monthly";
+  const buckets = analyticsBuckets(start, end, basis);
+  const bucketByKey = new Map(buckets.map((bucket) => [bucket.key, bucket]));
+
+  analyticsFilteredRecords().forEach((record) => {
+    const recordDate = new Date(record.dateValue);
+    if (Number.isNaN(recordDate.getTime())) return;
+
+    let key;
+    if (basis === "daily") {
+      key = `${recordDate.getFullYear()}-${recordDate.getMonth() + 1}-${recordDate.getDate()}`;
+    } else if (basis === "weekly") {
+      const rDate = new Date(recordDate.getFullYear(), recordDate.getMonth(), recordDate.getDate());
+      rDate.setDate(rDate.getDate() - rDate.getDay());
+      key = `${rDate.getFullYear()}-${rDate.getMonth() + 1}-${rDate.getDate()}`;
+    } else {
+      key = `${recordDate.getFullYear()}-${recordDate.getMonth()}`;
+    }
+
+    const bucket = bucketByKey.get(key);
+    if (!bucket) return;
+
+    bucket.amount += Number(record.amount || 0);
+  });
+
+  return buckets;
+}
+
+function renderAnalytics() {
+  const filter = state.analyticsFilter;
+  const clients = data("kioskAdmins");
+  const kiosks = analyticsKiosksForClient(filter.clientId);
+  const selectedClient = filter.clientId ? clients.find((client) => client.adminId === filter.clientId) : null;
+  const buckets = selectedClient ? analyticsBucketedSeries() : [];
+  const totalAmount = buckets.reduce((sum, bucket) => sum + bucket.amount, 0);
+  const { label: rangeLabel } = analyticsFilterBounds();
+
+  return `
+    ${renderHeader("Graphical Analytics", "Revenue trends by financial year or custom date range, across any client or kiosk.", `
+      <button class="secondary-button" ${selectedClient ? "" : "disabled"} onclick="window.print()">${uiIcon("printer", 16)} Print</button>
+      <button class="primary-button" ${selectedClient ? "" : "disabled"} onclick="window.downloadAnalyticsPDF()">${uiIcon("download", 16)} Download PDF</button>
+    `)}
+    ${renderNotice()}
+
+    <div class="analytics-layout-container">
+      <div class="module-card analytics-report-area" id="analytics-print-area">
+        ${!selectedClient ? `
+          <div class="empty-note">Select a client above to generate their analytics report.</div>
+        ` : `
+          <div class="analytics-report-header">
+            ${selectedClient.logoUrl ? `<img class="analytics-report-logo" src="${escapeHtml(selectedClient.logoUrl)}" alt="${escapeHtml(selectedClient.name || "Client")}" />` : `<div class="analytics-report-logo analytics-report-logo-placeholder"></div>`}
+            <div class="analytics-report-heading">
+              <h1>Graphical Analytics Report</h1>
+              <p class="analytics-report-client">Client: ${escapeHtml(selectedClient.name || selectedClient.email || selectedClient.adminId)}</p>
+              <p class="analytics-report-meta">Kiosk ID: ${escapeHtml(filter.kioskId || "All Kiosks")} &nbsp;·&nbsp; ${escapeHtml(rangeLabel)}</p>
+            </div>
+            <img class="analytics-report-logo analytics-report-logo-wide" src="./assets/printhub-logo-transparent.png" alt="Aarya Innovtech" />
+          </div>
+
+          <div class="section-heading">
+            <h2>💰 ${filter.basis.charAt(0).toUpperCase() + filter.basis.slice(1)} Transaction Revenue (₹)</h2>
+          </div>
+          ${buckets.length ? renderAnalyticsChart(buckets) : `<div class="empty-note">No data for this range yet.</div>`}
+
+          <div class="analytics-summary-row">
+            <div class="analytics-summary-tile is-total">
+              <span>Total Revenue</span>
+              <strong>${escapeHtml(money(totalAmount))}</strong>
+            </div>
+          </div>
+
+          ${buckets.length ? `
+            <div class="analytics-table-wrap">
+              <table class="analytics-table">
+                <thead>
+                  <tr><th>Period</th><th>Amount (₹)</th></tr>
+                </thead>
+                <tbody>
+                  ${buckets.map((bucket) => `
+                    <tr>
+                      <td>${escapeHtml(bucket.label)} ${bucket.year}</td>
+                      <td>${escapeHtml(money(bucket.amount))}</td>
+                    </tr>
+                  `).join("")}
+                </tbody>
+              </table>
+            </div>
+          ` : ""}
+        `}
+      </div>
+
+      <div class="module-card analytics-filter-card" data-print-hide>
+        <div class="section-heading">
+          <h2>Data Basis</h2>
+        </div>
+        <div class="analytics-filter-type-row">
+          <label class="analytics-radio">
+            <input type="radio" name="analytics-basis" value="daily" ${filter.basis === "daily" ? "checked" : ""} onchange="window.updateAnalyticsFilter('basis', this.value)" />
+            <span>Daily</span>
+          </label>
+          <label class="analytics-radio">
+            <input type="radio" name="analytics-basis" value="weekly" ${filter.basis === "weekly" ? "checked" : ""} onchange="window.updateAnalyticsFilter('basis', this.value)" />
+            <span>Weekly</span>
+          </label>
+          <label class="analytics-radio">
+            <input type="radio" name="analytics-basis" value="monthly" ${filter.basis === "monthly" ? "checked" : ""} onchange="window.updateAnalyticsFilter('basis', this.value)" />
+            <span>Monthly</span>
+          </label>
+        </div>
+
+        <div class="section-heading">
+          <h2>Filter Type</h2>
+        </div>
+        <div class="analytics-filter-type-row">
+          <label class="analytics-radio">
+            <input type="radio" name="analytics-filter-type" value="financialYear" ${filter.filterType === "financialYear" ? "checked" : ""} onchange="window.updateAnalyticsFilter('filterType', this.value)" />
+            <span>Financial Year</span>
+          </label>
+          <label class="analytics-radio">
+            <input type="radio" name="analytics-filter-type" value="dateRange" ${filter.filterType === "dateRange" ? "checked" : ""} onchange="window.updateAnalyticsFilter('filterType', this.value)" />
+            <span>Date Range</span>
+          </label>
+        </div>
+
+        <div class="settings-grid analytics-filter-grid">
+          <label class="setting-field">Client Name
+            <select onchange="window.updateAnalyticsFilter('clientId', this.value)">
+              <option value="" ${!filter.clientId ? "selected" : ""}>-- All Clients --</option>
+              ${clients.map((client) => `<option value="${escapeHtml(client.adminId)}" ${filter.clientId === client.adminId ? "selected" : ""}>${escapeHtml(client.name || client.email || client.adminId)}</option>`).join("")}
+            </select>
+          </label>
+          <label class="setting-field">Kiosk ID
+            <select onchange="window.updateAnalyticsFilter('kioskId', this.value)">
+              <option value="" ${!filter.kioskId ? "selected" : ""}>-- All Kiosks --</option>
+              ${kiosks.map((kiosk) => `<option value="${escapeHtml(kiosk.kioskId)}" ${filter.kioskId === kiosk.kioskId ? "selected" : ""}>${escapeHtml(kiosk.kioskId)}${kiosk.branch ? ` | ${escapeHtml(kiosk.branch)}` : ""}</option>`).join("")}
+            </select>
+          </label>
+          ${filter.filterType === "financialYear" ? `
+            <label class="setting-field">Financial Year
+              <select onchange="window.updateAnalyticsFilter('financialYear', this.value)">
+                <option value="current" ${filter.financialYear === "current" ? "selected" : ""}>Current FY (Apr-Mar)</option>
+                <option value="last" ${filter.financialYear === "last" ? "selected" : ""}>Last FY</option>
+                <option value="previous" ${filter.financialYear === "previous" ? "selected" : ""}>Previous FY</option>
+              </select>
+            </label>
+          ` : `
+            <label class="setting-field">Start Date
+              <input type="date" value="${escapeHtml(filter.start)}" onchange="window.updateAnalyticsFilter('start', this.value)" />
+            </label>
+            <label class="setting-field">End Date
+              <input type="date" value="${escapeHtml(filter.end)}" onchange="window.updateAnalyticsFilter('end', this.value)" />
+            </label>
+          `}
+        </div>
+      </div>
+    </div>
+  `;
+}
+
+function renderAnalyticsChart(buckets) {
+  const minGroupWidth = 40;
+  const padding = { top: 20, right: 24, bottom: 40, left: 64 };
+  const baseChartWidth = 960 - padding.left - padding.right;
+  const chartWidth = Math.max(baseChartWidth, buckets.length * minGroupWidth);
+  const width = chartWidth + padding.left + padding.right;
+  const height = 320;
+  const chartHeight = height - padding.top - padding.bottom;
+  const maxValue = Math.max(1, ...buckets.map((bucket) => bucket.amount));
+  const yMax = Math.max(10, Math.ceil(maxValue / 10) * 10);
+  const groupWidth = chartWidth / buckets.length;
+  const barWidth = Math.max(6, groupWidth * 0.5);
+
+  const yTicks = [0, 0.25, 0.5, 0.75, 1].map((ratio) => ({
+    value: Math.round(yMax * ratio),
+    y: padding.top + chartHeight - ratio * chartHeight
+  }));
+
+  const bars = buckets.map((bucket, index) => {
+    const groupX = padding.left + index * groupWidth;
+    const barHeight = (bucket.amount / yMax) * chartHeight;
+    return {
+      label: `${bucket.label} ${String(bucket.year).slice(-2)}`,
+      barX: groupX + groupWidth / 2 - barWidth / 2,
+      barY: padding.top + chartHeight - barHeight,
+      barHeight,
+      amount: bucket.amount,
+      centerX: groupX + groupWidth / 2
+    };
+  });
+
+  return `
+    <style>
+      .analytics-chart-wrap { --amount-color: #2a78d6; position: relative; overflow-x: auto; overflow-y: hidden; padding-bottom: 8px; }
+      .analytics-bar { transition: opacity 0.15s ease; }
+      .analytics-bar-group:hover .analytics-bar { opacity: 0.85; }
+      .analytics-bar-tooltip { opacity: 0; pointer-events: none; transition: opacity 0.15s ease; }
+      .analytics-bar-group:hover .analytics-bar-tooltip { opacity: 1; }
+    </style>
+    <div class="analytics-chart-wrap">
+      <svg viewBox="0 0 ${width} ${height}" role="img" aria-label="Transaction revenue chart" style="min-width: 100%; width: ${width}px; height: ${height}px;">
+        <g>
+          ${yTicks.map((tick) => `
+            <line x1="${padding.left}" x2="${width - padding.right}" y1="${tick.y.toFixed(1)}" y2="${tick.y.toFixed(1)}" stroke="#e2e8f0" stroke-width="1" />
+            <text x="${padding.left - 10}" y="${(tick.y + 4).toFixed(1)}" text-anchor="end" fill="#64748b" font-size="11px" font-weight="500">${escapeHtml(money(tick.value).replace("Rs. ", ""))}</text>
+          `).join("")}
+        </g>
+        <g>
+          ${bars.map((bar) => `
+            <g class="analytics-bar-group">
+              <rect class="analytics-bar" x="${bar.barX.toFixed(1)}" y="${bar.barY.toFixed(1)}" width="${barWidth.toFixed(1)}" height="${Math.max(0, bar.barHeight).toFixed(1)}" rx="4" fill="var(--amount-color)" />
+              <rect x="${(bar.centerX - groupWidth / 2).toFixed(1)}" y="${padding.top}" width="${groupWidth.toFixed(1)}" height="${chartHeight}" fill="transparent" />
+              <text x="${bar.centerX.toFixed(1)}" y="${height - 16}" text-anchor="middle" fill="#64748b" font-size="11px" font-weight="500">${escapeHtml(bar.label)}</text>
+              <g class="analytics-bar-tooltip" transform="translate(${Math.min(width - 100, Math.max(4, bar.centerX - 50))}, ${Math.max(padding.top, bar.barY - 30)})">
+                <rect width="100" height="26" rx="6" fill="#ffffff" stroke="#e2e8f0" />
+                <text x="10" y="17" fill="var(--amount-color)" font-size="11px" font-weight="700">${escapeHtml(money(bar.amount))}</text>
+              </g>
+            </g>
+          `).join("")}
+        </g>
+      </svg>
+    </div>
+  `;
+}
+
+window.updateAnalyticsFilter = (field, value) => {
+  state.analyticsFilter[field] = value;
+  if (field === "clientId") {
+    state.analyticsFilter.kioskId = "";
+  }
+  render();
+};
+
+async function loadImageAsDataUrl(url) {
+  if (!url) return null;
+
+  try {
+    const response = await fetch(url, { mode: "cors" });
+    if (!response.ok) return null;
+    const blob = await response.blob();
+
+    return await new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload = () => resolve(reader.result);
+      reader.onerror = reject;
+      reader.readAsDataURL(blob);
+    });
+  } catch {
+    return null;
+  }
+}
+
+function dataUrlImageFormat(dataUrl) {
+  const match = /^data:image\/(\w+);/.exec(dataUrl || "");
+  const type = (match?.[1] || "png").toUpperCase();
+  return type === "JPG" ? "JPEG" : type;
+}
+
+function loadImageNaturalSize(dataUrl) {
+  return new Promise((resolve) => {
+    if (!dataUrl) {
+      resolve(null);
+      return;
+    }
+
+    const img = new Image();
+    img.onload = () => resolve({ width: img.naturalWidth || 1, height: img.naturalHeight || 1 });
+    img.onerror = () => resolve(null);
+    img.src = dataUrl;
+  });
+}
+
+// Fits an image inside a maxWidth x maxHeight box without stretching it —
+// jsPDF's addImage has no "contain" option of its own, it stretches to
+// whatever width/height you pass, so a fixed square box squishes any
+// non-square logo (most logos are wider than tall).
+function fitImageBox(naturalSize, maxWidth, maxHeight) {
+  if (!naturalSize || !naturalSize.width || !naturalSize.height) {
+    return { width: maxWidth, height: maxHeight };
+  }
+
+  const scale = Math.min(maxWidth / naturalSize.width, maxHeight / naturalSize.height);
+  return { width: naturalSize.width * scale, height: naturalSize.height * scale };
+}
+
+// jsPDF can't render an <svg> directly — rasterize the already-rendered chart
+// SVG onto an offscreen canvas (at 2x for print sharpness) and hand addImage
+// a PNG instead. The chart is pure vector shapes/text with no external image
+// refs, so this never hits a canvas cross-origin taint.
+function svgElementToPngDataUrl(svgElement, scale = 2) {
+  return new Promise((resolve) => {
+    if (!svgElement) {
+      resolve(null);
+      return;
+    }
+
+    const viewBox = svgElement.viewBox?.baseVal;
+    const width = (viewBox && viewBox.width) || svgElement.clientWidth || 960;
+    const height = (viewBox && viewBox.height) || svgElement.clientHeight || 320;
+
+    const svgString = new XMLSerializer().serializeToString(svgElement);
+    const svgBlob = new Blob([svgString], { type: "image/svg+xml;charset=utf-8" });
+    const url = URL.createObjectURL(svgBlob);
+    const img = new Image();
+
+    img.onload = () => {
+      const canvas = document.createElement("canvas");
+      canvas.width = width * scale;
+      canvas.height = height * scale;
+      const ctx = canvas.getContext("2d");
+      ctx.fillStyle = "#ffffff";
+      ctx.fillRect(0, 0, canvas.width, canvas.height);
+      ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+      URL.revokeObjectURL(url);
+      resolve({ dataUrl: canvas.toDataURL("image/png"), width, height });
+    };
+
+    img.onerror = () => {
+      URL.revokeObjectURL(url);
+      resolve(null);
+    };
+
+    img.src = url;
+  });
+}
+
+function drawPdfWatermark(doc, logoDataUrl, naturalSize) {
+  if (!logoDataUrl) return;
+
+  try {
+    const pageWidth = doc.internal.pageSize.getWidth();
+    const pageHeight = doc.internal.pageSize.getHeight();
+    const box = fitImageBox(naturalSize, pageWidth * 0.6, pageHeight * 0.35);
+
+    doc.saveGraphicsState();
+    doc.setGState(new doc.GState({ opacity: 0.07 }));
+    doc.addImage(logoDataUrl, dataUrlImageFormat(logoDataUrl), (pageWidth - box.width) / 2, (pageHeight - box.height) / 2, box.width, box.height);
+    doc.restoreGraphicsState();
+  } catch {
+    // Opacity/GState support can vary by jsPDF build — a missing watermark
+    // should never break the rest of the PDF export.
+  }
+}
+
+const PDF_TABLE_STYLE = {
+  styles: {
+    fontSize: 10,
+    lineColor: [42, 120, 214],
+    lineWidth: 0.2,
+    textColor: [30, 41, 59],
+    cellPadding: 5
+  },
+  headStyles: {
+    fillColor: [27, 175, 122],
+    textColor: 255,
+    fontStyle: "bold",
+    halign: "center"
+  },
+  alternateRowStyles: {
+    fillColor: [240, 253, 244]
+  }
+};
+
+window.downloadAnalyticsPDF = async function () {
+  const filter = state.analyticsFilter;
+  const clients = data("kioskAdmins");
+  const selectedClient = filter.clientId ? clients.find((client) => client.adminId === filter.clientId) : null;
+
+  if (!selectedClient) {
+    state.error = "Select a client before downloading the analytics report.";
+    render();
+    return;
+  }
+
+  const { jsPDF } = window.jspdf;
+  const doc = new jsPDF();
+  const pageWidth = doc.internal.pageSize.getWidth();
+  const buckets = analyticsBucketedSeries();
+  const { label: rangeLabel } = analyticsFilterBounds();
+  const clientName = selectedClient.name || selectedClient.email || selectedClient.adminId;
+  const kioskLabel = filter.kioskId || "All Kiosks";
+  const logoMaxWidth = 32;
+  const logoMaxHeight = 24;
+  const companyLogoMaxWidth = 50;
+  const logoY = 12;
+
+  const [clientLogo, companyLogo] = await Promise.all([
+    loadImageAsDataUrl(selectedClient.logoUrl),
+    loadImageAsDataUrl("./assets/printhub-logo-transparent.png")
+  ]);
+  const [clientLogoSize, companyLogoSize] = await Promise.all([
+    loadImageNaturalSize(clientLogo),
+    loadImageNaturalSize(companyLogo)
+  ]);
+
+  drawPdfWatermark(doc, companyLogo, companyLogoSize);
+
+  if (clientLogo) {
+    const box = fitImageBox(clientLogoSize, logoMaxWidth, logoMaxHeight);
+    doc.addImage(clientLogo, dataUrlImageFormat(clientLogo), 14, logoY + (logoMaxHeight - box.height) / 2, box.width, box.height);
+  }
+
+  if (companyLogo) {
+    const box = fitImageBox(companyLogoSize, companyLogoMaxWidth, logoMaxHeight);
+    doc.addImage(companyLogo, dataUrlImageFormat(companyLogo), pageWidth - 14 - box.width, logoY + (logoMaxHeight - box.height) / 2, box.width, box.height);
+  }
+
+  doc.setFont(undefined, "bold");
+  doc.setFontSize(22);
+  doc.setTextColor(27, 175, 122);
+  doc.text("Graphical Analytics Report", pageWidth / 2, logoY + 10, { align: "center" });
+
+  doc.setFontSize(15);
+  doc.setTextColor(42, 120, 214);
+  doc.text(`Client: ${clientName}`, pageWidth / 2, logoY + 19, { align: "center" });
+
+  doc.setFont(undefined, "normal");
+  doc.setFontSize(11);
+  doc.setTextColor(100);
+  doc.text(`Kiosk ID: ${kioskLabel}`, pageWidth / 2, logoY + 27, { align: "center" });
+  doc.text(`Range: ${rangeLabel}`, pageWidth / 2, logoY + 33, { align: "center" });
+  doc.setTextColor(0);
+
+  const dividerY = logoY + 42;
+  doc.setDrawColor(42, 120, 214);
+  doc.setLineWidth(0.6);
+  doc.line(14, dividerY, pageWidth - 14, dividerY);
+
+  let cursorY = dividerY + 8;
+  const chartSvg = document.querySelector("#analytics-print-area .analytics-chart-wrap svg");
+  const chart = buckets.length ? await svgElementToPngDataUrl(chartSvg) : null;
+
+  if (chart) {
+    const marginX = 14;
+    const maxChartWidth = pageWidth - marginX * 2;
+    const chartWidth = Math.min(maxChartWidth, 180);
+    const chartHeight = chartWidth * (chart.height / chart.width);
+    doc.addImage(chart.dataUrl, "PNG", (pageWidth - chartWidth) / 2, cursorY, chartWidth, chartHeight);
+    cursorY += chartHeight + 10;
+  }
+
+  const tableData = buckets.map((bucket) => [
+    `${bucket.label} ${bucket.year}`,
+    money(bucket.amount)
+  ]);
+  const totalAmount = buckets.reduce((sum, bucket) => sum + bucket.amount, 0);
+  tableData.push(["Total", money(totalAmount)]);
+
+  doc.autoTable({
+    startY: cursorY,
+    head: [["Month", "Amount (Rs.)"]],
+    body: tableData,
+    theme: "grid",
+    ...PDF_TABLE_STYLE,
+    columnStyles: { 1: { halign: "center" } },
+    didParseCell: (hookData) => {
+      if (hookData.row.index === tableData.length - 1) {
+        hookData.cell.styles.fillColor = [27, 175, 122];
+        hookData.cell.styles.textColor = 255;
+        hookData.cell.styles.fontStyle = "bold";
+      }
+    }
+  });
+
+  doc.save(`Graphical_Analytics_${clientName.replace(/[^a-z0-9]+/gi, "_")}_${rangeLabel.replace(/[^a-z0-9]+/gi, "_")}.pdf`);
 };
 
 function renderKioskSalesChart() {
@@ -2102,7 +2790,10 @@ function renderKioskServices() {
   const clientKiosks = projects.flatMap((project) => kiosksForProject(project.projectId));
   const search = state.search.trim().toLowerCase();
   const projectServices = data("services").filter((service) => serviceForProject(service, projectId));
-  const visibleKiosks = projectKiosks.filter((kiosk) => {
+  const focusedKioskId = state.serviceKioskFocusId;
+  const isFocused = focusedKioskId && projectKiosks.some((kiosk) => kiosk.kioskId === focusedKioskId);
+  const scopedKiosks = isFocused ? projectKiosks.filter((kiosk) => kiosk.kioskId === focusedKioskId) : projectKiosks;
+  const visibleKiosks = scopedKiosks.filter((kiosk) => {
     if (!search) return true;
     const kioskText = JSON.stringify(kiosk).toLowerCase();
     return kioskText.includes(search) || servicesForKiosk(kiosk).some((service) => serviceMatchesSearch(service, search));
@@ -2114,11 +2805,13 @@ function renderKioskServices() {
 
   return `
     ${renderHeader(
-    "Kiosk-wise Services",
-    selectedClient
-      ? `${selectedClient.name || selectedClient.email || selectedClient.adminId} | ${projects.length} project${projects.length === 1 ? "" : "s"} | ${clientKiosks.length} kiosk${clientKiosks.length === 1 ? "" : "s"}`
-      : "Create a client project with kiosks before assigning services.",
-    `<button class="secondary-button" data-action="refresh">Refresh</button>${projectId ? `<button class="primary-button" data-project-service-create>Create Service</button>` : ""}`
+    isFocused ? `Services — ${focusedKioskId}` : "Kiosk-wise Services",
+    isFocused
+      ? "Services assigned to this kiosk."
+      : selectedClient
+        ? `${selectedClient.name || selectedClient.email || selectedClient.adminId} | ${projects.length} project${projects.length === 1 ? "" : "s"} | ${clientKiosks.length} kiosk${clientKiosks.length === 1 ? "" : "s"}`
+        : "Create a client project with kiosks before assigning services.",
+    `${isFocused ? `<button class="secondary-button" data-clear-kiosk-service-focus>${uiIcon("kiosks", 16)} All Kiosks</button>` : ""}<button class="secondary-button" data-action="refresh">Refresh</button>${projectId ? `<button class="primary-button" data-project-service-create>Create Service</button>` : ""}`
   )}
     ${renderNotice()}
     ${!clients.length ? `
@@ -2285,6 +2978,7 @@ function renderCollectionTable(collection, rows) {
               ${columns.map((column) => `<td>${formatCell(collection, column, row)}</td>`).join("")}
               <td>
                 <div class="table-actions">
+                  ${collection === "kiosks" ? `<button class="secondary-button small-button" data-kiosk-services="${escapeHtml(row.kioskId)}">Services</button>` : ""}
                   <button class="secondary-button small-button" data-record-edit="${collection}" data-record-id="${escapeHtml(row[meta.key])}">Edit</button>
                   <button class="danger-button small-button" data-record-delete="${collection}" data-record-id="${escapeHtml(row[meta.key])}">Delete</button>
                 </div>
@@ -2309,7 +3003,7 @@ function labelize(value) {
 
 function collectionColumnLabel(column) {
   if (column === "adminId") return "Client";
-  if (column === "projectId") return "Project";
+  if (column === "projectId") return "Client";
   if (column === "projectIds") return "Projects";
   if (column === "kioskTitle") return "Kiosk Heading";
   if (column === "kioskSubtitle") return "Kiosk Description";
@@ -2318,6 +3012,12 @@ function collectionColumnLabel(column) {
 
 function projectName(projectId) {
   return data("projects").find((project) => project.projectId === projectId)?.name || "Unassigned";
+}
+
+function clientNameForProjectId(projectId) {
+  const project = data("projects").find((item) => item.projectId === projectId);
+  const client = transactionClientForProject(project);
+  return client?.name || client?.email || "Unallocated";
 }
 
 function kioskAdminName(adminId) {
@@ -2347,7 +3047,7 @@ function formatCell(collection, column, row) {
   if (collection === "services" && column === "templates") return escapeHtml(String(row.templates?.length || 0));
   if (column === "kioskIds") return escapeHtml((row.kioskIds || []).join(", ") || "All");
   if (column === "adminId") return escapeHtml(kioskAdminName(row.adminId));
-  if (column === "projectId") return escapeHtml(projectName(row.projectId));
+  if (column === "projectId") return escapeHtml(clientNameForProjectId(row.projectId));
   if (column === "status") {
     const isGood = row[column] === "online" || row[column] === "active";
     const color = isGood ? "#10b981" : "#ef4444";
@@ -2405,11 +3105,71 @@ function renderGenericEditor(collection) {
         ${meta.fields.map((field) => renderField(field, draft, state.editor.mode === "edit" && field.key === meta.key)).join("")}
       </div>
       ${collection === "kiosks" ? renderKioskCustomerSettingsEditor(draft) : ""}
+      ${collection === "kioskAdmins" ? renderKioskAdminIdleScreensaverEditor(draft) : ""}
       <div class="flow-actions">
         <button class="primary-button" data-editor-save>Save</button>
         <button class="ghost-button" data-editor-cancel>Cancel</button>
       </div>
     </div>
+  `;
+}
+
+function renderKioskAdminIdleScreensaverEditor(draft) {
+  const mode = ["none", "image", "video"].includes(draft.idleMediaMode) ? draft.idleMediaMode : "none";
+  const images = Array.isArray(draft.idleImageUrls) ? draft.idleImageUrls : [];
+  const videoUrl = draft.idleVideoUrl || "";
+  const timeoutSeconds = Number(draft.idleTimeoutSeconds) || 60;
+
+  return `
+    <section class="kiosk-settings-panel idle-screensaver-panel">
+      <div class="section-heading">
+        <h2>Idle Screen (Screensaver)</h2>
+        <span>Shown on the kiosk home screen after it sits idle. Pick one mode — image slideshow or video.</span>
+      </div>
+      <div class="settings-grid">
+        <label class="setting-field">Mode
+          <select data-editor-field="idleMediaMode">
+            <option value="none" ${mode === "none" ? "selected" : ""}>Off</option>
+            <option value="image" ${mode === "image" ? "selected" : ""}>Image Slideshow</option>
+            <option value="video" ${mode === "video" ? "selected" : ""}>Video</option>
+          </select>
+        </label>
+        <label class="setting-field">Idle timeout (seconds)
+          <input type="number" min="15" max="600" value="${escapeHtml(String(timeoutSeconds))}" data-editor-field="idleTimeoutSeconds" />
+        </label>
+      </div>
+
+      <div class="idle-media-section ${mode === "image" ? "" : "is-dimmed"}">
+        <h3>Slideshow images ${images.length ? `(${images.length}/10)` : ""}</h3>
+        <label class="template-upload-row compact-template-upload">
+          <span>Add images</span>
+          <input type="file" accept="image/png,image/jpeg,image/gif,image/webp" data-idle-image-upload multiple ${images.length >= 10 ? "disabled" : ""} />
+        </label>
+        <div class="idle-image-grid">
+          ${images.length ? images.map((imageUrl, index) => `
+            <div class="idle-image-item">
+              ${renderEditorImagePreview(imageUrl, `IMG${index + 1}`)}
+              <div class="idle-image-item-actions">
+                <button type="button" class="ghost-button small-button" data-idle-image-move="${index}" data-idle-image-direction="-1" ${index === 0 ? "disabled" : ""}>Up</button>
+                <button type="button" class="ghost-button small-button" data-idle-image-move="${index}" data-idle-image-direction="1" ${index === images.length - 1 ? "disabled" : ""}>Down</button>
+                <button type="button" class="danger-button small-button" data-idle-image-delete="${index}">Remove</button>
+              </div>
+            </div>
+          `).join("") : `<div class="empty-note">No slideshow images uploaded yet.</div>`}
+        </div>
+      </div>
+
+      <div class="idle-media-section ${mode === "video" ? "" : "is-dimmed"}">
+        <h3>Idle video</h3>
+        <label class="template-upload-row compact-template-upload">
+          <span>${videoUrl ? "Replace video" : "Upload video"}</span>
+          <input type="file" accept="video/mp4,video/webm" data-idle-video-upload />
+        </label>
+        ${videoUrl
+          ? `<video src="${escapeHtml(videoUrl)}" muted loop controls class="idle-video-preview"></video>`
+          : `<div class="empty-note">No video uploaded yet.</div>`}
+      </div>
+    </section>
   `;
 }
 
@@ -2850,11 +3610,21 @@ function renderUpdates() {
   `;
 }
 
+function handleKeydown(event) {
+  if (event.key !== "Enter") return;
+
+  if (event.target?.dataset?.loginField !== undefined) {
+    event.preventDefault();
+    superAdminLogin();
+  }
+}
+
 function bindEvents() {
   const app = qs("#app");
   app.onclick = handleClick;
   app.oninput = handleInput;
   app.onchange = handleInput;
+  app.onkeydown = handleKeydown;
 }
 
 async function superAdminLogin() {
@@ -3000,8 +3770,15 @@ async function handleClick(event) {
     return;
   }
 
+  if ("clearKioskServiceFocus" in button.dataset) {
+    state.serviceKioskFocusId = "";
+    render();
+    return;
+  }
+
   if (button.dataset.projectSelect) {
     state.selectedProjectId = button.dataset.projectSelect;
+    state.serviceKioskFocusId = "";
     state.editor = null;
     state.pricingEditor = null;
     state.search = "";
@@ -3013,6 +3790,7 @@ async function handleClick(event) {
   if (button.dataset.clientSelect) {
     state.selectedClientId = button.dataset.clientSelect;
     state.selectedProjectId = "";
+    state.serviceKioskFocusId = "";
     state.editor = null;
     state.pricingEditor = null;
     state.search = "";
@@ -3061,6 +3839,20 @@ async function handleClick(event) {
     return;
   }
 
+  if (button.dataset.kioskServices) {
+    const kioskId = button.dataset.kioskServices;
+    const kiosk = data("kiosks").find((item) => item.kioskId === kioskId);
+    const project = kiosk ? data("projects").find((item) => item.projectId === kiosk.projectId) : null;
+    const client = transactionClientForProject(project);
+    state.selectedClientId = client?.adminId || "";
+    state.selectedProjectId = kiosk?.projectId || "";
+    state.serviceKioskFocusId = kioskId;
+    state.search = "";
+    state.page = "services";
+    render();
+    return;
+  }
+
   if ("editorCancel" in button.dataset) {
     state.editor = null;
     render();
@@ -3079,6 +3871,16 @@ async function handleClick(event) {
 
   if (button.dataset.draftTemplateDelete) {
     deleteDraftTemplate(Number(button.dataset.draftTemplateDelete));
+    return;
+  }
+
+  if ("idleImageDelete" in button.dataset) {
+    deleteDraftIdleImage(Number(button.dataset.idleImageDelete));
+    return;
+  }
+
+  if ("idleImageMove" in button.dataset) {
+    moveDraftIdleImage(Number(button.dataset.idleImageMove), Number(button.dataset.idleImageDirection));
     return;
   }
 
@@ -3209,6 +4011,18 @@ async function handleInput(event) {
 
   if (target.dataset.clientLogoUpload !== undefined && target.files?.length) {
     await uploadSuperAdminClientLogo(target.files[0]);
+    target.value = "";
+    return;
+  }
+
+  if (target.dataset.idleImageUpload !== undefined && target.files?.length) {
+    await uploadSuperAdminIdleImages(target.files);
+    target.value = "";
+    return;
+  }
+
+  if (target.dataset.idleVideoUpload !== undefined && target.files?.length) {
+    await uploadSuperAdminIdleVideo(target.files[0]);
     target.value = "";
     return;
   }
@@ -3712,6 +4526,119 @@ async function uploadSuperAdminClientLogo(file) {
   render();
 }
 
+function validateIdleImageFile(file) {
+  if (!file) return "Choose an idle-screen image.";
+  const isImage = file.type.startsWith("image/") || /\.(png|jpe?g|gif|webp)$/i.test(file.name);
+  if (!isImage) return "Choose a PNG, JPG, GIF, or WebP image.";
+  if (file.size > 4 * 1024 * 1024) return "Each idle-screen image must be 4 MB or smaller.";
+  return "";
+}
+
+async function uploadSuperAdminIdleImages(files) {
+  if (!state.editor || state.editor.collection !== "kioskAdmins") return;
+
+  const list = Array.from(files || []);
+  if (!list.length) return;
+
+  const existing = Array.isArray(state.editor.draft.idleImageUrls) ? state.editor.draft.idleImageUrls : [];
+  const room = Math.max(0, 10 - existing.length);
+  const toUpload = list.slice(0, room);
+
+  if (!toUpload.length) {
+    state.error = "You can upload at most 10 idle-screen images.";
+    render();
+    return;
+  }
+
+  for (const file of toUpload) {
+    const validationError = validateIdleImageFile(file);
+    if (validationError) {
+      state.error = validationError;
+      render();
+      return;
+    }
+  }
+
+  state.notice = "Uploading idle-screen images...";
+  state.error = "";
+  render();
+
+  try {
+    const formData = new FormData();
+    toUpload.forEach((file) => formData.append("idleImage", file, file.name));
+    const payload = await fetchJson("/api/super-admin/idle-image", {
+      method: "POST",
+      body: formData
+    });
+
+    state.editor.draft.idleImageUrls = [...existing, ...(payload.imageUrls || [])].slice(0, 10);
+    state.notice = "Idle-screen images uploaded. Save Client to publish them.";
+  } catch (error) {
+    state.error = error.message || "Idle-screen image upload failed.";
+  }
+
+  render();
+}
+
+function validateIdleVideoFile(file) {
+  if (!file) return "Choose an idle-screen video.";
+  const isVideo = file.type.startsWith("video/") || /\.(mp4|webm)$/i.test(file.name);
+  if (!isVideo) return "Choose an MP4 or WebM video.";
+  if (file.size > 40 * 1024 * 1024) return "Idle-screen video must be 40 MB or smaller.";
+  return "";
+}
+
+async function uploadSuperAdminIdleVideo(file) {
+  if (!state.editor || state.editor.collection !== "kioskAdmins") return;
+
+  const validationError = validateIdleVideoFile(file);
+  if (validationError) {
+    state.error = validationError;
+    render();
+    return;
+  }
+
+  state.notice = "Uploading idle-screen video...";
+  state.error = "";
+  render();
+
+  try {
+    const formData = new FormData();
+    formData.append("idleVideo", file, file.name);
+    const payload = await fetchJson("/api/super-admin/idle-video", {
+      method: "POST",
+      body: formData
+    });
+
+    state.editor.draft.idleVideoUrl = payload.videoUrl || "";
+    state.notice = payload.storage === "s3"
+      ? "Idle-screen video uploaded to S3. Save Client to publish it."
+      : "Idle-screen video uploaded. Save Client to publish it.";
+  } catch (error) {
+    state.error = error.message || "Idle-screen video upload failed.";
+  }
+
+  render();
+}
+
+function deleteDraftIdleImage(index) {
+  if (!state.editor) return;
+  const images = Array.isArray(state.editor.draft.idleImageUrls) ? [...state.editor.draft.idleImageUrls] : [];
+  images.splice(index, 1);
+  state.editor.draft.idleImageUrls = images;
+  render();
+}
+
+function moveDraftIdleImage(index, direction) {
+  if (!state.editor) return;
+  const images = Array.isArray(state.editor.draft.idleImageUrls) ? [...state.editor.draft.idleImageUrls] : [];
+  const targetIndex = index + direction;
+  if (targetIndex < 0 || targetIndex >= images.length) return;
+  [images[index], images[targetIndex]] = [images[targetIndex], images[index]];
+  state.editor.draft.idleImageUrls = images;
+  render();
+}
+
 async function uploadSuperAdminTemplateImage(file, templateIndex) {
   if (!state.editor || state.editor.collection !== "services") return;
 
@@ -3799,6 +4726,10 @@ function editorPayload() {
     draft.logoUrl = String(draft.logoUrl || "").trim();
     draft.kioskTitle = String(draft.kioskTitle || "").trim();
     draft.kioskSubtitle = String(draft.kioskSubtitle || "").trim();
+    draft.idleMediaMode = ["none", "image", "video"].includes(draft.idleMediaMode) ? draft.idleMediaMode : "none";
+    draft.idleImageUrls = Array.isArray(draft.idleImageUrls) ? draft.idleImageUrls.filter(Boolean).slice(0, 10) : [];
+    draft.idleVideoUrl = String(draft.idleVideoUrl || "").trim();
+    draft.idleTimeoutSeconds = Math.min(600, Math.max(15, Math.round(Number(draft.idleTimeoutSeconds) || 60)));
     draft.projectIds = Array.isArray(draft.projectIds)
       ? draft.projectIds.map((item) => slug(item, "")).filter(Boolean)
       : String(draft.projectIds || "").split(",").map((item) => slug(item, "")).filter(Boolean);
@@ -4100,13 +5031,21 @@ function calculateFormSellingReport() {
     if (!job.createdAt) return;
     const jobDate = new Date(job.createdAt);
     if (jobDate < startObj || jobDate > endObj) return;
-    
+
     if (String(job.printStatus || "").toLowerCase() !== "completed") return;
 
     const templateId = job.templateId;
     if (!templateId || templateId === "Unknown") return;
 
     const kioskId = job.kioskId || "UNASSIGNED";
+
+    if (state.revenueFilter.kioskId && kioskId.toUpperCase() !== state.revenueFilter.kioskId.toUpperCase()) return;
+
+    if (state.revenueFilter.clientId) {
+      const project = transactionProjectForKiosk(kioskId);
+      const client = transactionClientForProject(project);
+      if (client?.adminId !== state.revenueFilter.clientId) return;
+    }
 
     const key = `${kioskId}_${templateId}`;
     if (!report[key]) {

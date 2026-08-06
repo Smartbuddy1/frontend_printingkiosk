@@ -27,6 +27,8 @@ const PRINTER_STATUS_TIMEOUT_MS = 15000;
 const PRINTER_STATUS_POLL_MS = 15000;
 const PAYMENT_STATUS_POLL_MS = 1000;
 const MAX_FILES_PER_JOB = 10;
+const THANK_YOU_HOME_REDIRECT_SECONDS = 15;
+const IDLE_SCREENSAVER_IMAGE_SECONDS = 6;
 const CUSTOMER_INACTIVITY_TIMEOUTS = Object.freeze({
   uploadQr: 3 * 60 * 1000,
   governmentFormsList: 90 * 1000,
@@ -34,7 +36,8 @@ const CUSTOMER_INACTIVITY_TIMEOUTS = Object.freeze({
   documentPreview: 2 * 60 * 1000,
   printSettings: 90 * 1000,
   payment: 5 * 60 * 1000,
-  error: 30 * 1000
+  error: 30 * 1000,
+  privacyPolicy: 90 * 1000
 });
 const CUSTOMER_ACTIVITY_EVENTS = ["pointerdown", "keydown", "wheel", "touchstart", "input", "change"];
 const UNASSIGNED_KIOSK_ID = "UNASSIGNED-KIOSK";
@@ -391,7 +394,6 @@ const CUSTOMER_TRANSLATIONS = {
 const CUSTOMER_CLEAN_TRANSLATIONS = {
   hi: {
     "Government of Maharashtra": "महाराष्ट्र शासन",
-    "Printing Kiosk": "सेवा चुनें",
     "Print My Document": "मेरा दस्तावेज़ प्रिंट करें",
     "Print your PDF, Word, or photo file.": "अपनी PDF, Word या फोटो फ़ाइल प्रिंट करें.",
     "Government Forms": "सरकारी फॉर्म",
@@ -552,7 +554,6 @@ const CUSTOMER_CLEAN_TRANSLATIONS = {
   },
   mr: {
     "Government of Maharashtra": "महाराष्ट्र शासन",
-    "Printing Kiosk": "सेवा निवडा",
     "Print My Document": "माझे दस्तऐवज प्रिंट करा",
     "Print your PDF, Word, or photo file.": "तुमची PDF, Word किंवा फोटो फाइल प्रिंट करा.",
     "Government Forms": "शासकीय फॉर्म",
@@ -1676,12 +1677,37 @@ const state = {
   adminSettingsModalOpen: false,
   adminSettingsDraft: { username: "", currentPassword: "", newPassword: "", confirmPassword: "" },
   adminSettingsStatus: "",
+  idleScreensaverDraft: null,
+  idleScreensaverStatus: "",
+  idleScreensaverError: "",
   adminLoginError: "",
   adminLoginDraft: {
     email: "",
     password: ""
   },
-  revenueFilter: {
+  revenueFilter: (() => {
+    const now = new Date();
+    const fyStartYear = now.getMonth() >= 3 ? now.getFullYear() : now.getFullYear() - 1;
+    return {
+      start: `${fyStartYear}-04-01`,
+      end: `${fyStartYear + 1}-03-31`,
+      filterType: "financialYear",
+      kioskId: "",
+      financialYear: "current"
+    };
+  })(),
+  revenueFilterDraft: {
+    filterType: "financialYear",
+    kioskId: "",
+    financialYear: "current",
+    start: new Date(new Date().setHours(0, 0, 0, 0)).toISOString().split('T')[0],
+    end: new Date().toISOString().split('T')[0]
+  },
+  adminAnalyticsFilter: {
+    basis: "monthly",
+    filterType: "financialYear",
+    kioskId: "",
+    financialYear: "current",
     start: new Date(new Date().setHours(0, 0, 0, 0)).toISOString().split('T')[0],
     end: new Date().toISOString().split('T')[0]
   },
@@ -1695,6 +1721,10 @@ const state = {
   uploadSession: null,
   uploadPoller: null,
   customerInactivityTimer: null,
+  customerInactivityTimerKey: "",
+  showIdleScreensaver: false,
+  idleScreensaverIndex: 0,
+  idleScreensaverTimer: null,
   previewZoom: 1,
   previewActivityArea: "document",
   previewFileIndex: 0,
@@ -1779,6 +1809,7 @@ const state = {
   activeJobId: null,
   lastCompletedJob: null,
   thankYouPhase: "payment_done",
+  thankYouSecondsLeft: null,
   jobs: [...initialJobs],
   adminData: {
     dashboard: null,
@@ -3031,13 +3062,33 @@ function readStoredConfigVersion() {
   }
 }
 
+function normalizeIdleScreensaver(value = {}) {
+  const source = value && typeof value === "object" ? value : {};
+  const mode = ["image", "video"].includes(source.mode) ? source.mode : "none";
+  const imageUrls = Array.isArray(source.imageUrls)
+    ? source.imageUrls.filter((url) => typeof url === "string" && url).slice(0, 10)
+    : [];
+  const videoUrl = typeof source.videoUrl === "string" ? source.videoUrl.trim() : "";
+  const timeoutSeconds = Math.min(600, Math.max(15, Number(source.timeoutSeconds) || 60));
+
+  return { mode, imageUrls, videoUrl, timeoutSeconds };
+}
+
+function idleScreensaverHasUsableMedia(idleScreensaver) {
+  if (!idleScreensaver) return false;
+  if (idleScreensaver.mode === "image") return idleScreensaver.imageUrls.length > 0;
+  if (idleScreensaver.mode === "video") return Boolean(idleScreensaver.videoUrl);
+  return false;
+}
+
 function normalizeClientBrand(brand = {}) {
   const source = brand && typeof brand === "object" ? brand : {};
   const logoUrl = String(source.logoUrl || source.clientLogoUrl || source.logo || "").trim();
   const title = String(source.title || source.kioskTitle || source.name || "").trim();
   const subtitle = String(source.subtitle || source.kioskSubtitle || source.description || "").trim();
+  const idleScreensaver = normalizeIdleScreensaver(source.idleScreensaver);
 
-  if (!logoUrl && !title && !subtitle) {
+  if (!logoUrl && !title && !subtitle && idleScreensaver.mode === "none") {
     return {};
   }
 
@@ -3047,7 +3098,8 @@ function normalizeClientBrand(brand = {}) {
     name: String(source.name || "").trim(),
     logoUrl,
     title,
-    subtitle
+    subtitle,
+    idleScreensaver
   };
 }
 
@@ -5258,6 +5310,7 @@ async function startLocalPrintJob() {
     state.printStatusMessage = `Printed ${documentCount} document${documentCount === 1 ? "" : "s"}.`;
     addJob("Completed");
     state.thankYouPhase = "thankyou";
+    state.thankYouSecondsLeft = THANK_YOU_HOME_REDIRECT_SECONDS;
     state.step = 4;
     render();
     return;
@@ -5408,6 +5461,7 @@ async function startLocalPrintJob() {
     state.printStatusMessage = "Printing completed successfully.";
     addJob("Completed");
     state.thankYouPhase = "thankyou";
+    state.thankYouSecondsLeft = THANK_YOU_HOME_REDIRECT_SECONDS;
     state.step = 4;
     render();
   } catch (error) {
@@ -5482,6 +5536,7 @@ function goToNextStep() {
 
 function openAdmin(page = "dashboard") {
   stopCustomerInactivityTimer();
+  hideIdleScreensaver();
   stopPrinterStatusPolling();
   state.mode = "admin";
   state.adminPage = page;
@@ -5517,6 +5572,7 @@ function stopCustomerInactivityTimer() {
     window.clearTimeout(state.customerInactivityTimer);
     state.customerInactivityTimer = null;
   }
+  state.customerInactivityTimerKey = "";
 }
 
 function paymentVerificationInProgress() {
@@ -5533,9 +5589,76 @@ function printingInProgress() {
   );
 }
 
+// Idle-screen screensaver — shown after the kiosk sits idle on the home
+// screen. Lives in its own DOM root outside #app (see index.html) so the
+// 5s config poll and 15s printer-status poll — both of which do a full
+// render() teardown/rebuild while idle at step 0 — never touch it and
+// restart the video / duplicate the slideshow interval.
+function idleScreensaverRoot() {
+  return document.getElementById("idle-screensaver-root");
+}
+
+function renderIdleScreensaver() {
+  const root = idleScreensaverRoot();
+  if (!root) return;
+
+  const idleScreensaver = state.clientBrand?.idleScreensaver;
+  if (!idleScreensaver || !idleScreensaverHasUsableMedia(idleScreensaver)) {
+    root.innerHTML = "";
+    return;
+  }
+
+  const media = idleScreensaver.mode === "video"
+    ? `<video src="${escapeHtml(idleScreensaver.videoUrl)}" autoplay loop muted playsinline></video>`
+    : `<img src="${escapeHtml(idleScreensaver.imageUrls[state.idleScreensaverIndex % idleScreensaver.imageUrls.length])}" alt="" draggable="false" data-no-visual-search />`;
+
+  root.innerHTML = `<div class="idle-screensaver-overlay" data-idle-screensaver-dismiss>${media}</div>`;
+  root.querySelector("[data-idle-screensaver-dismiss]")?.addEventListener("click", dismissIdleScreensaver);
+}
+
+function showIdleScreensaver() {
+  const idleScreensaver = state.clientBrand?.idleScreensaver;
+  if (!idleScreensaverHasUsableMedia(idleScreensaver) || !idleScreensaverRoot()) {
+    return;
+  }
+
+  state.showIdleScreensaver = true;
+  state.idleScreensaverIndex = 0;
+  renderIdleScreensaver();
+
+  if (idleScreensaver.mode === "image" && idleScreensaver.imageUrls.length > 1) {
+    state.idleScreensaverTimer = window.setInterval(() => {
+      state.idleScreensaverIndex = (state.idleScreensaverIndex + 1) % idleScreensaver.imageUrls.length;
+      renderIdleScreensaver();
+    }, IDLE_SCREENSAVER_IMAGE_SECONDS * 1000);
+  }
+}
+
+function hideIdleScreensaver() {
+  if (state.idleScreensaverTimer) {
+    window.clearInterval(state.idleScreensaverTimer);
+    state.idleScreensaverTimer = null;
+  }
+
+  if (!state.showIdleScreensaver) return;
+
+  state.showIdleScreensaver = false;
+  const root = idleScreensaverRoot();
+  if (root) root.innerHTML = "";
+}
+
+function dismissIdleScreensaver() {
+  hideIdleScreensaver();
+  scheduleCustomerInactivityTimer();
+}
+
 function customerInactivityScreenKey() {
-  if (isMobilePaymentEntry || state.mode !== "customer" || state.showPrivacyPolicy) {
+  if (isMobilePaymentEntry || state.mode !== "customer") {
     return "";
+  }
+
+  if (state.showPrivacyPolicy) {
+    return "privacyPolicy";
   }
 
   if (state.printError || state.paymentError || state.uploadError) {
@@ -5562,13 +5685,37 @@ function customerInactivityScreenKey() {
     return "payment";
   }
 
+  if (
+    state.step === 0 &&
+    !state.showIdleScreensaver &&
+    idleScreensaverHasUsableMedia(state.clientBrand?.idleScreensaver)
+  ) {
+    return "homeIdle";
+  }
+
   return "";
 }
 
 function scheduleCustomerInactivityTimer() {
-  stopCustomerInactivityTimer();
   const screenKey = customerInactivityScreenKey();
-  const timeoutMs = CUSTOMER_INACTIVITY_TIMEOUTS[screenKey] || 0;
+
+  // render() unconditionally re-arms this timer every time it runs — including
+  // the 5s home-screen config poll, which reruns render() at step 0 whether or
+  // not anything actually changed. For every other screen that's harmless
+  // (nothing polls a rerender there without a real change), but at step 0 it
+  // would keep restarting the homeIdle countdown from full duration forever,
+  // so it could never reach zero. Skip the restart only when homeIdle is
+  // already counting down; genuine activity clears customerInactivityTimerKey
+  // first (see noteCustomerActivity) so it still fully re-arms the countdown.
+  if (screenKey === "homeIdle" && screenKey === state.customerInactivityTimerKey && state.customerInactivityTimer) {
+    return;
+  }
+
+  stopCustomerInactivityTimer();
+  state.customerInactivityTimerKey = screenKey;
+  const timeoutMs = screenKey === "homeIdle"
+    ? (state.clientBrand.idleScreensaver.timeoutSeconds * 1000)
+    : (CUSTOMER_INACTIVITY_TIMEOUTS[screenKey] || 0);
 
   if (!timeoutMs) {
     return;
@@ -5576,8 +5723,15 @@ function scheduleCustomerInactivityTimer() {
 
   state.customerInactivityTimer = window.setTimeout(() => {
     state.customerInactivityTimer = null;
+    state.customerInactivityTimerKey = "";
+    const firedScreenKey = customerInactivityScreenKey();
 
-    if (!customerInactivityScreenKey()) {
+    if (!firedScreenKey) {
+      return;
+    }
+
+    if (firedScreenKey === "homeIdle") {
+      showIdleScreensaver();
       return;
     }
 
@@ -5592,6 +5746,13 @@ function noteCustomerActivity(event) {
     return;
   }
 
+  if (state.showIdleScreensaver) {
+    if (event?.type === "keydown") {
+      dismissIdleScreensaver();
+    }
+    return;
+  }
+
   if (state.step === 2 && event?.target?.closest) {
     if (event.target.closest(".preview-right-sidebar, .preview-settings-card, .preview-control-actions")) {
       state.previewActivityArea = "settings";
@@ -5600,6 +5761,10 @@ function noteCustomerActivity(event) {
     }
   }
 
+  // Genuine activity always fully re-arms the countdown, even for homeIdle —
+  // clear the key so scheduleCustomerInactivityTimer's poll-triggered guard
+  // (see there) doesn't mistake this real interaction for a no-op rerender.
+  state.customerInactivityTimerKey = "";
   scheduleCustomerInactivityTimer();
 }
 
@@ -5698,6 +5863,26 @@ function updateKioskClock() {
     month: "short",
     year: "numeric"
   });
+}
+
+function tickThankYouHomeCountdown() {
+  if (state.mode !== "customer" || state.thankYouPhase !== "thankyou" || typeof state.thankYouSecondsLeft !== "number") {
+    return;
+  }
+
+  state.thankYouSecondsLeft -= 1;
+
+  if (state.thankYouSecondsLeft <= 0) {
+    resetCustomer();
+    render();
+    refreshPrinterStatus();
+    return;
+  }
+
+  const countdownEl = document.getElementById("tq-home-countdown");
+  if (countdownEl) {
+    countdownEl.textContent = customerTranslateText(`Returning home in ${state.thankYouSecondsLeft}s`);
+  }
 }
 
 function renderMobilePaymentShell() {
@@ -6004,7 +6189,7 @@ function renderAdminTopbar() {
   return `
     <header class="topbar admin-topbar">
       <div class="brand">
-        <div class="brand-mark" style="background: #ffffff !important;"><img src="./assets/smartbuddy-logo-transparent.png" alt="Print Kiosk" draggable="false" data-no-visual-search /></div>
+        <div class="brand-mark" style="background: #ffffff !important;"><img src="./assets/printhub-mark.png" alt="Print Kiosk" draggable="false" data-no-visual-search /></div>
         <div>
           <div class="brand-title">Print Kiosk Admin Console</div>
           <div class="brand-subtitle">${escapeHtml(adminLabel)} | assigned project management</div>
@@ -7843,6 +8028,7 @@ function renderThankYouFinal() {
         <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/></svg>
         Return Home Now
       </button>
+      <p class="tq-home-countdown" id="tq-home-countdown">Returning home in ${Number(state.thankYouSecondsLeft) || THANK_YOU_HOME_REDIRECT_SECONDS}s</p>
     </div>`;
 }
 
@@ -7971,6 +8157,8 @@ function adminNavGroups() {
         { id: "projects", label: "Projects", icon: "hierarchy" },
         { id: "kiosks", label: "Kiosks", icon: "kiosks" },
         { id: "revenue", label: "Report", icon: "payments" },
+        { id: "analytics", label: "Analytics", icon: "activity" },
+        { id: "idle-screensaver", label: "Idle Screen", icon: "screensaver" },
         { id: "alerts", label: "Alerts", icon: "alert" }
       ]
     },
@@ -8010,10 +8198,258 @@ function renderAdminPage() {
   if (page === "projects") return renderProjects();
   if (page === "reports") return renderReports();
   if (page === "revenue") return renderRevenue();
+  if (page === "analytics") return renderAdminAnalytics();
   if (page === "kiosks") return renderKiosks();
   if (page === "refunds") return renderRefunds();
   if (page === "alerts") return renderAlerts();
+  if (page === "idle-screensaver") return renderAdminIdleScreensaverPage();
   return renderDashboard();
+}
+
+async function loadAdminIdleScreensaver() {
+  state.idleScreensaverStatus = "Loading idle-screen settings...";
+  state.idleScreensaverError = "";
+  render();
+
+  try {
+    const payload = await fetchAdminJson("/api/admin/idle-screensaver");
+    state.idleScreensaverDraft = {
+      idleMediaMode: ["none", "image", "video"].includes(payload.idleMediaMode) ? payload.idleMediaMode : "none",
+      idleImageUrls: Array.isArray(payload.idleImageUrls) ? payload.idleImageUrls : [],
+      idleVideoUrl: payload.idleVideoUrl || "",
+      idleTimeoutSeconds: Number(payload.idleTimeoutSeconds) || 60
+    };
+    state.idleScreensaverStatus = "";
+  } catch (error) {
+    if (!error.sessionExpired) {
+      state.idleScreensaverStatus = "";
+      state.idleScreensaverError = error.message || "Could not load idle-screen settings.";
+    }
+  }
+
+  render();
+}
+
+async function saveAdminIdleScreensaver() {
+  if (!state.idleScreensaverDraft) return;
+
+  state.idleScreensaverStatus = "Saving idle-screen settings...";
+  state.idleScreensaverError = "";
+  render();
+
+  try {
+    const payload = await fetchAdminJson("/api/admin/idle-screensaver", {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(state.idleScreensaverDraft)
+    });
+    state.idleScreensaverDraft = {
+      idleMediaMode: payload.idleMediaMode || "none",
+      idleImageUrls: Array.isArray(payload.idleImageUrls) ? payload.idleImageUrls : [],
+      idleVideoUrl: payload.idleVideoUrl || "",
+      idleTimeoutSeconds: Number(payload.idleTimeoutSeconds) || 60
+    };
+    state.idleScreensaverStatus = "Idle-screen settings saved.";
+  } catch (error) {
+    if (!error.sessionExpired) {
+      state.idleScreensaverStatus = "";
+      state.idleScreensaverError = error.message || "Could not save idle-screen settings.";
+    }
+  }
+
+  render();
+}
+
+function validateAdminIdleImageFile(file) {
+  if (!file) return "Choose an idle-screen image.";
+  const isImage = file.type.startsWith("image/") || /\.(png|jpe?g|gif|webp)$/i.test(file.name);
+  if (!isImage) return "Choose a PNG, JPG, GIF, or WebP image.";
+  if (file.size > 4 * 1024 * 1024) return "Each idle-screen image must be 4 MB or smaller.";
+  return "";
+}
+
+async function uploadAdminIdleImages(files) {
+  if (!state.idleScreensaverDraft) return;
+
+  const list = Array.from(files || []);
+  if (!list.length) return;
+
+  const existing = Array.isArray(state.idleScreensaverDraft.idleImageUrls) ? state.idleScreensaverDraft.idleImageUrls : [];
+  const room = Math.max(0, 10 - existing.length);
+  const toUpload = list.slice(0, room);
+
+  if (!toUpload.length) {
+    state.idleScreensaverError = "You can upload at most 10 idle-screen images.";
+    render();
+    return;
+  }
+
+  for (const file of toUpload) {
+    const validationError = validateAdminIdleImageFile(file);
+    if (validationError) {
+      state.idleScreensaverError = validationError;
+      render();
+      return;
+    }
+  }
+
+  state.idleScreensaverStatus = "Uploading idle-screen images...";
+  state.idleScreensaverError = "";
+  render();
+
+  try {
+    const formData = new FormData();
+    toUpload.forEach((file) => formData.append("idleImage", file, file.name));
+    const payload = await fetchAdminJson("/api/admin/idle-image", {
+      method: "POST",
+      body: formData
+    });
+
+    state.idleScreensaverDraft.idleImageUrls = [...existing, ...(payload.imageUrls || [])].slice(0, 10);
+    state.idleScreensaverStatus = "Idle-screen images uploaded. Save to publish them.";
+  } catch (error) {
+    if (!error.sessionExpired) {
+      state.idleScreensaverStatus = "";
+      state.idleScreensaverError = error.message || "Idle-screen image upload failed.";
+    }
+  }
+
+  render();
+}
+
+function validateAdminIdleVideoFile(file) {
+  if (!file) return "Choose an idle-screen video.";
+  const isVideo = file.type.startsWith("video/") || /\.(mp4|webm)$/i.test(file.name);
+  if (!isVideo) return "Choose an MP4 or WebM video.";
+  if (file.size > 40 * 1024 * 1024) return "Idle-screen video must be 40 MB or smaller.";
+  return "";
+}
+
+async function uploadAdminIdleVideo(file) {
+  if (!state.idleScreensaverDraft) return;
+
+  const validationError = validateAdminIdleVideoFile(file);
+  if (validationError) {
+    state.idleScreensaverError = validationError;
+    render();
+    return;
+  }
+
+  state.idleScreensaverStatus = "Uploading idle-screen video...";
+  state.idleScreensaverError = "";
+  render();
+
+  try {
+    const formData = new FormData();
+    formData.append("idleVideo", file, file.name);
+    const payload = await fetchAdminJson("/api/admin/idle-video", {
+      method: "POST",
+      body: formData
+    });
+
+    state.idleScreensaverDraft.idleVideoUrl = payload.videoUrl || "";
+    state.idleScreensaverStatus = "Idle-screen video uploaded. Save to publish it.";
+  } catch (error) {
+    if (!error.sessionExpired) {
+      state.idleScreensaverStatus = "";
+      state.idleScreensaverError = error.message || "Idle-screen video upload failed.";
+    }
+  }
+
+  render();
+}
+
+function deleteAdminIdleImage(index) {
+  if (!state.idleScreensaverDraft) return;
+  const images = Array.isArray(state.idleScreensaverDraft.idleImageUrls) ? [...state.idleScreensaverDraft.idleImageUrls] : [];
+  images.splice(index, 1);
+  state.idleScreensaverDraft.idleImageUrls = images;
+  render();
+}
+
+function moveAdminIdleImage(index, direction) {
+  if (!state.idleScreensaverDraft) return;
+  const images = Array.isArray(state.idleScreensaverDraft.idleImageUrls) ? [...state.idleScreensaverDraft.idleImageUrls] : [];
+  const targetIndex = index + direction;
+  if (targetIndex < 0 || targetIndex >= images.length) return;
+  [images[index], images[targetIndex]] = [images[targetIndex], images[index]];
+  state.idleScreensaverDraft.idleImageUrls = images;
+  render();
+}
+
+function renderAdminIdleScreensaverPage() {
+  if (!state.idleScreensaverDraft) {
+    return `
+      ${renderAdminHeader("Idle Screen", "Screensaver shown on the kiosk home screen after it sits idle.")}
+      <div class="module-card">
+        ${state.idleScreensaverError
+          ? `<div class="empty-note">${escapeHtml(state.idleScreensaverError)}</div>`
+          : `<p class="helper-text">${escapeHtml(state.idleScreensaverStatus || "Loading idle-screen settings...")}</p>`}
+      </div>
+    `;
+  }
+
+  const draft = state.idleScreensaverDraft;
+  const mode = draft.idleMediaMode;
+  const images = Array.isArray(draft.idleImageUrls) ? draft.idleImageUrls : [];
+  const videoUrl = draft.idleVideoUrl || "";
+  const timeoutSeconds = Number(draft.idleTimeoutSeconds) || 60;
+
+  return `
+    ${renderAdminHeader("Idle Screen", "Screensaver shown on the kiosk home screen after it sits idle. Pick one mode — image slideshow or video.")}
+    <div class="module-card">
+      ${state.idleScreensaverStatus ? `<p class="helper-text">${escapeHtml(state.idleScreensaverStatus)}</p>` : ""}
+      ${state.idleScreensaverError ? `<div class="empty-note">${escapeHtml(state.idleScreensaverError)}</div>` : ""}
+
+      <div class="settings-grid">
+        <label class="setting-field">Mode
+          <select data-idle-screensaver-field="idleMediaMode">
+            <option value="none" ${mode === "none" ? "selected" : ""}>Off</option>
+            <option value="image" ${mode === "image" ? "selected" : ""}>Image Slideshow</option>
+            <option value="video" ${mode === "video" ? "selected" : ""}>Video</option>
+          </select>
+        </label>
+        <label class="setting-field">Idle timeout (seconds)
+          <input type="number" min="15" max="600" value="${escapeHtml(String(timeoutSeconds))}" data-idle-screensaver-field="idleTimeoutSeconds" />
+        </label>
+      </div>
+
+      <div class="idle-media-section ${mode === "image" ? "" : "is-dimmed"}">
+        <h3>Slideshow images ${images.length ? `(${images.length}/10)` : ""}</h3>
+        <label class="template-upload-row compact-template-upload">
+          <span>Add images</span>
+          <input type="file" accept="image/png,image/jpeg,image/gif,image/webp" data-idle-screensaver-image-upload multiple ${images.length >= 10 ? "disabled" : ""} />
+        </label>
+        <div class="idle-image-grid">
+          ${images.length ? images.map((imageUrl, index) => `
+            <div class="idle-image-item">
+              <span class="admin-image-preview service-image"><img alt="" src="${escapeHtml(imageUrl)}" draggable="false" data-no-visual-search /></span>
+              <div class="idle-image-item-actions">
+                <button type="button" class="ghost-button small-button" data-idle-screensaver-image-move="${index}" data-idle-screensaver-image-direction="-1" ${index === 0 ? "disabled" : ""}>Up</button>
+                <button type="button" class="ghost-button small-button" data-idle-screensaver-image-move="${index}" data-idle-screensaver-image-direction="1" ${index === images.length - 1 ? "disabled" : ""}>Down</button>
+                <button type="button" class="danger-button small-button" data-idle-screensaver-image-delete="${index}">Remove</button>
+              </div>
+            </div>
+          `).join("") : `<div class="empty-note">No slideshow images uploaded yet.</div>`}
+        </div>
+      </div>
+
+      <div class="idle-media-section ${mode === "video" ? "" : "is-dimmed"}">
+        <h3>Idle video</h3>
+        <label class="template-upload-row compact-template-upload">
+          <span>${videoUrl ? "Replace video" : "Upload video"}</span>
+          <input type="file" accept="video/mp4,video/webm" data-idle-screensaver-video-upload />
+        </label>
+        ${videoUrl
+          ? `<video src="${escapeHtml(videoUrl)}" muted loop controls class="idle-video-preview"></video>`
+          : `<div class="empty-note">No video uploaded yet.</div>`}
+      </div>
+
+      <div class="flow-actions">
+        <button class="primary-button" data-action="save-idle-screensaver">Save</button>
+      </div>
+    </div>
+  `;
 }
 
 function formatDateTime(value) {
@@ -8802,49 +9238,98 @@ function renderDashboard() {
   `;
 }
 
-function renderRevenue() {
-  const stats = state.adminData.dailyStats || [];
-  
-  const startObj = new Date(state.revenueFilter.start);
-  startObj.setHours(0,0,0,0);
-  const endObj = new Date(state.revenueFilter.end);
-  endObj.setHours(23,59,59,999);
-  
-  const filteredStats = stats.filter(stat => {
-    if (!stat.date) return false;
-    const statDate = new Date(stat.date.split("T")[0]);
-    return statDate >= startObj && statDate <= endObj;
-  });
+function financialYearDateStrings(offset = 0) {
+  const now = new Date();
+  const fyStartYear = (now.getMonth() >= 3 ? now.getFullYear() : now.getFullYear() - 1) - offset;
+  return { start: `${fyStartYear}-04-01`, end: `${fyStartYear + 1}-03-31` };
+}
 
-  const total = filteredStats.reduce((sum, stat) => sum + (stat.revenue || 0), 0);
+function renderRevenueFilterCard() {
+  const draft = state.revenueFilterDraft;
+  const kiosks = state.adminData.kiosks || [];
+
+  return `
+    <div class="module-card analytics-filter-card">
+      <div class="settings-grid analytics-filter-grid">
+        <label class="setting-field">Kiosk ID
+          <select onchange="window.updateRevenueFilterDraft('kioskId', this.value)">
+            <option value="" ${!draft.kioskId ? "selected" : ""}>-- All Kiosks --</option>
+            ${kiosks.map((kiosk) => `<option value="${escapeHtml(kiosk.kioskId)}" ${draft.kioskId === kiosk.kioskId ? "selected" : ""}>${escapeHtml(kiosk.kioskId)}${kiosk.branch ? ` | ${escapeHtml(kiosk.branch)}` : ""}</option>`).join("")}
+          </select>
+        </label>
+      </div>
+
+      <div class="analytics-filter-type-row" style="margin-top: 16px;">
+        <label class="analytics-radio">
+          <input type="radio" name="revenue-filter-type" value="financialYear" ${draft.filterType === "financialYear" ? "checked" : ""} onchange="window.updateRevenueFilterDraft('filterType', this.value)" />
+          <span>Financial Year</span>
+        </label>
+        <label class="analytics-radio">
+          <input type="radio" name="revenue-filter-type" value="dateRange" ${draft.filterType === "dateRange" ? "checked" : ""} onchange="window.updateRevenueFilterDraft('filterType', this.value)" />
+          <span>Date Range</span>
+        </label>
+      </div>
+
+      <div class="revenue-filter-apply-row">
+        ${draft.filterType === "financialYear" ? `
+          <label class="setting-field">Financial Year
+            <select onchange="window.updateRevenueFilterDraft('financialYear', this.value)">
+              <option value="current" ${draft.financialYear === "current" ? "selected" : ""}>Current FY (Apr-Mar)</option>
+              <option value="last" ${draft.financialYear === "last" ? "selected" : ""}>Last FY</option>
+              <option value="previous" ${draft.financialYear === "previous" ? "selected" : ""}>Previous FY</option>
+            </select>
+          </label>
+        ` : `
+          <label class="setting-field">Start Date
+            <input type="date" value="${escapeHtml(draft.start)}" onchange="window.updateRevenueFilterDraft('start', this.value)" />
+          </label>
+          <label class="setting-field">End Date
+            <input type="date" value="${escapeHtml(draft.end)}" onchange="window.updateRevenueFilterDraft('end', this.value)" />
+          </label>
+        `}
+        <button class="primary-button revenue-apply-filter-btn" onclick="window.applyRevenueFilter()">${uiIcon("filter", 16)} Apply Filter</button>
+      </div>
+    </div>
+  `;
+}
+
+window.updateRevenueFilterDraft = function (field, value) {
+  state.revenueFilterDraft[field] = value;
+  render();
+};
+
+window.applyRevenueFilter = function () {
+  const draft = state.revenueFilterDraft;
+  const bounds = draft.filterType === "financialYear"
+    ? financialYearDateStrings(draft.financialYear === "last" ? 1 : draft.financialYear === "previous" ? 2 : 0)
+    : { start: draft.start, end: draft.end };
+
+  state.revenueFilter = { ...draft, start: bounds.start, end: bounds.end };
+  render();
+};
+
+function renderRevenue() {
   const currentTab = state.reportTab || "revenue";
 
   return `
     ${renderAdminHeader("Report", "", "")}
     ${adminNotice()}
-    
+
     <div style="display: flex; gap: 16px; margin-bottom: 24px; border-bottom: 1px solid var(--line); padding-bottom: 0;">
       <button class="nav-button" style="background: none; border: none; padding: 12px 24px; font-weight: 600; font-size: 1.1em; color: ${currentTab === 'revenue' ? 'var(--primary)' : 'var(--muted)'}; border-bottom: ${currentTab === 'revenue' ? '3px solid var(--primary)' : '3px solid transparent'}; cursor: pointer;" onclick="window.setReportTab('revenue')">Revenue Report</button>
       <button class="nav-button" style="background: none; border: none; padding: 12px 24px; font-weight: 600; font-size: 1.1em; color: ${currentTab === 'form' ? 'var(--primary)' : 'var(--muted)'}; border-bottom: ${currentTab === 'form' ? '3px solid var(--primary)' : '3px solid transparent'}; cursor: pointer;" onclick="window.setReportTab('form')">Form Report</button>
     </div>
 
-    <div class="revenue-filter-bar" style="display: flex; gap: 16px; align-items: center; background: var(--surface); padding: 16px; border-radius: 8px; border: 1px solid var(--line); margin-bottom: 24px; box-shadow: 0 1px 2px rgba(0,0,0,0.05);">
-      <div style="display: flex; flex-direction: column;">
-        <label style="font-size: 0.8em; color: var(--muted); margin-bottom: 4px;">Start Date</label>
-        <input type="date" id="revenue-start-date" value="${state.revenueFilter.start}" style="padding: 6px 12px; border: 1px solid var(--line); border-radius: 4px;" onchange="window.updateRevenueFilter('start', this.value)">
-      </div>
-      <div style="display: flex; flex-direction: column;">
-        <label style="font-size: 0.8em; color: var(--muted); margin-bottom: 4px;">End Date</label>
-        <input type="date" id="revenue-end-date" value="${state.revenueFilter.end}" style="padding: 6px 12px; border: 1px solid var(--line); border-radius: 4px;" onchange="window.updateRevenueFilter('end', this.value)">
-      </div>
+    ${renderRevenueFilterCard()}
 
-      <div style="display: flex; gap: 8px; margin-left: auto;">
-        ${currentTab === 'revenue' ? `<button class="primary-button" onclick="window.downloadRevenueReportPDF()">${uiIcon("download", 16)} Revenue PDF</button>` : ''}
-        ${currentTab === 'form' ? `<button class="secondary-button" onclick="window.downloadFormPrintReportPDF()">${uiIcon("download", 16)} Form Print PDF</button>` : ''}
-      </div>
+    <div style="display: flex; gap: 8px; margin: -12px 0 24px; justify-content: flex-end;">
+      ${currentTab === 'revenue' ? `<button class="primary-button" onclick="window.downloadRevenueReportPDF()">${uiIcon("download", 16)} Revenue PDF</button>` : ''}
+      ${currentTab === 'form' ? `<button class="secondary-button" onclick="window.downloadFormPrintReportPDF()">${uiIcon("download", 16)} Form Print PDF</button>` : ''}
     </div>
 
-
+    ${currentTab === 'revenue' ? `
+      ${renderTransactionLog()}
+    ` : ''}
 
     ${currentTab === 'form' ? `
       <div class="revenue-desk-split" style="display: grid; grid-template-columns: 1fr; gap: 24px; align-items: start;">
@@ -8855,11 +9340,6 @@ function renderRevenue() {
     ` : ''}
   `;
 }
-
-window.updateRevenueFilter = function(field, value) {
-  state.revenueFilter[field] = value;
-  render();
-};
 
 window.setReportTab = function(tab) {
   state.reportTab = tab;
@@ -8928,6 +9408,549 @@ window.downloadFormPrintReportPDF = function() {
   });
 
   doc.save(`Form_Print_Report_${state.revenueFilter.start}_to_${state.revenueFilter.end}.pdf`);
+};
+
+// ── Graphical Analytics (Admin / Client) ─────────────────────────────
+// Same report as Super Admin's Graphical Analytics, scoped to this
+// client's own kiosks only — no client picker, it's always this account.
+
+function adminAnalyticsFinancialYearBounds(offset = 0) {
+  const now = new Date();
+  const fyStartYear = now.getMonth() >= 3 ? now.getFullYear() : now.getFullYear() - 1;
+  const targetStartYear = fyStartYear - offset;
+  const start = new Date(targetStartYear, 3, 1, 0, 0, 0, 0);
+  const end = new Date(targetStartYear + 1, 2, 31, 23, 59, 59, 999);
+  const label = `FY ${targetStartYear}-${String((targetStartYear + 1) % 100).padStart(2, "0")} (Apr-Mar)`;
+  return { start, end, label };
+}
+
+function adminAnalyticsFilterBounds() {
+  const filter = state.adminAnalyticsFilter;
+
+  if (filter.filterType === "financialYear") {
+    const offset = filter.financialYear === "last" ? 1 : filter.financialYear === "previous" ? 2 : 0;
+    return adminAnalyticsFinancialYearBounds(offset);
+  }
+
+  const start = filter.start ? new Date(`${filter.start}T00:00:00`) : null;
+  const end = filter.end ? new Date(`${filter.end}T23:59:59.999`) : null;
+  const label = filter.start && filter.end ? `${filter.start} to ${filter.end}` : "All dates";
+  return { start, end, label };
+}
+
+function adminAnalyticsBuckets(start, end, basis) {
+  if (!start || !end || start > end) return [];
+
+  const buckets = [];
+  let cursor;
+  let last;
+  let guard = 0;
+  
+  if (basis === "daily") {
+    cursor = new Date(start.getFullYear(), start.getMonth(), start.getDate());
+    last = new Date(end.getFullYear(), end.getMonth(), end.getDate());
+    
+    while (cursor <= last && guard < 400) {
+      buckets.push({
+        key: `${cursor.getFullYear()}-${cursor.getMonth() + 1}-${cursor.getDate()}`,
+        label: cursor.toLocaleString("en-US", { month: "short", day: "numeric" }),
+        year: cursor.getFullYear(),
+        amount: 0
+      });
+      cursor.setDate(cursor.getDate() + 1);
+      guard += 1;
+    }
+  } else if (basis === "weekly") {
+    cursor = new Date(start.getFullYear(), start.getMonth(), start.getDate());
+    cursor.setDate(cursor.getDate() - cursor.getDay());
+    last = new Date(end.getFullYear(), end.getMonth(), end.getDate());
+    last.setDate(last.getDate() - last.getDay());
+    
+    while (cursor <= last && guard < 60) {
+      const weekEnd = new Date(cursor);
+      weekEnd.setDate(weekEnd.getDate() + 6);
+      
+      buckets.push({
+        key: `${cursor.getFullYear()}-${cursor.getMonth() + 1}-${cursor.getDate()}`,
+        label: `${cursor.toLocaleString("en-US", { month: "short", day: "numeric" })} - ${weekEnd.toLocaleString("en-US", { month: "short", day: "numeric" })}`,
+        year: cursor.getFullYear(),
+        amount: 0
+      });
+      cursor.setDate(cursor.getDate() + 7);
+      guard += 1;
+    }
+  } else {
+    cursor = new Date(start.getFullYear(), start.getMonth(), 1);
+    last = new Date(end.getFullYear(), end.getMonth(), 1);
+    
+    while (cursor <= last && guard < 60) {
+      buckets.push({
+        key: `${cursor.getFullYear()}-${cursor.getMonth()}`,
+        label: cursor.toLocaleString("en-US", { month: "short" }),
+        year: cursor.getFullYear(),
+        amount: 0
+      });
+      cursor.setMonth(cursor.getMonth() + 1);
+      guard += 1;
+    }
+  }
+
+  return buckets;
+}
+
+function adminAnalyticsFilteredRecords() {
+  const filter = state.adminAnalyticsFilter;
+  const { start, end } = adminAnalyticsFilterBounds();
+
+  return adminTransactionRecords().filter((record) => {
+    if (!transactionMatchesStatus(record, "success")) return false;
+
+    const ts = transactionTimestamp(record.dateValue);
+    if (!ts) return false;
+    if (start && ts < start.getTime()) return false;
+    if (end && ts > end.getTime()) return false;
+    if (filter.kioskId && String(record.kiosk || "").toUpperCase() !== filter.kioskId.toUpperCase()) return false;
+
+    return true;
+  });
+}
+
+function adminAnalyticsBucketedSeries() {
+  const { start, end } = adminAnalyticsFilterBounds();
+  const basis = state.adminAnalyticsFilter.basis || "monthly";
+  const buckets = adminAnalyticsBuckets(start, end, basis);
+  const bucketByKey = new Map(buckets.map((bucket) => [bucket.key, bucket]));
+
+  adminAnalyticsFilteredRecords().forEach((record) => {
+    const recordDate = new Date(record.dateValue);
+    if (Number.isNaN(recordDate.getTime())) return;
+
+    let key;
+    if (basis === "daily") {
+      key = `${recordDate.getFullYear()}-${recordDate.getMonth() + 1}-${recordDate.getDate()}`;
+    } else if (basis === "weekly") {
+      const rDate = new Date(recordDate.getFullYear(), recordDate.getMonth(), recordDate.getDate());
+      rDate.setDate(rDate.getDate() - rDate.getDay());
+      key = `${rDate.getFullYear()}-${rDate.getMonth() + 1}-${rDate.getDate()}`;
+    } else {
+      key = `${recordDate.getFullYear()}-${recordDate.getMonth()}`;
+    }
+
+    const bucket = bucketByKey.get(key);
+    if (!bucket) return;
+
+    bucket.amount += Number(record.amount || 0);
+  });
+
+  return buckets;
+}
+
+window.updateAdminAnalyticsFilter = function (field, value) {
+  state.adminAnalyticsFilter[field] = value;
+  render();
+};
+
+function renderAdminAnalytics() {
+  const filter = state.adminAnalyticsFilter;
+  const kiosks = state.adminData.kiosks || [];
+  const buckets = adminAnalyticsBucketedSeries();
+  const totalAmount = buckets.reduce((sum, bucket) => sum + bucket.amount, 0);
+  const { label: rangeLabel } = adminAnalyticsFilterBounds();
+  const clientName = state.adminAccount?.name || state.adminAccount?.email || "Client";
+  const clientLogoUrl = state.adminAccount?.logoUrl || "";
+
+  return `
+    ${renderAdminHeader("Graphical Analytics", "Revenue trends by financial year or custom date range, across your kiosks.", `
+      <button class="secondary-button" onclick="window.print()">${uiIcon("printer", 16)} Print</button>
+      <button class="primary-button" onclick="window.downloadAdminAnalyticsPDF()">${uiIcon("download", 16)} Download PDF</button>
+    `)}
+    ${adminNotice()}
+
+    <div class="analytics-layout-container">
+      <div class="module-card analytics-report-area" id="admin-analytics-print-area">
+        <div class="analytics-report-header">
+          ${clientLogoUrl ? `<img class="analytics-report-logo" src="${escapeHtml(clientLogoUrl)}" alt="${escapeHtml(clientName)}" />` : `<div class="analytics-report-logo analytics-report-logo-placeholder"></div>`}
+          <div class="analytics-report-heading">
+            <h1>Graphical Analytics Report</h1>
+            <p class="analytics-report-client">Client: ${escapeHtml(clientName)}</p>
+            <p class="analytics-report-meta">Kiosk ID: ${escapeHtml(filter.kioskId || "All Kiosks")} &nbsp;·&nbsp; ${escapeHtml(rangeLabel)}</p>
+          </div>
+          <img class="analytics-report-logo analytics-report-logo-wide" src="./assets/printhub-logo-transparent.png" alt="Aarya Innovtech" />
+        </div>
+
+        <div class="section-heading">
+          <h2>💰 ${filter.basis.charAt(0).toUpperCase() + filter.basis.slice(1)} Transaction Revenue (₹)</h2>
+        </div>
+        ${buckets.length ? renderAdminAnalyticsChart(buckets) : `<div class="empty-note">No data for this range yet.</div>`}
+
+        <div class="analytics-summary-row">
+          <div class="analytics-summary-tile is-total">
+            <span>Total Revenue</span>
+            <strong>${escapeHtml(money(totalAmount))}</strong>
+          </div>
+        </div>
+
+        ${buckets.length ? `
+          <div class="analytics-table-wrap">
+            <table class="analytics-table">
+              <thead>
+                <tr><th>Period</th><th>Amount (₹)</th></tr>
+              </thead>
+              <tbody>
+                ${buckets.map((bucket) => `
+                  <tr>
+                    <td>${escapeHtml(bucket.label)} ${bucket.year}</td>
+                    <td>${escapeHtml(money(bucket.amount))}</td>
+                  </tr>
+                `).join("")}
+              </tbody>
+            </table>
+          </div>
+        ` : ""}
+      </div>
+
+      <div class="module-card analytics-filter-card" data-print-hide>
+        <div class="section-heading">
+          <h2>Data Basis</h2>
+        </div>
+        <div class="analytics-filter-type-row">
+          <label class="analytics-radio">
+            <input type="radio" name="admin-analytics-basis" value="daily" ${filter.basis === "daily" ? "checked" : ""} onchange="window.updateAdminAnalyticsFilter('basis', this.value)" />
+            <span>Daily</span>
+          </label>
+          <label class="analytics-radio">
+            <input type="radio" name="admin-analytics-basis" value="weekly" ${filter.basis === "weekly" ? "checked" : ""} onchange="window.updateAdminAnalyticsFilter('basis', this.value)" />
+            <span>Weekly</span>
+          </label>
+          <label class="analytics-radio">
+            <input type="radio" name="admin-analytics-basis" value="monthly" ${filter.basis === "monthly" ? "checked" : ""} onchange="window.updateAdminAnalyticsFilter('basis', this.value)" />
+            <span>Monthly</span>
+          </label>
+        </div>
+
+        <div class="section-heading">
+          <h2>Filter Type</h2>
+        </div>
+        <div class="analytics-filter-type-row">
+          <label class="analytics-radio">
+            <input type="radio" name="admin-analytics-filter-type" value="financialYear" ${filter.filterType === "financialYear" ? "checked" : ""} onchange="window.updateAdminAnalyticsFilter('filterType', this.value)" />
+            <span>Financial Year</span>
+          </label>
+          <label class="analytics-radio">
+            <input type="radio" name="admin-analytics-filter-type" value="dateRange" ${filter.filterType === "dateRange" ? "checked" : ""} onchange="window.updateAdminAnalyticsFilter('filterType', this.value)" />
+            <span>Date Range</span>
+          </label>
+        </div>
+
+        <div class="settings-grid analytics-filter-grid">
+          <label class="setting-field">Kiosk ID
+            <select onchange="window.updateAdminAnalyticsFilter('kioskId', this.value)">
+              <option value="" ${!filter.kioskId ? "selected" : ""}>-- All Kiosks --</option>
+              ${kiosks.map((kiosk) => `<option value="${escapeHtml(kiosk.kioskId)}" ${filter.kioskId === kiosk.kioskId ? "selected" : ""}>${escapeHtml(kiosk.kioskId)}${kiosk.branch ? ` | ${escapeHtml(kiosk.branch)}` : ""}</option>`).join("")}
+            </select>
+          </label>
+          ${filter.filterType === "financialYear" ? `
+            <label class="setting-field">Financial Year
+              <select onchange="window.updateAdminAnalyticsFilter('financialYear', this.value)">
+                <option value="current" ${filter.financialYear === "current" ? "selected" : ""}>Current FY (Apr-Mar)</option>
+                <option value="last" ${filter.financialYear === "last" ? "selected" : ""}>Last FY</option>
+                <option value="previous" ${filter.financialYear === "previous" ? "selected" : ""}>Previous FY</option>
+              </select>
+            </label>
+          ` : `
+            <label class="setting-field">Start Date
+              <input type="date" value="${escapeHtml(filter.start)}" onchange="window.updateAdminAnalyticsFilter('start', this.value)" />
+            </label>
+            <label class="setting-field">End Date
+              <input type="date" value="${escapeHtml(filter.end)}" onchange="window.updateAdminAnalyticsFilter('end', this.value)" />
+            </label>
+          `}
+        </div>
+      </div>
+    </div>
+  `;
+}
+
+function renderAdminAnalyticsChart(buckets) {
+  const minGroupWidth = 40;
+  const padding = { top: 20, right: 24, bottom: 40, left: 64 };
+  const baseChartWidth = 960 - padding.left - padding.right;
+  const chartWidth = Math.max(baseChartWidth, buckets.length * minGroupWidth);
+  const width = chartWidth + padding.left + padding.right;
+  const height = 320;
+  const chartHeight = height - padding.top - padding.bottom;
+  const maxValue = Math.max(1, ...buckets.map((bucket) => bucket.amount));
+  const yMax = Math.max(10, Math.ceil(maxValue / 10) * 10);
+  const groupWidth = chartWidth / buckets.length;
+  const barWidth = Math.max(6, groupWidth * 0.5);
+
+  const yTicks = [0, 0.25, 0.5, 0.75, 1].map((ratio) => ({
+    value: Math.round(yMax * ratio),
+    y: padding.top + chartHeight - ratio * chartHeight
+  }));
+
+  const bars = buckets.map((bucket, index) => {
+    const groupX = padding.left + index * groupWidth;
+    const barHeight = (bucket.amount / yMax) * chartHeight;
+    return {
+      label: `${bucket.label} ${String(bucket.year).slice(-2)}`,
+      barX: groupX + groupWidth / 2 - barWidth / 2,
+      barY: padding.top + chartHeight - barHeight,
+      barHeight,
+      amount: bucket.amount,
+      centerX: groupX + groupWidth / 2
+    };
+  });
+
+  return `
+    <style>
+      .analytics-chart-wrap { --amount-color: #2a78d6; position: relative; overflow-x: auto; overflow-y: hidden; padding-bottom: 8px; }
+      .analytics-bar { transition: opacity 0.15s ease; }
+      .analytics-bar-group:hover .analytics-bar { opacity: 0.85; }
+      .analytics-bar-tooltip { opacity: 0; pointer-events: none; transition: opacity 0.15s ease; }
+      .analytics-bar-group:hover .analytics-bar-tooltip { opacity: 1; }
+    </style>
+    <div class="analytics-chart-wrap">
+      <svg viewBox="0 0 ${width} ${height}" role="img" aria-label="Transaction revenue chart" style="min-width: 100%; width: ${width}px; height: ${height}px;">
+        <g>
+          ${yTicks.map((tick) => `
+            <line x1="${padding.left}" x2="${width - padding.right}" y1="${tick.y.toFixed(1)}" y2="${tick.y.toFixed(1)}" stroke="#e2e8f0" stroke-width="1" />
+            <text x="${padding.left - 10}" y="${(tick.y + 4).toFixed(1)}" text-anchor="end" fill="#64748b" font-size="11px" font-weight="500">${escapeHtml(money(tick.value).replace("Rs. ", ""))}</text>
+          `).join("")}
+        </g>
+        <g>
+          ${bars.map((bar) => `
+            <g class="analytics-bar-group">
+              <rect class="analytics-bar" x="${bar.barX.toFixed(1)}" y="${bar.barY.toFixed(1)}" width="${barWidth.toFixed(1)}" height="${Math.max(0, bar.barHeight).toFixed(1)}" rx="4" fill="var(--amount-color)" />
+              <rect x="${(bar.centerX - groupWidth / 2).toFixed(1)}" y="${padding.top}" width="${groupWidth.toFixed(1)}" height="${chartHeight}" fill="transparent" />
+              <text x="${bar.centerX.toFixed(1)}" y="${height - 16}" text-anchor="middle" fill="#64748b" font-size="11px" font-weight="500">${escapeHtml(bar.label)}</text>
+              <g class="analytics-bar-tooltip" transform="translate(${Math.min(width - 100, Math.max(4, bar.centerX - 50))}, ${Math.max(padding.top, bar.barY - 30)})">
+                <rect width="100" height="26" rx="6" fill="#ffffff" stroke="#e2e8f0" />
+                <text x="10" y="17" fill="var(--amount-color)" font-size="11px" font-weight="700">${escapeHtml(money(bar.amount))}</text>
+              </g>
+            </g>
+          `).join("")}
+        </g>
+      </svg>
+    </div>
+  `;
+}
+
+async function loadImageAsDataUrl(url) {
+  if (!url) return null;
+
+  try {
+    const response = await fetch(url, { mode: "cors" });
+    if (!response.ok) return null;
+    const blob = await response.blob();
+
+    return await new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload = () => resolve(reader.result);
+      reader.onerror = reject;
+      reader.readAsDataURL(blob);
+    });
+  } catch {
+    return null;
+  }
+}
+
+function dataUrlImageFormat(dataUrl) {
+  const match = /^data:image\/(\w+);/.exec(dataUrl || "");
+  const type = (match?.[1] || "png").toUpperCase();
+  return type === "JPG" ? "JPEG" : type;
+}
+
+function loadImageNaturalSize(dataUrl) {
+  return new Promise((resolve) => {
+    if (!dataUrl) {
+      resolve(null);
+      return;
+    }
+
+    const img = new Image();
+    img.onload = () => resolve({ width: img.naturalWidth || 1, height: img.naturalHeight || 1 });
+    img.onerror = () => resolve(null);
+    img.src = dataUrl;
+  });
+}
+
+function fitImageBox(naturalSize, maxWidth, maxHeight) {
+  if (!naturalSize || !naturalSize.width || !naturalSize.height) {
+    return { width: maxWidth, height: maxHeight };
+  }
+
+  const scale = Math.min(maxWidth / naturalSize.width, maxHeight / naturalSize.height);
+  return { width: naturalSize.width * scale, height: naturalSize.height * scale };
+}
+
+function svgElementToPngDataUrl(svgElement, scale = 2) {
+  return new Promise((resolve) => {
+    if (!svgElement) {
+      resolve(null);
+      return;
+    }
+
+    const viewBox = svgElement.viewBox?.baseVal;
+    const width = (viewBox && viewBox.width) || svgElement.clientWidth || 960;
+    const height = (viewBox && viewBox.height) || svgElement.clientHeight || 320;
+
+    const svgString = new XMLSerializer().serializeToString(svgElement);
+    const svgBlob = new Blob([svgString], { type: "image/svg+xml;charset=utf-8" });
+    const url = URL.createObjectURL(svgBlob);
+    const img = new Image();
+
+    img.onload = () => {
+      const canvas = document.createElement("canvas");
+      canvas.width = width * scale;
+      canvas.height = height * scale;
+      const ctx = canvas.getContext("2d");
+      ctx.fillStyle = "#ffffff";
+      ctx.fillRect(0, 0, canvas.width, canvas.height);
+      ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+      URL.revokeObjectURL(url);
+      resolve({ dataUrl: canvas.toDataURL("image/png"), width, height });
+    };
+
+    img.onerror = () => {
+      URL.revokeObjectURL(url);
+      resolve(null);
+    };
+
+    img.src = url;
+  });
+}
+
+function drawPdfWatermark(doc, logoDataUrl, naturalSize) {
+  if (!logoDataUrl) return;
+
+  try {
+    const pageWidth = doc.internal.pageSize.getWidth();
+    const pageHeight = doc.internal.pageSize.getHeight();
+    const box = fitImageBox(naturalSize, pageWidth * 0.6, pageHeight * 0.35);
+
+    doc.saveGraphicsState();
+    doc.setGState(new doc.GState({ opacity: 0.07 }));
+    doc.addImage(logoDataUrl, dataUrlImageFormat(logoDataUrl), (pageWidth - box.width) / 2, (pageHeight - box.height) / 2, box.width, box.height);
+    doc.restoreGraphicsState();
+  } catch {
+    // Opacity/GState support can vary by jsPDF build — a missing watermark
+    // should never break the rest of the PDF export.
+  }
+}
+
+const PDF_TABLE_STYLE = {
+  styles: {
+    fontSize: 10,
+    lineColor: [42, 120, 214],
+    lineWidth: 0.2,
+    textColor: [30, 41, 59],
+    cellPadding: 5
+  },
+  headStyles: {
+    fillColor: [27, 175, 122],
+    textColor: 255,
+    fontStyle: "bold",
+    halign: "center"
+  },
+  alternateRowStyles: {
+    fillColor: [240, 253, 244]
+  }
+};
+
+window.downloadAdminAnalyticsPDF = async function () {
+  const filter = state.adminAnalyticsFilter;
+  const { jsPDF } = window.jspdf;
+  const doc = new jsPDF();
+  const pageWidth = doc.internal.pageSize.getWidth();
+  const buckets = adminAnalyticsBucketedSeries();
+  const { label: rangeLabel } = adminAnalyticsFilterBounds();
+  const clientName = state.adminAccount?.name || state.adminAccount?.email || "Client";
+  const kioskLabel = filter.kioskId || "All Kiosks";
+  const logoMaxWidth = 32;
+  const logoMaxHeight = 24;
+  const companyLogoMaxWidth = 50;
+  const logoY = 12;
+
+  const [clientLogo, companyLogo] = await Promise.all([
+    loadImageAsDataUrl(state.adminAccount?.logoUrl || ""),
+    loadImageAsDataUrl("./assets/printhub-logo-transparent.png")
+  ]);
+  const [clientLogoSize, companyLogoSize] = await Promise.all([
+    loadImageNaturalSize(clientLogo),
+    loadImageNaturalSize(companyLogo)
+  ]);
+
+  drawPdfWatermark(doc, companyLogo, companyLogoSize);
+
+  if (clientLogo) {
+    const box = fitImageBox(clientLogoSize, logoMaxWidth, logoMaxHeight);
+    doc.addImage(clientLogo, dataUrlImageFormat(clientLogo), 14, logoY + (logoMaxHeight - box.height) / 2, box.width, box.height);
+  }
+
+  if (companyLogo) {
+    const box = fitImageBox(companyLogoSize, companyLogoMaxWidth, logoMaxHeight);
+    doc.addImage(companyLogo, dataUrlImageFormat(companyLogo), pageWidth - 14 - box.width, logoY + (logoMaxHeight - box.height) / 2, box.width, box.height);
+  }
+
+  doc.setFont(undefined, "bold");
+  doc.setFontSize(22);
+  doc.setTextColor(27, 175, 122);
+  doc.text("Graphical Analytics Report", pageWidth / 2, logoY + 10, { align: "center" });
+
+  doc.setFontSize(15);
+  doc.setTextColor(42, 120, 214);
+  doc.text(`Client: ${clientName}`, pageWidth / 2, logoY + 19, { align: "center" });
+
+  doc.setFont(undefined, "normal");
+  doc.setFontSize(11);
+  doc.setTextColor(100);
+  doc.text(`Kiosk ID: ${kioskLabel}`, pageWidth / 2, logoY + 27, { align: "center" });
+  doc.text(`Range: ${rangeLabel}`, pageWidth / 2, logoY + 33, { align: "center" });
+  doc.setTextColor(0);
+
+  const dividerY = logoY + 42;
+  doc.setDrawColor(42, 120, 214);
+  doc.setLineWidth(0.6);
+  doc.line(14, dividerY, pageWidth - 14, dividerY);
+
+  let cursorY = dividerY + 8;
+  const chartSvg = document.querySelector("#admin-analytics-print-area .analytics-chart-wrap svg");
+  const chart = buckets.length ? await svgElementToPngDataUrl(chartSvg) : null;
+
+  if (chart) {
+    const marginX = 14;
+    const maxChartWidth = pageWidth - marginX * 2;
+    const chartWidth = Math.min(maxChartWidth, 180);
+    const chartHeight = chartWidth * (chart.height / chart.width);
+    doc.addImage(chart.dataUrl, "PNG", (pageWidth - chartWidth) / 2, cursorY, chartWidth, chartHeight);
+    cursorY += chartHeight + 10;
+  }
+
+  const tableData = buckets.map((bucket) => [
+    `${bucket.label} ${bucket.year}`,
+    money(bucket.amount)
+  ]);
+  const totalAmount = buckets.reduce((sum, bucket) => sum + bucket.amount, 0);
+  tableData.push(["Total", money(totalAmount)]);
+
+  doc.autoTable({
+    startY: cursorY,
+    head: [["Month", "Amount (Rs.)"]],
+    body: tableData,
+    theme: "grid",
+    ...PDF_TABLE_STYLE,
+    columnStyles: { 1: { halign: "center" } },
+    didParseCell: (hookData) => {
+      if (hookData.row.index === tableData.length - 1) {
+        hookData.cell.styles.fillColor = [27, 175, 122];
+        hookData.cell.styles.textColor = 255;
+        hookData.cell.styles.fontStyle = "bold";
+      }
+    }
+  });
+
+  doc.save(`Graphical_Analytics_${clientName.replace(/[^a-z0-9]+/gi, "_")}_${rangeLabel.replace(/[^a-z0-9]+/gi, "_")}.pdf`);
 };
 
 function getTemplateName(templateId) {
@@ -10436,7 +11459,7 @@ function renderAlerts() {
   return `
     ${renderAdminHeader("Notifications", "Live printer hardware alerts by kiosk ID.")}
     ${adminNotice()}
-    <div class="module-grid">
+    <div class="module-grid alert-cards-grid">
       ${(page.items.length ? page.items : [{ title: "No live printer alerts", detail: "Paper, toner, door, and queue checks are clear.", tone: "good" }]).map((alert) => `
         <div class="module-card admin-alert-card admin-alert-card--${escapeHtml(alert.tone || "warn")}">
           <h2>${escapeHtml(alert.title)}</h2>
@@ -10506,11 +11529,21 @@ function renderTable(headers, rows) {
   `;
 }
 
+function handleKeydown(event) {
+  if (event.key !== "Enter") return;
+
+  if (event.target?.dataset?.adminLoginField !== undefined) {
+    event.preventDefault();
+    adminLogin();
+  }
+}
+
 function bindEvents() {
   const app = qs("#app");
   app.onclick = handleClick;
   app.onchange = handleChange;
   app.oninput = handleInput;
+  app.onkeydown = handleKeydown;
   bindCustomerInactivityEvents();
 }
 
@@ -10648,6 +11681,19 @@ async function handleClick(event) {
     if (!(TEST_HOOKS_ENABLED && state.adminToken === "ui-test-session")) {
       loadAdminData();
     }
+    if (target.dataset.adminPage === "idle-screensaver") {
+      loadAdminIdleScreensaver();
+    }
+    return;
+  }
+
+  if (target.dataset.idleScreensaverImageDelete !== undefined) {
+    deleteAdminIdleImage(Number(target.dataset.idleScreensaverImageDelete));
+    return;
+  }
+
+  if (target.dataset.idleScreensaverImageMove !== undefined) {
+    moveAdminIdleImage(Number(target.dataset.idleScreensaverImageMove), Number(target.dataset.idleScreensaverImageDirection));
     return;
   }
 
@@ -10906,6 +11952,9 @@ async function handleClick(event) {
     case "admin-save-settings":
       saveAdminSettings();
       break;
+    case "save-idle-screensaver":
+      saveAdminIdleScreensaver();
+      break;
     case "admin-logout":
       state.adminAuthed = false;
       state.adminNavOpen = false;
@@ -11145,6 +12194,26 @@ async function handleChange(event) {
   if (target.dataset.adminSettingsField) {
     state.adminSettingsDraft[target.dataset.adminSettingsField] = target.value;
     state.adminSettingsStatus = "";
+    return;
+  }
+
+  if (target.dataset.idleScreensaverField && state.idleScreensaverDraft) {
+    const field = target.dataset.idleScreensaverField;
+    state.idleScreensaverDraft[field] = field === "idleTimeoutSeconds" ? Number(target.value) || 60 : target.value;
+    state.idleScreensaverStatus = "";
+    render();
+    return;
+  }
+
+  if (target.dataset.idleScreensaverImageUpload !== undefined && target.files?.length) {
+    await uploadAdminIdleImages(target.files);
+    target.value = "";
+    return;
+  }
+
+  if (target.dataset.idleScreensaverVideoUpload !== undefined && target.files?.length) {
+    await uploadAdminIdleVideo(target.files[0]);
+    target.value = "";
     return;
   }
 
@@ -11405,6 +12474,7 @@ function resetCustomer() {
   stopUploadPolling();
   stopPaymentPolling();
   stopCustomerInactivityTimer();
+  hideIdleScreensaver();
   state.mode = "customer";
   setPrivacyPolicyVisible(false);
   state.step = 0;
@@ -11442,6 +12512,7 @@ function resetCustomer() {
   state.activeJobId = null;
   state.lastCompletedJob = null;
   state.thankYouPhase = "payment_done";
+  state.thankYouSecondsLeft = null;
   state.printer = {
     ...state.printer,
     online: false,
@@ -11622,6 +12693,7 @@ if (!isMobilePaymentEntry && state.adminAuthed) {
 }
 
 setInterval(updateKioskClock, 1000);
+setInterval(tickThankYouHomeCountdown, 1000);
 
 // ── Printer Health IPC bridge (Electron-only, non-breaking) ─────────────────
 // No-op when window.kioskPrinterHealth is not exposed (non-Electron / demo mode).
