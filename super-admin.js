@@ -675,7 +675,7 @@ async function loadSnapshot({ quiet = false } = {}) {
     const snapshot = await fetchJson("/api/super-admin/snapshot");
     state.snapshot = snapshot;
     state.pricingDraft = clone(snapshot.data?.pricing || {});
-    state.error = "";
+    if (!quiet) state.error = "";
   } catch (error) {
     if (!error.sessionExpired) {
       state.error = error.message || "Super admin backend is offline.";
@@ -4520,6 +4520,7 @@ async function uploadSuperAdminClientLogo(file) {
       ? "Client logo uploaded to S3. Save Client to publish it."
       : "Client logo uploaded. Save Client to publish it.";
   } catch (error) {
+    state.notice = "";
     state.error = error.message || "Client logo upload failed.";
   }
 
@@ -4574,6 +4575,7 @@ async function uploadSuperAdminIdleImages(files) {
     state.editor.draft.idleImageUrls = [...existing, ...(payload.imageUrls || [])].slice(0, 10);
     state.notice = "Idle-screen images uploaded. Save Client to publish them.";
   } catch (error) {
+    state.notice = "";
     state.error = error.message || "Idle-screen image upload failed.";
   }
 
@@ -4615,6 +4617,7 @@ async function uploadSuperAdminIdleVideo(file) {
       ? "Idle-screen video uploaded to S3. Save Client to publish it."
       : "Idle-screen video uploaded. Save Client to publish it.";
   } catch (error) {
+    state.notice = "";
     state.error = error.message || "Idle-screen video upload failed.";
   }
 
@@ -4841,6 +4844,7 @@ async function saveEditor() {
     state.editor = null;
     await loadSnapshot({ quiet: true });
   } catch (error) {
+    state.notice = "";
     state.error = error.message || "Save failed.";
     render();
   }
