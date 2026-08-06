@@ -1409,8 +1409,12 @@ function serviceTitle(serviceId) {
   return data("services").find((service) => service.id === serviceId)?.title || serviceId || "Print Document";
 }
 
+function transactionKioskRecord(kioskId = "") {
+  return data("kiosks").find((item) => String(item.kioskId || "").toUpperCase() === String(kioskId || "").toUpperCase()) || null;
+}
+
 function transactionProjectForKiosk(kioskId = "") {
-  const kiosk = data("kiosks").find((item) => String(item.kioskId || "").toUpperCase() === String(kioskId || "").toUpperCase());
+  const kiosk = transactionKioskRecord(kioskId);
   return data("projects").find((project) => project.projectId === kiosk?.projectId) || null;
 }
 
@@ -1419,6 +1423,22 @@ function transactionClientForProject(project = {}) {
     client.adminId === project?.adminId ||
     (client.projectIds || []).includes(project?.projectId)
   )) || null;
+}
+
+// Mirrors the backend's clientForKiosk() (backend/server.js): a kiosk's
+// direct adminId is authoritative when present, so reports/analytics must
+// not attribute the kiosk to "Unallocated" just because its Project's
+// adminId/projectIds links happen to be out of sync.
+function transactionClientForKiosk(kioskId = "", project = null) {
+  const kiosk = transactionKioskRecord(kioskId);
+  const directAdminId = String(kiosk?.adminId || "").trim();
+
+  if (directAdminId) {
+    const directClient = data("kioskAdmins").find((client) => client.adminId === directAdminId);
+    if (directClient) return directClient;
+  }
+
+  return transactionClientForProject(project);
 }
 
 function superAdminTransactionRecords() {
@@ -1433,7 +1453,7 @@ function superAdminTransactionRecords() {
 
     const kioskId = job.kioskId || payment.kioskId || UNASSIGNED_KIOSK_ID;
     const project = transactionProjectForKiosk(kioskId);
-    const client = transactionClientForProject(project);
+    const client = transactionClientForKiosk(kioskId, project);
     const dateValue = paymentDateValue(payment, job);
 
     return {
@@ -1464,7 +1484,7 @@ function superAdminTransactionRecords() {
     .map((job) => {
       const kioskId = job.kioskId || UNASSIGNED_KIOSK_ID;
       const project = transactionProjectForKiosk(kioskId);
-      const client = transactionClientForProject(project);
+      const client = transactionClientForKiosk(kioskId, project);
       const dateValue = paymentDateValue({}, job);
 
       return {
@@ -2019,7 +2039,7 @@ function analyticsKiosksForClient(clientId) {
 
   return kiosks.filter((kiosk) => {
     const project = transactionProjectForKiosk(kiosk.kioskId);
-    const client = transactionClientForProject(project);
+    const client = transactionClientForKiosk(kiosk.kioskId, project);
     return client?.adminId === clientId;
   });
 }
@@ -4127,6 +4147,7 @@ async function publishRelease() {
     state.notice = `Release ${release.version} published.`;
     await loadSnapshot({ quiet: true });
   } catch (error) {
+    state.notice = "";
     state.error = error.message || "Release publish failed.";
     render();
   }
@@ -4134,6 +4155,7 @@ async function publishRelease() {
 
 async function setReleaseActive(releaseId, active) {
   state.notice = active ? "Resuming release..." : "Pausing release...";
+  state.error = "";
   render();
   try {
     await fetchJson(`/api/super-admin/releases/${encodeURIComponent(releaseId)}`, {
@@ -4144,6 +4166,7 @@ async function setReleaseActive(releaseId, active) {
     state.notice = active ? "Release resumed." : "Release paused.";
     await loadSnapshot({ quiet: true });
   } catch (error) {
+    state.notice = "";
     state.error = error.message || "Release status change failed.";
     render();
   }
@@ -4152,12 +4175,14 @@ async function setReleaseActive(releaseId, active) {
 async function deleteRelease(releaseId) {
   if (!window.confirm(`Delete release ${releaseId}?`)) return;
   state.notice = "Deleting release...";
+  state.error = "";
   render();
   try {
     await fetchJson(`/api/super-admin/releases/${encodeURIComponent(releaseId)}`, { method: "DELETE" });
     state.notice = "Release deleted.";
     await loadSnapshot({ quiet: true });
   } catch (error) {
+    state.notice = "";
     state.error = error.message || "Release delete failed.";
     render();
   }
@@ -4297,6 +4322,7 @@ async function deleteProjectService(serviceId) {
   if (!window.confirm(message)) return;
 
   state.notice = shouldDeleteRecord ? "Deleting service..." : "Removing service from project...";
+  state.error = "";
   render();
 
   try {
@@ -4321,6 +4347,7 @@ async function deleteProjectService(serviceId) {
     state.editor = null;
     await loadSnapshot({ quiet: true });
   } catch (error) {
+    state.notice = "";
     state.error = error.message || "Service delete failed.";
     render();
   }
@@ -4674,6 +4701,7 @@ async function uploadSuperAdminTemplateImage(file, templateIndex) {
     updateDraftTemplate(templateIndex, "description", `${documentType.toUpperCase()} template document.`);
     state.notice = "Template document uploaded. Save Service to publish it.";
   } catch (error) {
+    state.notice = "";
     state.error = error.message || "Template document upload failed.";
   }
 
@@ -4832,6 +4860,7 @@ async function saveEditor() {
     : `/api/super-admin/${collection}/${encodeURIComponent(id)}`;
 
   state.notice = "Saving...";
+  state.error = "";
   render();
 
   try {
@@ -4856,6 +4885,7 @@ async function deleteRecord(collection, id) {
   if (!confirmed) return;
 
   state.notice = "Deleting...";
+  state.error = "";
   render();
 
   try {
@@ -4866,6 +4896,7 @@ async function deleteRecord(collection, id) {
     state.editor = null;
     await loadSnapshot({ quiet: true });
   } catch (error) {
+    state.notice = "";
     state.error = error.message || "Delete failed.";
     render();
   }
@@ -4916,6 +4947,7 @@ function pricingDraftWithoutKiosk(kioskId) {
 
 async function persistPricingDraft(successMessage) {
   state.notice = "Saving pricing...";
+  state.error = "";
   render();
 
   try {
@@ -4928,6 +4960,7 @@ async function persistPricingDraft(successMessage) {
     await loadSnapshot({ quiet: true });
   } catch (error) {
     if (error.sessionExpired) return;
+    state.notice = "";
     state.error = error.message || "Pricing save failed.";
     render();
   }
@@ -4956,6 +4989,7 @@ async function deleteKioskPricing(kioskId) {
 async function savePricing(serviceId) {
   const rates = pricingFor(serviceId);
   state.notice = "Saving pricing...";
+  state.error = "";
   render();
 
   try {
@@ -4968,6 +5002,7 @@ async function savePricing(serviceId) {
     await loadSnapshot({ quiet: true });
   } catch (error) {
     if (error.sessionExpired) return;
+    state.notice = "";
     state.error = error.message || "Pricing save failed.";
     render();
   }
@@ -4975,6 +5010,7 @@ async function savePricing(serviceId) {
 
 async function saveAllPricing() {
   state.notice = "Saving all pricing...";
+  state.error = "";
   render();
 
   try {
@@ -4987,6 +5023,7 @@ async function saveAllPricing() {
     await loadSnapshot({ quiet: true });
   } catch (error) {
     if (error.sessionExpired) return;
+    state.notice = "";
     state.error = error.message || "Pricing save failed.";
     render();
   }
