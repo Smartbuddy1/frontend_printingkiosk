@@ -27,7 +27,12 @@ const PRINTER_STATUS_TIMEOUT_MS = 15000;
 const PRINTER_STATUS_POLL_MS = 15000;
 const PAYMENT_STATUS_POLL_MS = 1000;
 const MAX_FILES_PER_JOB = 10;
+const MAX_UPLOAD_PAGES_PER_DOCUMENT = 10;
 const THANK_YOU_HOME_REDIRECT_SECONDS = 15;
+// How long the printer must stay critically offline before the kiosk acts on
+// it automatically, so a brief blip never trips this - only a sustained issue.
+const PRINTER_OFFLINE_ACTION_SECONDS = 15;
+const PRINT_FAILURE_AUTO_HOME_SECONDS = 120;
 const IDLE_SCREENSAVER_IMAGE_SECONDS = 6;
 const CUSTOMER_INACTIVITY_TIMEOUTS = Object.freeze({
   uploadQr: 3 * 60 * 1000,
@@ -1783,6 +1788,9 @@ const state = {
     lastUpdated: null,
     errorLog: []
   },
+  // ── Printer-offline watchdog (see tickPrinterOfflineWatchdog) ──────────────
+  printerHealthIssueSince: null,
+  printFailureAutoHomeSecondsLeft: null,
   paymentStatus: "Pending",
   paymentStatusMessage: "",
   paymentError: "",
@@ -3439,6 +3447,46 @@ function resolvePdfPreviewPageCount(file) {
   });
 }
 
+// Same pdf.js path as resolvePdfPreviewPageCount, just run at upload time
+// instead of lazily at preview time, so the page-limit check (see the
+// file-input handler) is accurate rather than relying on the file-size
+// estimate alone. Marks the file as resolved so the later preview-time
+// resolver (resolvePdfPreviewPageCount) skips redundant work.
+async function detectExactPdfPageCount(file) {
+  if (!file || file.previewKind !== "pdf" || !file.previewUrl) return null;
+
+  try {
+    const pdfjsLib = await import("./assets/vendor/pdfjs/pdf.min.mjs");
+    pdfjsLib.GlobalWorkerOptions.workerSrc = "./assets/vendor/pdfjs/pdf.worker.min.mjs";
+    const pdf = await pdfjsLib.getDocument({ url: file.previewUrl, enableXfa: true }).promise;
+    syncPdfPreviewPageCount(file, pdf.numPages);
+    return pdf.numPages;
+  } catch (error) {
+    console.error("PDF page count error:", error);
+    return null;
+  }
+}
+
+// Shared by the direct kiosk file picker and the mobile-upload receive path.
+// Checks the fast size-based (or server-reported) page estimate first; for
+// PDFs with a previewUrl available, also confirms with the real pdf.js count
+// so a small-but-many-page PDF can't slip past the estimate. Returns an
+// error message string, or null when the document is within the limit.
+async function enforceUploadPageLimit(file) {
+  if (file.pages > MAX_UPLOAD_PAGES_PER_DOCUMENT) {
+    return `${file.name} looks like it has too many pages. This kiosk allows up to ${MAX_UPLOAD_PAGES_PER_DOCUMENT} pages per document.`;
+  }
+
+  if (file.previewKind === "pdf" && file.previewUrl) {
+    const exactPages = await detectExactPdfPageCount(file);
+    if (exactPages && exactPages > MAX_UPLOAD_PAGES_PER_DOCUMENT) {
+      return `${file.name} has ${exactPages} pages. This kiosk allows up to ${MAX_UPLOAD_PAGES_PER_DOCUMENT} pages per document.`;
+    }
+  }
+
+  return null;
+}
+
 function setDemoPrinterReady({ rerender = false } = {}) {
   state.printer = {
     ...state.printer,
@@ -3572,8 +3620,48 @@ function colorSelectionSupported() {
   return state.settings.colorMode !== "color" || state.printer.supportsColor !== false;
 }
 
+function sheetsNeededForFiles(files) {
+  return files.reduce((total, file) => total + Math.max(1, Number(file.pages) || 1), 0);
+}
+
+function requiredSheetsForJob() {
+  const copies = Math.max(1, Number(state.settings.copies) || 1);
+  return sheetsNeededForFiles(jobFiles()) * copies;
+}
+
+// Only reports a number when the printer has reported a usable sheet count
+// over SNMP (see snmpInputSheetsRemaining in local-agent/printerAgent.js) -
+// null/undefined means "unknown", and callers must never treat unknown as
+// "not enough paper."
+function remainingPaperSheets() {
+  const remaining = state.printerHealth?.snmp?.paperSheetsRemaining;
+  return remaining === null || remaining === undefined ? null : remaining;
+}
+
+function paperSufficientForJob() {
+  const remaining = remainingPaperSheets();
+  if (remaining === null) return true;
+  return remaining >= requiredSheetsForJob();
+}
+
 function paymentReady() {
-  return colorSelectionSupported();
+  return colorSelectionSupported() && paperSufficientForJob();
+}
+
+// Upload-time equivalent of paperSufficientForJob(), checked against the
+// files being uploaded directly (copies isn't chosen yet at this point in
+// the flow, so this checks page count alone - the same conservative
+// interpretation the user's next copies choice can only make stricter).
+function enforceUploadPaperSufficiency(files) {
+  const remaining = remainingPaperSheets();
+  if (remaining === null) return null;
+
+  const needed = sheetsNeededForFiles(files);
+  if (needed > remaining) {
+    return `Printer is low on paper (${remaining} sheet${remaining === 1 ? "" : "s"} left, this upload needs ${needed}). Please contact staff.`;
+  }
+
+  return null;
 }
 
 function printerIssueStatus(kind, title, detail, tone = "error") {
@@ -3754,6 +3842,11 @@ function renderCustomerServiceStatusBanner(status) {
 function paymentBlockMessage() {
   if (!colorSelectionSupported()) {
     return "Color printing is selected, but the selected printer does not support color.";
+  }
+
+  if (!paperSufficientForJob()) {
+    const remaining = state.printerHealth?.snmp?.paperSheetsRemaining;
+    return `Printer is low on paper (${remaining} sheet${remaining === 1 ? "" : "s"} left, this job needs ${requiredSheetsForJob()}). Please contact staff.`;
   }
 
   return "";
@@ -4343,9 +4436,29 @@ async function checkMobileUpload() {
         .map(createReceivedFileRecord);
       const invalidFile = receivedFiles.find((result) => result.error);
 
+      // On any rejection, the backend session stays permanently "uploaded"
+      // with the same rejected file - just leaving the old QR on screen
+      // means it can never be scanned again for a new attempt (the session
+      // it points to is a dead end). Generate a fresh session/QR so the
+      // customer can actually retry, while keeping the error message visible.
       if (invalidFile) {
         state.uploadError = invalidFile.error;
-        render();
+        await startMobileUploadSession();
+        return;
+      }
+
+      const pageLimitErrors = await Promise.all(receivedFiles.map((result) => enforceUploadPageLimit(result.file)));
+      const pageLimitError = pageLimitErrors.find(Boolean);
+      if (pageLimitError) {
+        state.uploadError = pageLimitError;
+        await startMobileUploadSession();
+        return;
+      }
+
+      const paperError = enforceUploadPaperSufficiency(receivedFiles.map((result) => result.file));
+      if (paperError) {
+        state.uploadError = paperError;
+        await startMobileUploadSession();
         return;
       }
 
@@ -5895,6 +6008,80 @@ function tickThankYouHomeCountdown() {
   const countdownEl = document.getElementById("tq-home-countdown");
   if (countdownEl) {
     countdownEl.textContent = customerTranslateText(`Returning home in ${state.thankYouSecondsLeft}s`);
+  }
+}
+
+/**
+ * Printer-offline watchdog: the printer-health overlay on the payment/print
+ * screen (renderPrinterHealthOverlay) blocks the UI with no exit and no
+ * timeout on its own - it just retries forever. This makes sure a sustained
+ * offline printer can never leave the kiosk stuck:
+ *   - Nobody has paid yet -> safe to return straight to the home screen.
+ *   - Payment already succeeded -> route into the existing print-failure
+ *     recovery screen (Retry / Refund) instead of the dead-end overlay, so
+ *     the paid job stays visible and resolvable rather than silently vanishing.
+ * Also adds the auto-home safety net that the recovery screen itself never
+ * had, whether printError was set here or by a genuine failed print attempt.
+ */
+function tickPrinterOfflineWatchdog() {
+  if (state.mode !== "customer") {
+    state.printerHealthIssueSince = null;
+    state.printFailureAutoHomeSecondsLeft = null;
+    return;
+  }
+
+  const criticallyOffline = state.step === 3 && printerHealthCriticalError();
+
+  if (!criticallyOffline) {
+    state.printerHealthIssueSince = null;
+  } else if (!state.printerHealthIssueSince) {
+    state.printerHealthIssueSince = Date.now();
+  }
+
+  if (criticallyOffline && state.printerHealthIssueSince) {
+    const elapsedSeconds = (Date.now() - state.printerHealthIssueSince) / 1000;
+    const paymentComplete = state.paymentStatus === "Success";
+
+    if (elapsedSeconds >= PRINTER_OFFLINE_ACTION_SECONDS) {
+      if (!paymentComplete) {
+        // Nobody has paid yet - nothing to protect, just get the kiosk unstuck.
+        resetCustomer();
+        render();
+        refreshPrinterStatus();
+        return;
+      }
+
+      if (!state.printError && state.printProgress === 0) {
+        // Paid, but printing never even started - hand off to the existing
+        // failure/recovery screen instead of leaving the overlay stuck forever.
+        // Deliberately not touching an already in-flight print attempt here;
+        // its own error handling will set printError if it genuinely fails.
+        state.printError = "The printer went offline before printing could start. Your payment is recorded and safe.";
+        render();
+      }
+    }
+  }
+
+  if (state.step === 3 && state.printError) {
+    if (typeof state.printFailureAutoHomeSecondsLeft !== "number") {
+      state.printFailureAutoHomeSecondsLeft = PRINT_FAILURE_AUTO_HOME_SECONDS;
+    }
+
+    state.printFailureAutoHomeSecondsLeft -= 1;
+
+    if (state.printFailureAutoHomeSecondsLeft <= 0) {
+      resetCustomer();
+      render();
+      refreshPrinterStatus();
+      return;
+    }
+
+    const countdownEl = document.getElementById("print-failure-home-countdown");
+    if (countdownEl) {
+      countdownEl.textContent = customerTranslateText(`Staff has been notified. Returning home automatically in ${state.printFailureAutoHomeSecondsLeft}s if this isn't resolved.`);
+    }
+  } else {
+    state.printFailureAutoHomeSecondsLeft = null;
   }
 }
 
@@ -7552,7 +7739,9 @@ function renderPrintFailureStep() {
         <div class="flow-actions" style="margin-top: 16px;">
           <button class="primary-button" data-action="retry-print">Retry Print</button>
           ${freePrint ? "" : `<button class="secondary-button" data-action="request-refund">Request Refund</button>`}
+          <button class="ghost-button" data-action="reset-session">Return Home</button>
         </div>
+        <p class="helper-text" id="print-failure-home-countdown" style="margin-top: 10px;">${escapeHtml(`Staff has been notified. Returning home automatically in ${Number(state.printFailureAutoHomeSecondsLeft) || PRINT_FAILURE_AUTO_HOME_SECONDS}s if this isn't resolved.`)}</p>
       </div>
     </div>
   `;
@@ -12288,10 +12477,28 @@ async function handleChange(event) {
       const records = await Promise.all(selectedFiles.map(async (file) => {
         const result = createFileRecord(file.name, file.size, 1, file.type);
         if (result.error) throw new Error(result.error);
+
+        // Fast rejection using the size-based estimate, before touching the
+        // file content at all - catches the common case instantly.
+        const estimateError = await enforceUploadPageLimit(result.file);
+        if (estimateError) throw new Error(estimateError);
+
         result.file.previewUrl = URL.createObjectURL(file);
-        result.file.printContentBase64 = await readFileAsBase64(file);
+        const [printContentBase64, pageLimitError] = await Promise.all([
+          readFileAsBase64(file),
+          enforceUploadPageLimit(result.file)
+        ]);
+        result.file.printContentBase64 = printContentBase64;
+
+        // The estimate can under-count a small-but-many-page PDF - the second
+        // check (now with previewUrl set) catches it with the real pdf.js count.
+        if (pageLimitError) throw new Error(pageLimitError);
+
         return result.file;
       }));
+
+      const paperError = enforceUploadPaperSufficiency(records);
+      if (paperError) throw new Error(paperError);
 
       clearCurrentFile();
       setJobFiles(records);
@@ -12696,6 +12903,7 @@ if (!isMobilePaymentEntry && state.adminAuthed) {
 
 setInterval(updateKioskClock, 1000);
 setInterval(tickThankYouHomeCountdown, 1000);
+setInterval(tickPrinterOfflineWatchdog, 1000);
 
 // ── Printer Health IPC bridge (Electron-only, non-breaking) ─────────────────
 // No-op when window.kioskPrinterHealth is not exposed (non-Electron / demo mode).
