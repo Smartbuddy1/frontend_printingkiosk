@@ -1,110 +1,544 @@
-/* ERP Overrides for Admin Panels */
+/* ==================================================================
+   Admin Panel Design System — Super Admin + Kiosk Admin
+   Loaded LAST (after styles.css, responsive.css) on admin.html and
+   super-admin.html only — never on the customer kiosk (index.html),
+   so every rule below is admin-only by construction. Visual/UI only:
+   no selector here touches markup, data, or table columns.
+   ================================================================== */
 
+/* ================= Design Tokens ================= */
 :root {
-  /* Flatten shadows */
-  --shadow: 0 1px 2px rgba(23, 32, 51, 0.05) !important;
-  --shadow-strong: 0 2px 4px rgba(23, 32, 51, 0.08) !important;
-  
-  /* Make things sharper */
-  --erp-radius: 4px;
+  --erp-navy-1: #061b45;
+  --erp-navy-2: #0b2a63;
+  --erp-accent-1: #1e4fb0;
+  --erp-accent-2: #0fa37e;
+  --erp-bg: #f3f5fa;
+  --erp-surface: #ffffff;
+  --erp-line: #e3e8f2;
+  --erp-ink: #0b1b3a;
+  --erp-muted: #5a6b8c;
+
+  --erp-radius-sm: 10px;
+  --erp-radius-md: 16px;
+  --erp-radius-badge: 12px;
+  --erp-radius-pill: 999px;
+
+  --erp-shadow-card: 0 1px 2px rgba(15, 23, 42, 0.05), 0 10px 26px rgba(15, 23, 42, 0.06);
+  --erp-shadow-glow: 0 10px 22px rgba(30, 79, 176, 0.28);
 }
 
-/* Metric Cards */
-.metric-card {
-  border-radius: var(--erp-radius) !important;
-  border: 1px solid var(--line) !important;
+/* ================= Typography (Cambria + Devanagari carve-out) ================= */
+.admin-shell,
+.admin-shell * {
+  font-family: Cambria, "Nirmala UI", "Mangal", Georgia, "Times New Roman", serif !important;
+}
+
+.admin-shell.hindi,
+.admin-shell.marathi,
+.admin-shell.devanagari,
+.admin-shell[lang="hi"],
+.admin-shell[lang="mr"],
+.admin-shell.hindi *,
+.admin-shell.marathi *,
+.admin-shell.devanagari *,
+.admin-shell[lang="hi"] *,
+.admin-shell[lang="mr"] * {
+  font-family: var(--font-devanagari) !important;
+}
+
+.admin-shell,
+.admin-screen,
+.admin-main {
+  background: var(--erp-bg) !important;
+}
+
+/* ================= Topbar ================= */
+.admin-topbar {
+  background: linear-gradient(105deg, var(--erp-navy-1), var(--erp-accent-1)) !important;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.12) !important;
+  box-shadow: 0 4px 14px rgba(6, 27, 69, 0.18) !important;
+}
+
+.admin-topbar .brand-title {
+  color: #ffffff !important;
+}
+
+.admin-topbar .brand-subtitle {
+  color: rgba(255, 255, 255, 0.72) !important;
+}
+
+.admin-topbar .brand-mark {
+  border: 1px solid rgba(255, 255, 255, 0.5) !important;
   box-shadow: none !important;
-  padding: 12px 16px !important;
-  gap: 8px !important;
 }
 
-.metric-card.has-icon {
-  gap: 12px !important;
+.admin-topbar .notification-button,
+.admin-topbar .mobile-nav-toggle,
+.admin-topbar .profile-avatar-button {
+  background: rgba(255, 255, 255, 0.08) !important;
+  border: 1px solid rgba(255, 255, 255, 0.3) !important;
+  color: #ffffff !important;
+}
+
+.admin-topbar .notification-button:hover,
+.admin-topbar .mobile-nav-toggle:hover,
+.admin-topbar .profile-avatar-button:hover {
+  background: rgba(255, 255, 255, 0.18) !important;
+}
+
+.admin-topbar .notification-button svg,
+.admin-topbar .mobile-nav-toggle svg,
+.admin-topbar .profile-avatar-button svg {
+  color: #ffffff !important;
+}
+
+.admin-topbar .notification-button span {
+  background: var(--erp-accent-2) !important;
+  color: #ffffff !important;
+  border: none !important;
+}
+
+.admin-topbar .profile-name {
+  color: #ffffff !important;
+}
+
+.admin-topbar .avatar-circle {
+  background: #ffffff !important;
+  color: var(--erp-accent-1) !important;
+}
+
+.admin-topbar .profile-dropdown-menu {
+  background: var(--erp-surface) !important;
+  border: 1px solid var(--erp-line) !important;
+  box-shadow: var(--erp-shadow-card) !important;
+  border-radius: var(--erp-radius-sm) !important;
+}
+
+.admin-topbar .profile-dropdown-header strong {
+  color: var(--erp-ink) !important;
+}
+
+.admin-topbar .profile-dropdown-header span {
+  color: var(--erp-muted) !important;
+}
+
+.admin-topbar .profile-dropdown-item {
+  color: var(--erp-ink) !important;
+}
+
+.admin-topbar .profile-dropdown-item:hover {
+  background: var(--erp-bg) !important;
+}
+
+.admin-topbar .profile-dropdown-item.danger {
+  color: #c0304a !important;
+}
+
+.admin-topbar .profile-dropdown-divider {
+  background: var(--erp-line) !important;
+}
+
+/* ================= Sidebar Nav / Mobile Drawer ================= */
+.admin-nav {
+  background: linear-gradient(180deg, var(--erp-navy-1) 0%, var(--erp-navy-2) 100%) !important;
+}
+
+.admin-nav-drawer-head {
+  background: var(--erp-navy-1) !important;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.12) !important;
+}
+
+.admin-nav-label {
+  color: rgba(255, 255, 255, 0.45) !important;
+}
+
+.admin-nav button {
+  border-radius: var(--erp-radius-sm) !important;
+  color: rgba(255, 255, 255, 0.78) !important;
+}
+
+.admin-nav button:hover:not(.active) {
+  background: rgba(255, 255, 255, 0.08) !important;
+  color: #ffffff !important;
+}
+
+.admin-nav button.active {
+  background: linear-gradient(105deg, var(--erp-accent-1), var(--erp-accent-2)) !important;
+  border-color: transparent !important;
+  box-shadow: var(--erp-shadow-glow) !important;
+  color: #ffffff !important;
+}
+
+.admin-nav button.active .admin-nav-icon {
+  color: #ffffff !important;
+}
+
+/* ================= Sidebar Footer (support + branding) ================= */
+.admin-nav-footer {
+  margin-top: auto !important;
+  padding-top: 18px !important;
+}
+
+.admin-nav-support {
+  align-items: center !important;
+  background: rgba(255, 255, 255, 0.06) !important;
+  border: 1px solid rgba(255, 255, 255, 0.14) !important;
+  border-radius: var(--erp-radius-sm) !important;
+  color: #ffffff !important;
+  display: flex !important;
+  gap: 10px !important;
+  padding: 10px 12px !important;
+  text-decoration: none !important;
+  transition: background 0.15s ease, border-color 0.15s ease !important;
+}
+
+.admin-nav-support:hover {
+  background: rgba(255, 255, 255, 0.12) !important;
+  border-color: var(--erp-accent-2) !important;
+}
+
+.admin-nav-support-icon {
+  align-items: center !important;
+  background: linear-gradient(105deg, var(--erp-accent-1), var(--erp-accent-2)) !important;
+  border-radius: 50% !important;
+  color: #ffffff !important;
+  display: flex !important;
+  flex: none !important;
+  height: 32px !important;
+  justify-content: center !important;
+  width: 32px !important;
+}
+
+.admin-nav-support-copy {
+  display: flex !important;
+  flex-direction: column !important;
+  gap: 1px !important;
+  min-width: 0 !important;
+}
+
+.admin-nav-support-copy small {
+  color: rgba(255, 255, 255, 0.6) !important;
+  font-size: 11px !important;
+}
+
+.admin-nav-support-copy strong {
+  color: #ffffff !important;
+  font-size: 13px !important;
+  white-space: nowrap !important;
+}
+
+.admin-nav-brand {
+  align-items: center !important;
+  border-top: 1px solid rgba(255, 255, 255, 0.1) !important;
+  color: rgba(255, 255, 255, 0.55) !important;
+  display: flex !important;
+  font-size: 11px !important;
+  gap: 8px !important;
+  margin-top: 14px !important;
+  padding-top: 14px !important;
+}
+
+.admin-nav-brand img {
+  background: #ffffff !important;
+  border-radius: 6px !important;
+  flex: none !important;
+  height: 22px !important;
+  padding: 2px !important;
+  width: 22px !important;
+}
+
+.admin-nav-brand strong {
+  color: rgba(255, 255, 255, 0.85) !important;
+}
+
+/* ================= Dashboard Stat Cards ================= */
+.metric-card {
+  background: var(--erp-surface) !important;
+  border: 1px solid var(--erp-line) !important;
+  border-radius: var(--erp-radius-md) !important;
+  box-shadow: var(--erp-shadow-card) !important;
+  padding: 18px 20px !important;
 }
 
 .metric-icon {
-  border-radius: var(--erp-radius) !important;
-  height: 36px !important;
-  width: 36px !important;
-}
-
-.metric-icon svg {
-  width: 18px !important;
-  height: 18px !important;
+  border-radius: var(--erp-radius-badge) !important;
 }
 
 .metric-card > strong,
 .metric-card .metric-copy > strong,
 .metric-card strong {
-  font-size: 1.25em !important;
-  letter-spacing: 0 !important;
+  color: var(--erp-ink) !important;
 }
 
 .metric-card > span:not(.metric-icon),
 .metric-card .metric-copy > span,
-.metric-card span {
-  font-size: 0.85em !important;
-  font-weight: var(--weight-medium) !important;
+.metric-card span:not(.metric-icon) {
+  color: var(--erp-muted) !important;
 }
 
 .metric-card > small,
 .metric-card .metric-copy > small,
 .metric-card small {
-  font-size: 0.75em !important;
+  background: #eef1f8 !important;
+  border-radius: var(--erp-radius-pill) !important;
+  color: var(--erp-muted) !important;
+  display: inline-block !important;
+  padding: 2px 9px !important;
 }
 
-/* Module Cards / Panels */
+.tone-blue { --tone: #2c5fd1 !important; }
+.tone-green { --tone: #0fa37e !important; }
+.tone-purple { --tone: #6c5ce0 !important; }
+.tone-amber { --tone: #db8a1b !important; }
+.tone-red { --tone: #e0506e !important; }
+.tone-cyan { --tone: #17a2c4 !important; }
+
+/* ================= Module / Panel Cards ================= */
 .module-card,
 .dashboard-panel,
 .revenue-card,
 .alert-card {
-  border-radius: var(--erp-radius) !important;
-  border: 1px solid var(--line) !important;
-  box-shadow: none !important;
-  padding: 16px !important;
+  background: var(--erp-surface) !important;
+  border: 1px solid var(--erp-line) !important;
+  border-radius: var(--erp-radius-md) !important;
+  box-shadow: var(--erp-shadow-card) !important;
+  padding: 20px !important;
 }
 
-.module-card-title,
-.chart-head,
+.module-card-title h2,
+.chart-head h2,
 .rt-header {
-  margin-bottom: 12px !important;
+  color: var(--erp-ink) !important;
 }
 
-.module-card-title h2 {
-  font-size: 1.1em !important;
+.module-card-title span svg,
+.chart-head span svg {
+  color: var(--erp-accent-1) !important;
 }
 
-/* Tables */
+.health-row,
+.health-list .health-row {
+  border-color: var(--erp-line) !important;
+}
+
+.panel-link {
+  color: var(--erp-accent-1) !important;
+}
+
+.metrics-grid,
+.module-grid,
+.dashboard-modules {
+  gap: 18px !important;
+}
+
+/* ================= Charts (revenue + analytics bars) ================= */
+.revenue-bar,
+.analytics-bar {
+  fill: var(--erp-accent-1) !important;
+}
+
+.revenue-bar-group:hover .revenue-bar,
+.revenue-bar-group:focus-visible .revenue-bar {
+  fill: var(--erp-accent-2) !important;
+}
+
+.revenue-chart-wrap,
+.analytics-chart-wrap,
+.analytics-line-wrap {
+  background: var(--erp-surface) !important;
+  --amount-color: var(--erp-accent-1) !important;
+}
+
+.revenue-y-label,
+.revenue-x-label {
+  fill: var(--erp-muted) !important;
+}
+
+/* ================= Tables / Badges / Pills ================= */
+.table-wrap table th {
+  background: #f1f4fb !important;
+  color: var(--erp-muted) !important;
+  font-size: 0.78em !important;
+  letter-spacing: 0.04em !important;
+  text-transform: uppercase !important;
+}
+
+.table-wrap table th,
+.table-wrap table td {
+  border-color: var(--erp-line) !important;
+}
+
+.table-wrap table td {
+  color: var(--erp-ink) !important;
+}
+
+.table-wrap table th,
+.table-wrap table td {
+  white-space: nowrap !important;
+}
+
+.table-wrap table tbody tr:hover {
+  background: #f7f9fe !important;
+}
+
 .rt-header {
-  padding: 8px 0 !important;
-  font-size: 0.85em !important;
+  background: #f1f4fb !important;
+  border-radius: var(--erp-radius-sm) var(--erp-radius-sm) 0 0 !important;
+  padding: 10px 12px !important;
+  font-size: 0.8em !important;
   text-transform: uppercase !important;
   letter-spacing: 0.05em !important;
 }
 
 .rt-row {
-  padding: 8px 0 !important;
-  font-size: 0.9em !important;
+  border-color: var(--erp-line) !important;
+  padding: 10px 12px !important;
+  font-size: 0.92em !important;
+}
+
+.rt-row:hover {
+  background: #f7f9fe !important;
 }
 
 .rt-cell {
-  padding-right: 8px !important;
+  padding-right: 10px !important;
 }
 
-/* Grid Gaps */
-.metrics-grid,
-.module-grid,
-.dashboard-modules {
-  gap: 16px !important;
+.badge,
+.status-pill {
+  border-radius: var(--erp-radius-pill) !important;
+  font-weight: 600 !important;
+  padding: 4px 11px !important;
 }
 
-/* Buttons */
-.primary-button,
+.badge.good,
+.status-pill.settled,
+.status-pill.active {
+  background: rgba(15, 163, 126, 0.12) !important;
+  color: #0b7a5d !important;
+}
+
+.badge.warn,
+.status-pill.pending,
+.status-pill.warning {
+  background: rgba(219, 138, 27, 0.14) !important;
+  color: #a5620f !important;
+}
+
+.badge.bad,
+.status-pill.danger,
+.status-pill.failed {
+  background: rgba(224, 80, 110, 0.14) !important;
+  color: #b8304f !important;
+}
+
+/* ================= Buttons ================= */
+.primary-button {
+  background: linear-gradient(105deg, var(--erp-accent-1), var(--erp-accent-2)) !important;
+  border: none !important;
+  border-radius: var(--erp-radius-sm) !important;
+  box-shadow: var(--erp-shadow-glow) !important;
+  color: #ffffff !important;
+  font-size: 0.92em !important;
+  padding: 10px 18px !important;
+}
+
 .secondary-button,
 .tertiary-button,
-.danger-button,
 .icon-button {
-  border-radius: var(--erp-radius) !important;
-  font-size: 0.9em !important;
-  padding: 6px 12px !important;
+  background: var(--erp-surface) !important;
+  border: 1px solid var(--erp-line) !important;
+  border-radius: var(--erp-radius-sm) !important;
+  color: var(--erp-ink) !important;
+  font-size: 0.92em !important;
+  padding: 10px 16px !important;
+}
+
+.secondary-button:hover,
+.tertiary-button:hover,
+.icon-button:hover {
+  background: var(--erp-bg) !important;
+  border-color: var(--erp-accent-1) !important;
+}
+
+.danger-button {
+  background: #fdf1f3 !important;
+  border: 1px solid rgba(224, 80, 110, 0.35) !important;
+  border-radius: var(--erp-radius-sm) !important;
+  color: #b8304f !important;
+  font-size: 0.92em !important;
+  padding: 10px 16px !important;
+}
+
+.danger-button:hover {
+  background: rgba(224, 80, 110, 0.12) !important;
+}
+
+.primary-button.small-button,
+.secondary-button.small-button,
+.danger-button.small-button {
+  padding: 6px 14px !important;
+  font-size: 0.85em !important;
+  white-space: nowrap !important;
+}
+
+/* ================= Forms / Inputs ================= */
+.admin-shell input,
+.admin-shell select,
+.admin-shell textarea {
+  background: var(--erp-surface) !important;
+  border: 1px solid var(--erp-line) !important;
+  border-radius: var(--erp-radius-sm) !important;
+  color: var(--erp-ink) !important;
+}
+
+.admin-shell input:focus,
+.admin-shell select:focus,
+.admin-shell textarea:focus {
+  border-color: var(--erp-accent-1) !important;
+  box-shadow: 0 0 0 3px rgba(30, 79, 176, 0.16) !important;
+  outline: none !important;
+}
+
+/* ================= Analytics Revenue / Form-selling Tabs ================= */
+.analytics-tabs {
+  display: flex;
+  gap: 8px;
+  margin: 4px 0 18px;
+}
+
+.analytics-tab-button {
+  align-items: center;
+  background: var(--erp-surface);
+  border: 1px solid var(--erp-line);
+  border-radius: var(--erp-radius-pill);
+  color: var(--erp-muted);
+  cursor: pointer;
+  display: inline-flex;
+  font-family: Cambria, "Nirmala UI", "Mangal", Georgia, "Times New Roman", serif;
+  font-size: 0.92em;
+  font-weight: 600;
+  gap: 8px;
+  padding: 9px 18px;
+  transition: background 0.15s ease, border-color 0.15s ease, color 0.15s ease;
+}
+
+.analytics-tab-button:hover {
+  border-color: var(--erp-accent-1);
+  color: var(--erp-ink);
+}
+
+.analytics-tab-button.active {
+  background: linear-gradient(105deg, var(--erp-accent-1), var(--erp-accent-2));
+  border-color: transparent;
+  box-shadow: var(--erp-shadow-glow);
+  color: #ffffff;
+}
+
+.analytics-chart-card {
+  margin-bottom: 18px;
+}
+
+.analytics-report-header-card {
+  margin-bottom: 18px;
 }

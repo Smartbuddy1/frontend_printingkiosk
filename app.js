@@ -1708,8 +1708,19 @@ const state = {
     start: new Date(new Date().setHours(0, 0, 0, 0)).toISOString().split('T')[0],
     end: new Date().toISOString().split('T')[0]
   },
-  adminAnalyticsFilter: {
-    basis: "monthly",
+  adminAnalyticsTab: "revenue",
+  adminAnalyticsFilter: (() => {
+    const now = new Date();
+    const fyStartYear = now.getMonth() >= 3 ? now.getFullYear() : now.getFullYear() - 1;
+    return {
+      start: `${fyStartYear}-04-01`,
+      end: `${fyStartYear + 1}-03-31`,
+      filterType: "financialYear",
+      kioskId: "",
+      financialYear: "current"
+    };
+  })(),
+  adminAnalyticsFilterDraft: {
     filterType: "financialYear",
     kioskId: "",
     financialYear: "current",
@@ -6130,6 +6141,15 @@ function renderCustomerShell() {
 
 function renderAdminShell() {
   const languageClass = languageTypographyClass(state.adminLanguage);
+  if (!state.adminAuthed) {
+    return `
+      <div class="app-shell admin-shell login-app-shell ${languageClass}" lang="${escapeHtml(state.adminLanguage)}">
+        <main class="main admin-screen">
+          ${renderAdmin()}
+        </main>
+      </div>
+    `;
+  }
   return `
     <div class="app-shell admin-shell ${languageClass}" lang="${escapeHtml(state.adminLanguage)}">
       ${renderAdminTopbar()}
@@ -6462,12 +6482,84 @@ function renderAdminSettingsModal() {
             Confirm New Password
             <input type="password" data-admin-settings-field="confirmPassword" value="${escapeHtml(state.adminSettingsDraft.confirmPassword || "")}" placeholder="Confirm new password" />
           </label>
+          <div class="settings-modal-divider" style="border-top: 1px solid var(--line); margin: 20px 0;"></div>
+          ${renderAdminIdleScreensaverSection()}
         </div>
         <div class="settings-modal-footer" style="display: flex; justify-content: flex-end; gap: 12px; margin-top: 20px;">
           <button class="secondary-button" data-action="admin-close-settings">Cancel</button>
           <button class="primary-button" data-action="admin-save-settings">Save Changes</button>
         </div>
       </div>
+    </div>
+  `;
+}
+
+function renderAdminIdleScreensaverSection() {
+  if (!state.idleScreensaverDraft) {
+    return `
+      <h3>Idle Screen (Screensaver)</h3>
+      <p class="helper-text">${escapeHtml(state.idleScreensaverError || state.idleScreensaverStatus || "Loading idle-screen settings...")}</p>
+    `;
+  }
+
+  const draft = state.idleScreensaverDraft;
+  const mode = draft.idleMediaMode;
+  const images = Array.isArray(draft.idleImageUrls) ? draft.idleImageUrls : [];
+  const videoUrl = draft.idleVideoUrl || "";
+  const timeoutSeconds = Number(draft.idleTimeoutSeconds) || 60;
+
+  return `
+    <h3>Idle Screen (Screensaver)</h3>
+    <p class="helper-text">Shown on the kiosk home screen after it sits idle. Pick one mode - image slideshow or video.</p>
+    ${state.idleScreensaverStatus ? `<p class="helper-text">${escapeHtml(state.idleScreensaverStatus)}</p>` : ""}
+    ${state.idleScreensaverError ? `<div class="empty-note">${escapeHtml(state.idleScreensaverError)}</div>` : ""}
+
+    <div class="settings-grid">
+      <label class="setting-field">Mode
+        <select data-idle-screensaver-field="idleMediaMode">
+          <option value="none" ${mode === "none" ? "selected" : ""}>Off</option>
+          <option value="image" ${mode === "image" ? "selected" : ""}>Image Slideshow</option>
+          <option value="video" ${mode === "video" ? "selected" : ""}>Video</option>
+        </select>
+      </label>
+      <label class="setting-field">Idle timeout (seconds)
+        <input type="number" min="15" max="600" value="${escapeHtml(String(timeoutSeconds))}" data-idle-screensaver-field="idleTimeoutSeconds" />
+      </label>
+    </div>
+
+    <div class="idle-media-section ${mode === "image" ? "" : "is-dimmed"}">
+      <h3>Slideshow images ${images.length ? `(${images.length}/10)` : ""}</h3>
+      <label class="template-upload-row compact-template-upload">
+        <span>Add images</span>
+        <input type="file" accept="image/png,image/jpeg,image/gif,image/webp" data-idle-screensaver-image-upload multiple ${images.length >= 10 ? "disabled" : ""} />
+      </label>
+      <div class="idle-image-grid">
+        ${images.length ? images.map((imageUrl, index) => `
+          <div class="idle-image-item">
+            <span class="admin-image-preview service-image"><img alt="" src="${escapeHtml(imageUrl)}" draggable="false" data-no-visual-search /></span>
+            <div class="idle-image-item-actions">
+              <button type="button" class="ghost-button small-button" data-idle-screensaver-image-move="${index}" data-idle-screensaver-image-direction="-1" ${index === 0 ? "disabled" : ""}>Up</button>
+              <button type="button" class="ghost-button small-button" data-idle-screensaver-image-move="${index}" data-idle-screensaver-image-direction="1" ${index === images.length - 1 ? "disabled" : ""}>Down</button>
+              <button type="button" class="danger-button small-button" data-idle-screensaver-image-delete="${index}">Remove</button>
+            </div>
+          </div>
+        `).join("") : `<div class="empty-note">No slideshow images uploaded yet.</div>`}
+      </div>
+    </div>
+
+    <div class="idle-media-section ${mode === "video" ? "" : "is-dimmed"}">
+      <h3>Idle video</h3>
+      <label class="template-upload-row compact-template-upload">
+        <span>${videoUrl ? "Replace video" : "Upload video"}</span>
+        <input type="file" accept="video/mp4,video/webm" data-idle-screensaver-video-upload />
+      </label>
+      ${videoUrl
+        ? `<video src="${escapeHtml(videoUrl)}" muted loop controls class="idle-video-preview"></video>`
+        : `<div class="empty-note">No video uploaded yet.</div>`}
+    </div>
+
+    <div class="flow-actions">
+      <button class="primary-button" data-action="save-idle-screensaver" type="button">Save Idle Screen</button>
     </div>
   `;
 }
@@ -8313,12 +8405,31 @@ function renderAdmin() {
             `).join("")}
           </div>
         `).join("")}
+        ${renderAdminNavFooter()}
       </nav>
       <section class="admin-main">
         ${renderAdminPage()}
       </section>
     </div>
     ${renderAdminSettingsModal()}
+  `;
+}
+
+function renderAdminNavFooter() {
+  return `
+    <div class="admin-nav-footer">
+      <a class="admin-nav-support" href="tel:+919359604384">
+        <span class="admin-nav-support-icon">${uiIcon("headset", 18)}</span>
+        <span class="admin-nav-support-copy">
+          <small>Need help? Call us</small>
+          <strong>+91 9359604384</strong>
+        </span>
+      </a>
+      <div class="admin-nav-brand">
+        <img src="./assets/aarya-innovtech-logo-transparent.png" alt="Aarya Innovtech" />
+        <span>Powered by <strong>Aarya Innovtech</strong></span>
+      </div>
+    </div>
   `;
 }
 
@@ -8360,7 +8471,6 @@ function adminNavGroups() {
         { id: "kiosks", label: "Kiosks", icon: "kiosks" },
         { id: "revenue", label: "Report", icon: "payments" },
         { id: "analytics", label: "Analytics", icon: "activity" },
-        { id: "idle-screensaver", label: "Idle Screen", icon: "screensaver" },
         { id: "alerts", label: "Alerts", icon: "alert" }
       ]
     },
@@ -8404,7 +8514,6 @@ function renderAdminPage() {
   if (page === "kiosks") return renderKiosks();
   if (page === "refunds") return renderRefunds();
   if (page === "alerts") return renderAlerts();
-  if (page === "idle-screensaver") return renderAdminIdleScreensaverPage();
   return renderDashboard();
 }
 
@@ -8577,81 +8686,6 @@ function moveAdminIdleImage(index, direction) {
   [images[index], images[targetIndex]] = [images[targetIndex], images[index]];
   state.idleScreensaverDraft.idleImageUrls = images;
   render();
-}
-
-function renderAdminIdleScreensaverPage() {
-  if (!state.idleScreensaverDraft) {
-    return `
-      ${renderAdminHeader("Idle Screen", "Screensaver shown on the kiosk home screen after it sits idle.")}
-      <div class="module-card">
-        ${state.idleScreensaverError
-          ? `<div class="empty-note">${escapeHtml(state.idleScreensaverError)}</div>`
-          : `<p class="helper-text">${escapeHtml(state.idleScreensaverStatus || "Loading idle-screen settings...")}</p>`}
-      </div>
-    `;
-  }
-
-  const draft = state.idleScreensaverDraft;
-  const mode = draft.idleMediaMode;
-  const images = Array.isArray(draft.idleImageUrls) ? draft.idleImageUrls : [];
-  const videoUrl = draft.idleVideoUrl || "";
-  const timeoutSeconds = Number(draft.idleTimeoutSeconds) || 60;
-
-  return `
-    ${renderAdminHeader("Idle Screen", "Screensaver shown on the kiosk home screen after it sits idle. Pick one mode — image slideshow or video.")}
-    <div class="module-card">
-      ${state.idleScreensaverStatus ? `<p class="helper-text">${escapeHtml(state.idleScreensaverStatus)}</p>` : ""}
-      ${state.idleScreensaverError ? `<div class="empty-note">${escapeHtml(state.idleScreensaverError)}</div>` : ""}
-
-      <div class="settings-grid">
-        <label class="setting-field">Mode
-          <select data-idle-screensaver-field="idleMediaMode">
-            <option value="none" ${mode === "none" ? "selected" : ""}>Off</option>
-            <option value="image" ${mode === "image" ? "selected" : ""}>Image Slideshow</option>
-            <option value="video" ${mode === "video" ? "selected" : ""}>Video</option>
-          </select>
-        </label>
-        <label class="setting-field">Idle timeout (seconds)
-          <input type="number" min="15" max="600" value="${escapeHtml(String(timeoutSeconds))}" data-idle-screensaver-field="idleTimeoutSeconds" />
-        </label>
-      </div>
-
-      <div class="idle-media-section ${mode === "image" ? "" : "is-dimmed"}">
-        <h3>Slideshow images ${images.length ? `(${images.length}/10)` : ""}</h3>
-        <label class="template-upload-row compact-template-upload">
-          <span>Add images</span>
-          <input type="file" accept="image/png,image/jpeg,image/gif,image/webp" data-idle-screensaver-image-upload multiple ${images.length >= 10 ? "disabled" : ""} />
-        </label>
-        <div class="idle-image-grid">
-          ${images.length ? images.map((imageUrl, index) => `
-            <div class="idle-image-item">
-              <span class="admin-image-preview service-image"><img alt="" src="${escapeHtml(imageUrl)}" draggable="false" data-no-visual-search /></span>
-              <div class="idle-image-item-actions">
-                <button type="button" class="ghost-button small-button" data-idle-screensaver-image-move="${index}" data-idle-screensaver-image-direction="-1" ${index === 0 ? "disabled" : ""}>Up</button>
-                <button type="button" class="ghost-button small-button" data-idle-screensaver-image-move="${index}" data-idle-screensaver-image-direction="1" ${index === images.length - 1 ? "disabled" : ""}>Down</button>
-                <button type="button" class="danger-button small-button" data-idle-screensaver-image-delete="${index}">Remove</button>
-              </div>
-            </div>
-          `).join("") : `<div class="empty-note">No slideshow images uploaded yet.</div>`}
-        </div>
-      </div>
-
-      <div class="idle-media-section ${mode === "video" ? "" : "is-dimmed"}">
-        <h3>Idle video</h3>
-        <label class="template-upload-row compact-template-upload">
-          <span>${videoUrl ? "Replace video" : "Upload video"}</span>
-          <input type="file" accept="video/mp4,video/webm" data-idle-screensaver-video-upload />
-        </label>
-        ${videoUrl
-          ? `<video src="${escapeHtml(videoUrl)}" muted loop controls class="idle-video-preview"></video>`
-          : `<div class="empty-note">No video uploaded yet.</div>`}
-      </div>
-
-      <div class="flow-actions">
-        <button class="primary-button" data-action="save-idle-screensaver">Save</button>
-      </div>
-    </div>
-  `;
 }
 
 function formatDateTime(value) {
@@ -9382,11 +9416,22 @@ function renderTransactionLog() {
 function dashboardMetrics() {
   const dashboard = state.adminData.dashboard || {};
   const revenue = state.adminData.revenue || {};
-  const jobs = liveJobs().map(jobRow);
+  const kiosks = state.adminData.kiosks || [];
+  const projects = state.adminData.projects || [];
+  const transactions = state.adminData.transactions || [];
+  const refunds = state.adminData.refunds || [];
+  const pendingRefunds = refunds.filter((r) => {
+    const status = String(r.status || "").toLowerCase();
+    return status === "pending" || status === "requested";
+  });
+  const activeKiosks = dashboard.activeKiosks ?? kiosks.filter((kiosk) => kiosk.status === "online").length;
 
   return [
-    ["Today Revenue", money(revenue.gross ?? dashboard.revenueToday ?? 0), "Live backend total", "pricing", "green"],
-    ["Today Transactions", String(dashboard.jobsToday ?? jobs.length), `${state.adminData.kiosks.length || 1} kiosk record(s)`, "services", "blue"]
+    ["Kiosks", String(kiosks.length), `${activeKiosks} online`, "kiosks", "purple"],
+    ["Projects", String(projects.length), `${kiosks.length} kiosk(s) assigned`, "hierarchy", "blue"],
+    ["Payments", String(transactions.length), money(revenue.gross ?? 0), "payments", "green"],
+    ["Refunds", String(refunds.length), `${pendingRefunds.length} pending`, "refunds", pendingRefunds.length ? "red" : "green"],
+    ["Net Revenue", money(revenue.net ?? 0), "After refunds", "pricing", "green"]
   ];
 }
 
@@ -9537,42 +9582,83 @@ window.setReportTab = function(tab) {
   render();
 };
 
-window.downloadRevenueReportPDF = function() {
+window.downloadRevenueReportPDF = async function () {
+  const filter = state.revenueFilter;
+  const kioskLabel = filter.kioskId || "All Kiosks";
+  const clientName = state.adminAccount?.name || state.adminAccount?.email || "Client";
+  const clientLogoUrl = state.adminAccount?.logoUrl || "";
+
   const { jsPDF } = window.jspdf;
   const doc = new jsPDF();
-  const allRecords = liveJobs(); 
-  
-  const startObj = new Date(state.revenueFilter.start);
-  startObj.setHours(0,0,0,0);
-  const endObj = new Date(state.revenueFilter.end);
-  endObj.setHours(23,59,59,999);
-  
-  const records = allRecords.filter(job => {
-    const jobDate = new Date(job.createdAt || job.date || Date.now());
-    return jobDate >= startObj && jobDate <= endObj;
+  const pageWidth = doc.internal.pageSize.getWidth();
+  const records = adminTransactionRecords().filter((record) => {
+    if (!transactionMatchesDateRange(record, filter.start, filter.end)) return false;
+    if (filter.kioskId && String(record.kiosk || "").toUpperCase() !== filter.kioskId.toUpperCase()) return false;
+    return true;
   });
-  
-  doc.setFontSize(18);
-  doc.text("Revenue Report", 14, 22);
+  const logoMaxWidth = 32;
+  const logoMaxHeight = 24;
+  const companyLogoMaxWidth = 50;
+  const logoY = 12;
+
+  const [clientLogo, companyLogo] = await Promise.all([
+    loadImageAsDataUrl(clientLogoUrl),
+    loadImageAsDataUrl("./assets/printhub-logo-transparent.png")
+  ]);
+  const [clientLogoSize, companyLogoSize] = await Promise.all([
+    loadImageNaturalSize(clientLogo),
+    loadImageNaturalSize(companyLogo)
+  ]);
+
+  drawPdfWatermark(doc, companyLogo, companyLogoSize);
+
+  if (clientLogo) {
+    const box = fitImageBox(clientLogoSize, logoMaxWidth, logoMaxHeight);
+    doc.addImage(clientLogo, dataUrlImageFormat(clientLogo), 14, logoY + (logoMaxHeight - box.height) / 2, box.width, box.height);
+  }
+
+  if (companyLogo) {
+    const box = fitImageBox(companyLogoSize, companyLogoMaxWidth, logoMaxHeight);
+    doc.addImage(companyLogo, dataUrlImageFormat(companyLogo), pageWidth - 14 - box.width, logoY + (logoMaxHeight - box.height) / 2, box.width, box.height);
+  }
+
+  doc.setFont(undefined, "bold");
+  doc.setFontSize(20);
+  doc.setTextColor(27, 175, 122);
+  doc.text("Revenue Report", pageWidth / 2, logoY + 10, { align: "center" });
+
+  doc.setFontSize(15);
+  doc.setTextColor(42, 120, 214);
+  doc.text(clientName, pageWidth / 2, logoY + 19, { align: "center" });
+
+  doc.setFont(undefined, "normal");
   doc.setFontSize(11);
-  doc.text(`Date Range: ${state.revenueFilter.start} to ${state.revenueFilter.end}`, 14, 30);
-  
-  const tableData = records.map(r => [
-    formatDate(r.createdAt || r.date),
-    r.kiosk || r.kioskId || "Unknown",
-    r.amount ? money(r.amount) : "0",
-    r.status || r.paymentStatus || r.payment || "Completed"
+  doc.setTextColor(100);
+  doc.text(`Kiosk ID: ${kioskLabel}`, pageWidth / 2, logoY + 27, { align: "center" });
+  doc.text(`Range: ${filter.start} to ${filter.end}`, pageWidth / 2, logoY + 33, { align: "center" });
+  doc.setTextColor(0);
+
+  const dividerY = logoY + 42;
+  doc.setDrawColor(42, 120, 214);
+  doc.setLineWidth(0.6);
+  doc.line(14, dividerY, pageWidth - 14, dividerY);
+
+  const tableData = records.map((r) => [
+    r.date || "-",
+    r.kiosk || "Unknown",
+    money(r.amount || 0),
+    r.status || "Completed"
   ]);
 
   doc.autoTable({
-    startY: 36,
-    head: [['Date', 'Kiosk', 'Amount', 'Status']],
+    startY: dividerY + 8,
+    head: [["Date", "Kiosk", "Amount", "Status"]],
     body: tableData,
-    theme: 'grid',
-    styles: { fontSize: 9 }
+    theme: "grid",
+    ...PDF_TABLE_STYLE
   });
-  
-  doc.save(`Revenue_Report_${state.revenueFilter.start}_to_${state.revenueFilter.end}.pdf`);
+
+  doc.save(`Revenue_Report_${filter.start}_to_${filter.end}.pdf`);
 };
 
 window.downloadFormPrintReportPDF = function() {
@@ -9670,10 +9756,27 @@ function adminAnalyticsBuckets(start, end, basis) {
       cursor.setDate(cursor.getDate() + 7);
       guard += 1;
     }
+  } else if (basis === "yearly") {
+    // Financial-year buckets (Apr-Mar), matching the FY convention used
+    // everywhere else in this app - not calendar-year, so a single FY's
+    // data never gets split across two bars.
+    let fyYear = start.getMonth() >= 3 ? start.getFullYear() : start.getFullYear() - 1;
+    const lastFyYear = end.getMonth() >= 3 ? end.getFullYear() : end.getFullYear() - 1;
+
+    while (fyYear <= lastFyYear && guard < 60) {
+      buckets.push({
+        key: `${fyYear}`,
+        label: `FY ${fyYear}-${String((fyYear + 1) % 100).padStart(2, "0")}`,
+        year: fyYear,
+        amount: 0
+      });
+      fyYear += 1;
+      guard += 1;
+    }
   } else {
     cursor = new Date(start.getFullYear(), start.getMonth(), 1);
     last = new Date(end.getFullYear(), end.getMonth(), 1);
-    
+
     while (cursor <= last && guard < 60) {
       buckets.push({
         key: `${cursor.getFullYear()}-${cursor.getMonth()}`,
@@ -9706,9 +9809,25 @@ function adminAnalyticsFilteredRecords() {
   });
 }
 
-function adminAnalyticsBucketedSeries() {
+// Shared by adminAnalyticsBucketedSeries and formSellingBucketedSeries so
+// both data sources bucket dates identically for a given basis.
+function adminAnalyticsBucketKeyForDate(date, basis) {
+  if (basis === "daily") {
+    return `${date.getFullYear()}-${date.getMonth() + 1}-${date.getDate()}`;
+  }
+  if (basis === "weekly") {
+    const rDate = new Date(date.getFullYear(), date.getMonth(), date.getDate());
+    rDate.setDate(rDate.getDate() - rDate.getDay());
+    return `${rDate.getFullYear()}-${rDate.getMonth() + 1}-${rDate.getDate()}`;
+  }
+  if (basis === "yearly") {
+    return `${date.getMonth() >= 3 ? date.getFullYear() : date.getFullYear() - 1}`;
+  }
+  return `${date.getFullYear()}-${date.getMonth()}`;
+}
+
+function adminAnalyticsBucketedSeries(basis = "monthly") {
   const { start, end } = adminAnalyticsFilterBounds();
-  const basis = state.adminAnalyticsFilter.basis || "monthly";
   const buckets = adminAnalyticsBuckets(start, end, basis);
   const bucketByKey = new Map(buckets.map((bucket) => [bucket.key, bucket]));
 
@@ -9716,18 +9835,7 @@ function adminAnalyticsBucketedSeries() {
     const recordDate = new Date(record.dateValue);
     if (Number.isNaN(recordDate.getTime())) return;
 
-    let key;
-    if (basis === "daily") {
-      key = `${recordDate.getFullYear()}-${recordDate.getMonth() + 1}-${recordDate.getDate()}`;
-    } else if (basis === "weekly") {
-      const rDate = new Date(recordDate.getFullYear(), recordDate.getMonth(), recordDate.getDate());
-      rDate.setDate(rDate.getDate() - rDate.getDay());
-      key = `${rDate.getFullYear()}-${rDate.getMonth() + 1}-${rDate.getDate()}`;
-    } else {
-      key = `${recordDate.getFullYear()}-${recordDate.getMonth()}`;
-    }
-
-    const bucket = bucketByKey.get(key);
+    const bucket = bucketByKey.get(adminAnalyticsBucketKeyForDate(recordDate, basis));
     if (!bucket) return;
 
     bucket.amount += Number(record.amount || 0);
@@ -9736,133 +9844,153 @@ function adminAnalyticsBucketedSeries() {
   return buckets;
 }
 
-window.updateAdminAnalyticsFilter = function (field, value) {
-  state.adminAnalyticsFilter[field] = value;
-  render();
-};
-
-function renderAdminAnalytics() {
+// Form/template print revenue only (job.templateId truthy, mirrors the
+// same filter calculateFormSellingReport() uses), bucketed by date the
+// same way adminAnalyticsBucketedSeries buckets payments - lets the
+// Analytics page's Revenue/Form-selling tab feed the same 3 chart shapes.
+function formSellingBucketedSeries(basis = "monthly") {
   const filter = state.adminAnalyticsFilter;
+  const { start, end } = adminAnalyticsFilterBounds();
+  const buckets = adminAnalyticsBuckets(start, end, basis);
+  const bucketByKey = new Map(buckets.map((bucket) => [bucket.key, bucket]));
+
+  liveJobs().forEach((job) => {
+    if (!job.createdAt) return;
+    if (String(job.printStatus || "").toLowerCase() !== "completed") return;
+
+    const templateId = job.templateId;
+    if (!templateId || templateId === "Unknown") return;
+
+    const jobDate = new Date(job.createdAt);
+    if (Number.isNaN(jobDate.getTime())) return;
+    if (start && jobDate < start) return;
+    if (end && jobDate > end) return;
+
+    const kioskId = job.kioskId || "UNASSIGNED";
+    if (filter.kioskId && kioskId.toUpperCase() !== filter.kioskId.toUpperCase()) return;
+
+    const bucket = bucketByKey.get(adminAnalyticsBucketKeyForDate(jobDate, basis));
+    if (!bucket) return;
+
+    bucket.amount += Number(job.amount || 0);
+  });
+
+  return buckets;
+}
+
+function renderAdminAnalyticsFilterCard() {
+  const draft = state.adminAnalyticsFilterDraft;
   const kiosks = state.adminData.kiosks || [];
-  const buckets = adminAnalyticsBucketedSeries();
-  const totalAmount = buckets.reduce((sum, bucket) => sum + bucket.amount, 0);
-  const { label: rangeLabel } = adminAnalyticsFilterBounds();
-  const clientName = state.adminAccount?.name || state.adminAccount?.email || "Client";
-  const clientLogoUrl = state.adminAccount?.logoUrl || "";
 
   return `
-    ${renderAdminHeader("Graphical Analytics", "Revenue trends by financial year or custom date range, across your kiosks.", `
-      <button class="secondary-button" onclick="window.print()">${uiIcon("printer", 16)} Print</button>
-      <button class="primary-button" onclick="window.downloadAdminAnalyticsPDF()">${uiIcon("download", 16)} Download PDF</button>
-    `)}
-    ${adminNotice()}
-
-    <div class="analytics-layout-container">
-      <div class="module-card analytics-report-area" id="admin-analytics-print-area">
-        <div class="analytics-report-header">
-          ${clientLogoUrl ? `<img class="analytics-report-logo" src="${escapeHtml(clientLogoUrl)}" alt="${escapeHtml(clientName)}" />` : `<div class="analytics-report-logo analytics-report-logo-placeholder"></div>`}
-          <div class="analytics-report-heading">
-            <h1>Graphical Analytics Report</h1>
-            <p class="analytics-report-client">Client: ${escapeHtml(clientName)}</p>
-            <p class="analytics-report-meta">Kiosk ID: ${escapeHtml(filter.kioskId || "All Kiosks")} &nbsp;·&nbsp; ${escapeHtml(rangeLabel)}</p>
-          </div>
-          <img class="analytics-report-logo analytics-report-logo-wide" src="./assets/printhub-logo-transparent.png" alt="Aarya Innovtech" />
-        </div>
-
-        <div class="section-heading">
-          <h2>💰 ${filter.basis.charAt(0).toUpperCase() + filter.basis.slice(1)} Transaction Revenue (₹)</h2>
-        </div>
-        ${buckets.length ? renderAdminAnalyticsChart(buckets) : `<div class="empty-note">No data for this range yet.</div>`}
-
-        <div class="analytics-summary-row">
-          <div class="analytics-summary-tile is-total">
-            <span>Total Revenue</span>
-            <strong>${escapeHtml(money(totalAmount))}</strong>
-          </div>
-        </div>
-
-        ${buckets.length ? `
-          <div class="analytics-table-wrap">
-            <table class="analytics-table">
-              <thead>
-                <tr><th>Period</th><th>Amount (₹)</th></tr>
-              </thead>
-              <tbody>
-                ${buckets.map((bucket) => `
-                  <tr>
-                    <td>${escapeHtml(bucket.label)} ${bucket.year}</td>
-                    <td>${escapeHtml(money(bucket.amount))}</td>
-                  </tr>
-                `).join("")}
-              </tbody>
-            </table>
-          </div>
-        ` : ""}
+    <div class="module-card analytics-filter-card" data-print-hide>
+      <div class="settings-grid analytics-filter-grid">
+        <label class="setting-field">Kiosk ID
+          <select onchange="window.updateAdminAnalyticsFilterDraft('kioskId', this.value)">
+            <option value="" ${!draft.kioskId ? "selected" : ""}>-- All Kiosks --</option>
+            ${kiosks.map((kiosk) => `<option value="${escapeHtml(kiosk.kioskId)}" ${draft.kioskId === kiosk.kioskId ? "selected" : ""}>${escapeHtml(kiosk.kioskId)}${kiosk.branch ? ` | ${escapeHtml(kiosk.branch)}` : ""}</option>`).join("")}
+          </select>
+        </label>
       </div>
 
-      <div class="module-card analytics-filter-card" data-print-hide>
-        <div class="section-heading">
-          <h2>Data Basis</h2>
-        </div>
-        <div class="analytics-filter-type-row">
-          <label class="analytics-radio">
-            <input type="radio" name="admin-analytics-basis" value="daily" ${filter.basis === "daily" ? "checked" : ""} onchange="window.updateAdminAnalyticsFilter('basis', this.value)" />
-            <span>Daily</span>
-          </label>
-          <label class="analytics-radio">
-            <input type="radio" name="admin-analytics-basis" value="weekly" ${filter.basis === "weekly" ? "checked" : ""} onchange="window.updateAdminAnalyticsFilter('basis', this.value)" />
-            <span>Weekly</span>
-          </label>
-          <label class="analytics-radio">
-            <input type="radio" name="admin-analytics-basis" value="monthly" ${filter.basis === "monthly" ? "checked" : ""} onchange="window.updateAdminAnalyticsFilter('basis', this.value)" />
-            <span>Monthly</span>
-          </label>
-        </div>
+      <div class="analytics-filter-type-row" style="margin-top: 16px;">
+        <label class="analytics-radio">
+          <input type="radio" name="admin-analytics-filter-type" value="financialYear" ${draft.filterType === "financialYear" ? "checked" : ""} onchange="window.updateAdminAnalyticsFilterDraft('filterType', this.value)" />
+          <span>Financial Year</span>
+        </label>
+        <label class="analytics-radio">
+          <input type="radio" name="admin-analytics-filter-type" value="dateRange" ${draft.filterType === "dateRange" ? "checked" : ""} onchange="window.updateAdminAnalyticsFilterDraft('filterType', this.value)" />
+          <span>Date Range</span>
+        </label>
+      </div>
 
-        <div class="section-heading">
-          <h2>Filter Type</h2>
-        </div>
-        <div class="analytics-filter-type-row">
-          <label class="analytics-radio">
-            <input type="radio" name="admin-analytics-filter-type" value="financialYear" ${filter.filterType === "financialYear" ? "checked" : ""} onchange="window.updateAdminAnalyticsFilter('filterType', this.value)" />
-            <span>Financial Year</span>
-          </label>
-          <label class="analytics-radio">
-            <input type="radio" name="admin-analytics-filter-type" value="dateRange" ${filter.filterType === "dateRange" ? "checked" : ""} onchange="window.updateAdminAnalyticsFilter('filterType', this.value)" />
-            <span>Date Range</span>
-          </label>
-        </div>
-
-        <div class="settings-grid analytics-filter-grid">
-          <label class="setting-field">Kiosk ID
-            <select onchange="window.updateAdminAnalyticsFilter('kioskId', this.value)">
-              <option value="" ${!filter.kioskId ? "selected" : ""}>-- All Kiosks --</option>
-              ${kiosks.map((kiosk) => `<option value="${escapeHtml(kiosk.kioskId)}" ${filter.kioskId === kiosk.kioskId ? "selected" : ""}>${escapeHtml(kiosk.kioskId)}${kiosk.branch ? ` | ${escapeHtml(kiosk.branch)}` : ""}</option>`).join("")}
+      <div class="revenue-filter-apply-row">
+        ${draft.filterType === "financialYear" ? `
+          <label class="setting-field">Financial Year
+            <select onchange="window.updateAdminAnalyticsFilterDraft('financialYear', this.value)">
+              <option value="current" ${draft.financialYear === "current" ? "selected" : ""}>Current FY (Apr-Mar)</option>
+              <option value="last" ${draft.financialYear === "last" ? "selected" : ""}>Last FY</option>
+              <option value="previous" ${draft.financialYear === "previous" ? "selected" : ""}>Previous FY</option>
             </select>
           </label>
-          ${filter.filterType === "financialYear" ? `
-            <label class="setting-field">Financial Year
-              <select onchange="window.updateAdminAnalyticsFilter('financialYear', this.value)">
-                <option value="current" ${filter.financialYear === "current" ? "selected" : ""}>Current FY (Apr-Mar)</option>
-                <option value="last" ${filter.financialYear === "last" ? "selected" : ""}>Last FY</option>
-                <option value="previous" ${filter.financialYear === "previous" ? "selected" : ""}>Previous FY</option>
-              </select>
-            </label>
-          ` : `
-            <label class="setting-field">Start Date
-              <input type="date" value="${escapeHtml(filter.start)}" onchange="window.updateAdminAnalyticsFilter('start', this.value)" />
-            </label>
-            <label class="setting-field">End Date
-              <input type="date" value="${escapeHtml(filter.end)}" onchange="window.updateAdminAnalyticsFilter('end', this.value)" />
-            </label>
-          `}
-        </div>
+        ` : `
+          <label class="setting-field">Start Date
+            <input type="date" value="${escapeHtml(draft.start)}" onchange="window.updateAdminAnalyticsFilterDraft('start', this.value)" />
+          </label>
+          <label class="setting-field">End Date
+            <input type="date" value="${escapeHtml(draft.end)}" onchange="window.updateAdminAnalyticsFilterDraft('end', this.value)" />
+          </label>
+        `}
+        <button class="primary-button revenue-apply-filter-btn" onclick="window.applyAdminAnalyticsFilter()">${uiIcon("filter", 16)} Apply Filter</button>
       </div>
     </div>
   `;
 }
 
-function renderAdminAnalyticsChart(buckets) {
+function renderAdminAnalytics() {
+  const filter = state.adminAnalyticsFilter;
+  const { label: rangeLabel } = adminAnalyticsFilterBounds();
+  const clientName = state.adminAccount?.name || state.adminAccount?.email || "Client";
+  const clientLogoUrl = state.adminAccount?.logoUrl || "";
+
+  const tab = state.adminAnalyticsTab === "form" ? "form" : "revenue";
+  const seriesFn = tab === "form" ? formSellingBucketedSeries : adminAnalyticsBucketedSeries;
+  const tabLabel = tab === "form" ? "Form Sales" : "Revenue";
+
+  const monthlyBuckets = seriesFn("monthly");
+  const totalAmount = monthlyBuckets.reduce((sum, bucket) => sum + bucket.amount, 0);
+  const hasData = monthlyBuckets.some((bucket) => bucket.amount > 0);
+
+  return `
+    ${renderAdminHeader("Graphical Analytics", "Revenue and form-selling trends by financial year or custom date range.", `
+      <button class="secondary-button" ${hasData ? "" : "disabled"} onclick="window.print()">${uiIcon("printer", 16)} Print</button>
+      <button class="primary-button" ${hasData ? "" : "disabled"} onclick="window.downloadAdminAnalyticsPDF()">${uiIcon("download", 16)} Download PDF</button>
+    `)}
+    ${adminNotice()}
+
+    <div class="analytics-tabs" data-print-hide>
+      <button class="analytics-tab-button ${tab === "revenue" ? "active" : ""}" onclick="window.setAdminAnalyticsTab('revenue')">${uiIcon("payments", 16)} Revenue</button>
+      <button class="analytics-tab-button ${tab === "form" ? "active" : ""}" onclick="window.setAdminAnalyticsTab('form')">${uiIcon("printer", 16)} Form Selling</button>
+    </div>
+
+    ${renderAdminAnalyticsFilterCard()}
+
+    <div class="analytics-report-area" id="admin-analytics-print-area">
+      <div class="module-card analytics-report-header-card">
+        <div class="analytics-report-header">
+          ${clientLogoUrl ? `<img class="analytics-report-logo" src="${escapeHtml(clientLogoUrl)}" alt="${escapeHtml(clientName)}" />` : `<div class="analytics-report-logo analytics-report-logo-placeholder"></div>`}
+          <div class="analytics-report-heading">
+            <h1>${tab === "form" ? "Form Selling Report" : "Revenue Report"}</h1>
+            <p class="analytics-report-client">Client Name: ${escapeHtml(clientName)}</p>
+            <p class="analytics-report-meta">Kiosk ID: ${escapeHtml(filter.kioskId || "All Kiosks")} &nbsp;·&nbsp; ${escapeHtml(rangeLabel)}</p>
+          </div>
+          <img class="analytics-report-logo analytics-report-logo-wide" src="./assets/printhub-logo-transparent.png" alt="Aarya Innovtech" />
+        </div>
+        <div class="analytics-summary-row">
+          <div class="analytics-summary-tile is-total">
+            <span>Total ${escapeHtml(tabLabel)} (${escapeHtml(rangeLabel)})</span>
+            <strong>${escapeHtml(money(totalAmount))}</strong>
+          </div>
+        </div>
+      </div>
+
+      <div class="module-card analytics-chart-card" data-chart="monthly">
+        <div class="section-heading"><h2>📊 Monthly ${escapeHtml(tabLabel)}</h2></div>
+        ${monthlyBuckets.length ? renderAdminAnalyticsBarChart(monthlyBuckets) : `<div class="empty-note">No data for this range yet.</div>`}
+      </div>
+    </div>
+  `;
+}
+
+// bucket.label already identifies the period unambiguously for yearly
+// buckets ("FY 2026-27"); only monthly/daily/weekly buckets need the
+// 2-digit year suffix appended to disambiguate e.g. "Jan" across years.
+function adminAnalyticsBarLabel(bucket) {
+  return bucket.label.startsWith("FY ") ? bucket.label : `${bucket.label} ${String(bucket.year).slice(-2)}`;
+}
+
+function renderAdminAnalyticsBarChart(buckets, { forPrint = false } = {}) {
+  const printColor = "#1e4fb0";
   const minGroupWidth = 40;
   const padding = { top: 20, right: 24, bottom: 40, left: 64 };
   const baseChartWidth = 960 - padding.left - padding.right;
@@ -9884,7 +10012,7 @@ function renderAdminAnalyticsChart(buckets) {
     const groupX = padding.left + index * groupWidth;
     const barHeight = (bucket.amount / yMax) * chartHeight;
     return {
-      label: `${bucket.label} ${String(bucket.year).slice(-2)}`,
+      label: adminAnalyticsBarLabel(bucket),
       barX: groupX + groupWidth / 2 - barWidth / 2,
       barY: padding.top + chartHeight - barHeight,
       barHeight,
@@ -9893,7 +10021,7 @@ function renderAdminAnalyticsChart(buckets) {
     };
   });
 
-  return `
+  const styleBlock = forPrint ? "" : `
     <style>
       .analytics-chart-wrap { --amount-color: #2a78d6; position: relative; overflow-x: auto; overflow-y: hidden; padding-bottom: 8px; }
       .analytics-bar { transition: opacity 0.15s ease; }
@@ -9901,8 +10029,12 @@ function renderAdminAnalyticsChart(buckets) {
       .analytics-bar-tooltip { opacity: 0; pointer-events: none; transition: opacity 0.15s ease; }
       .analytics-bar-group:hover .analytics-bar-tooltip { opacity: 1; }
     </style>
+  `;
+
+  return `
+    ${styleBlock}
     <div class="analytics-chart-wrap">
-      <svg viewBox="0 0 ${width} ${height}" role="img" aria-label="Transaction revenue chart" style="min-width: 100%; width: ${width}px; height: ${height}px;">
+      <svg viewBox="0 0 ${width} ${height}" role="img" aria-label="Bar chart" style="min-width: 100%; width: ${width}px; height: ${height}px;">
         <g>
           ${yTicks.map((tick) => `
             <line x1="${padding.left}" x2="${width - padding.right}" y1="${tick.y.toFixed(1)}" y2="${tick.y.toFixed(1)}" stroke="#e2e8f0" stroke-width="1" />
@@ -9912,13 +10044,15 @@ function renderAdminAnalyticsChart(buckets) {
         <g>
           ${bars.map((bar) => `
             <g class="analytics-bar-group">
-              <rect class="analytics-bar" x="${bar.barX.toFixed(1)}" y="${bar.barY.toFixed(1)}" width="${barWidth.toFixed(1)}" height="${Math.max(0, bar.barHeight).toFixed(1)}" rx="4" fill="var(--amount-color)" />
+              <rect class="analytics-bar" x="${bar.barX.toFixed(1)}" y="${bar.barY.toFixed(1)}" width="${barWidth.toFixed(1)}" height="${Math.max(0, bar.barHeight).toFixed(1)}" rx="4" fill="${forPrint ? printColor : "var(--amount-color)"}" />
               <rect x="${(bar.centerX - groupWidth / 2).toFixed(1)}" y="${padding.top}" width="${groupWidth.toFixed(1)}" height="${chartHeight}" fill="transparent" />
               <text x="${bar.centerX.toFixed(1)}" y="${height - 16}" text-anchor="middle" fill="#64748b" font-size="11px" font-weight="500">${escapeHtml(bar.label)}</text>
-              <g class="analytics-bar-tooltip" transform="translate(${Math.min(width - 100, Math.max(4, bar.centerX - 50))}, ${Math.max(padding.top, bar.barY - 30)})">
-                <rect width="100" height="26" rx="6" fill="#ffffff" stroke="#e2e8f0" />
-                <text x="10" y="17" fill="var(--amount-color)" font-size="11px" font-weight="700">${escapeHtml(money(bar.amount))}</text>
-              </g>
+              ${forPrint ? "" : `
+                <g class="analytics-bar-tooltip" transform="translate(${Math.min(width - 100, Math.max(4, bar.centerX - 50))}, ${Math.max(padding.top, bar.barY - 30)})">
+                  <rect width="100" height="26" rx="6" fill="#ffffff" stroke="#e2e8f0" />
+                  <text x="10" y="17" fill="var(--amount-color)" font-size="11px" font-weight="700">${escapeHtml(money(bar.amount))}</text>
+                </g>
+              `}
             </g>
           `).join("")}
         </g>
@@ -9926,6 +10060,108 @@ function renderAdminAnalyticsChart(buckets) {
     </div>
   `;
 }
+
+function renderAdminAnalyticsLineChart(buckets, { forPrint = false } = {}) {
+  const printColor = "#1e4fb0";
+  const minGroupWidth = 40;
+  const padding = { top: 20, right: 24, bottom: 40, left: 64 };
+  const baseChartWidth = 960 - padding.left - padding.right;
+  const chartWidth = Math.max(baseChartWidth, buckets.length * minGroupWidth);
+  const width = chartWidth + padding.left + padding.right;
+  const height = 320;
+  const chartHeight = height - padding.top - padding.bottom;
+  const maxValue = Math.max(1, ...buckets.map((bucket) => bucket.amount));
+  const yMax = Math.max(10, Math.ceil(maxValue / 10) * 10);
+  const groupWidth = buckets.length > 1 ? chartWidth / (buckets.length - 1) : chartWidth;
+
+  const yTicks = [0, 0.25, 0.5, 0.75, 1].map((ratio) => ({
+    value: Math.round(yMax * ratio),
+    y: padding.top + chartHeight - ratio * chartHeight
+  }));
+
+  const points = buckets.map((bucket, index) => {
+    const x = buckets.length > 1 ? padding.left + index * groupWidth : padding.left + chartWidth / 2;
+    const y = padding.top + chartHeight - (bucket.amount / yMax) * chartHeight;
+    return { x, y, label: adminAnalyticsBarLabel(bucket), amount: bucket.amount };
+  });
+
+  const linePath = points.map((point, index) => `${index === 0 ? "M" : "L"}${point.x.toFixed(1)} ${point.y.toFixed(1)}`).join(" ");
+  const areaPath = points.length
+    ? `${linePath} L${points[points.length - 1].x.toFixed(1)} ${(padding.top + chartHeight).toFixed(1)} L${points[0].x.toFixed(1)} ${(padding.top + chartHeight).toFixed(1)} Z`
+    : "";
+
+  // Print export skips labels for every single day (there can be dozens
+  // in a wide date range) - keep only a handful, evenly spaced, so the
+  // static PDF axis stays readable instead of overlapping.
+  const maxAxisLabels = 12;
+  const labelStep = Math.max(1, Math.ceil(points.length / maxAxisLabels));
+
+  const styleBlock = forPrint ? "" : `
+    <style>
+      .analytics-line-wrap { --amount-color: #2a78d6; position: relative; overflow-x: auto; overflow-y: hidden; padding-bottom: 8px; }
+      .analytics-line-point { transition: r 0.15s ease; }
+      .analytics-line-point-group:hover .analytics-line-point { r: 5; }
+      .analytics-line-tooltip { opacity: 0; pointer-events: none; transition: opacity 0.15s ease; }
+      .analytics-line-point-group:hover .analytics-line-tooltip { opacity: 1; }
+    </style>
+  `;
+
+  return `
+    ${styleBlock}
+    <div class="analytics-line-wrap">
+      <svg viewBox="0 0 ${width} ${height}" role="img" aria-label="Line chart" style="min-width: 100%; width: ${width}px; height: ${height}px;">
+        <defs>
+          <linearGradient id="adminAnalyticsLineFill" x1="0" y1="0" x2="0" y2="1">
+            <stop offset="0%" stop-color="${forPrint ? printColor : "var(--amount-color)"}" stop-opacity="0.22" />
+            <stop offset="100%" stop-color="${forPrint ? printColor : "var(--amount-color)"}" stop-opacity="0" />
+          </linearGradient>
+        </defs>
+        <g>
+          ${yTicks.map((tick) => `
+            <line x1="${padding.left}" x2="${width - padding.right}" y1="${tick.y.toFixed(1)}" y2="${tick.y.toFixed(1)}" stroke="#e2e8f0" stroke-width="1" />
+            <text x="${padding.left - 10}" y="${(tick.y + 4).toFixed(1)}" text-anchor="end" fill="#64748b" font-size="11px" font-weight="500">${escapeHtml(money(tick.value).replace("Rs. ", ""))}</text>
+          `).join("")}
+        </g>
+        ${areaPath ? `<path d="${areaPath}" fill="url(#adminAnalyticsLineFill)" stroke="none" />` : ""}
+        ${linePath ? `<path d="${linePath}" fill="none" stroke="${forPrint ? printColor : "var(--amount-color)"}" stroke-width="2.5" stroke-linejoin="round" stroke-linecap="round" />` : ""}
+        <g>
+          ${points.map((point, index) => `
+            <g class="analytics-line-point-group">
+              <circle class="analytics-line-point" cx="${point.x.toFixed(1)}" cy="${point.y.toFixed(1)}" r="3.5" fill="${forPrint ? printColor : "var(--amount-color)"}" stroke="#ffffff" stroke-width="1.5" />
+              ${index % labelStep === 0 ? `<text x="${point.x.toFixed(1)}" y="${height - 16}" text-anchor="middle" fill="#64748b" font-size="11px" font-weight="500">${escapeHtml(point.label)}</text>` : ""}
+              ${forPrint ? "" : `
+                <g class="analytics-line-tooltip" transform="translate(${Math.min(width - 100, Math.max(4, point.x - 50))}, ${Math.max(padding.top, point.y - 34)})">
+                  <rect width="100" height="26" rx="6" fill="#ffffff" stroke="#e2e8f0" />
+                  <text x="10" y="17" fill="var(--amount-color)" font-size="11px" font-weight="700">${escapeHtml(money(point.amount))}</text>
+                </g>
+              `}
+            </g>
+          `).join("")}
+        </g>
+      </svg>
+    </div>
+  `;
+}
+
+window.setAdminAnalyticsTab = function (tab) {
+  state.adminAnalyticsTab = tab === "form" ? "form" : "revenue";
+  render();
+};
+
+window.updateAdminAnalyticsFilterDraft = function (field, value) {
+  state.adminAnalyticsFilterDraft[field] = value;
+  render();
+};
+
+window.applyAdminAnalyticsFilter = function () {
+  const draft = state.adminAnalyticsFilterDraft;
+  const bounds = draft.filterType === "financialYear"
+    ? financialYearDateStrings(draft.financialYear === "last" ? 1 : draft.financialYear === "previous" ? 2 : 0)
+    : { start: draft.start, end: draft.end };
+
+  state.adminAnalyticsFilter = { ...draft, start: bounds.start, end: bounds.end };
+  render();
+};
 
 async function loadImageAsDataUrl(url) {
   if (!url) return null;
@@ -10049,12 +10285,37 @@ const PDF_TABLE_STYLE = {
   }
 };
 
+// Renders a chart's markup off-screen (laid out for real, just outside the
+// viewport) so its <svg> can be serialized/rasterized for the PDF without
+// touching the live, visible chart or depending on any external CSS - the
+// forPrint markup itself already carries literal colors and no tooltip
+// nodes (see renderAdminAnalyticsBarChart/renderAdminAnalyticsLineChart),
+// so this is the fix for the black-bars/stacked-tooltip PDF bug, not a
+// workaround.
+async function adminAnalyticsPrintSafeChartImage(html) {
+  const holder = document.createElement("div");
+  holder.style.position = "absolute";
+  holder.style.left = "-9999px";
+  holder.style.top = "0";
+  holder.innerHTML = html;
+  document.body.appendChild(holder);
+  const svg = holder.querySelector("svg");
+  const png = svg ? await svgElementToPngDataUrl(svg) : null;
+  holder.remove();
+  return png;
+}
+
 window.downloadAdminAnalyticsPDF = async function () {
   const filter = state.adminAnalyticsFilter;
+
+  const tab = state.adminAnalyticsTab === "form" ? "form" : "revenue";
+  const seriesFn = tab === "form" ? formSellingBucketedSeries : adminAnalyticsBucketedSeries;
+  const tabLabel = tab === "form" ? "Form Sales" : "Revenue";
+
   const { jsPDF } = window.jspdf;
   const doc = new jsPDF();
   const pageWidth = doc.internal.pageSize.getWidth();
-  const buckets = adminAnalyticsBucketedSeries();
+  const pageHeight = doc.internal.pageSize.getHeight();
   const { label: rangeLabel } = adminAnalyticsFilterBounds();
   const clientName = state.adminAccount?.name || state.adminAccount?.email || "Client";
   const kioskLabel = filter.kioskId || "All Kiosks";
@@ -10085,19 +10346,19 @@ window.downloadAdminAnalyticsPDF = async function () {
   }
 
   doc.setFont(undefined, "bold");
-  doc.setFontSize(22);
+  doc.setFontSize(20);
   doc.setTextColor(27, 175, 122);
-  doc.text("Graphical Analytics Report", pageWidth / 2, logoY + 10, { align: "center" });
+  doc.text(tab === "form" ? "Form Selling Report" : "Revenue Report", pageWidth / 2, logoY + 10, { align: "center" });
 
   doc.setFontSize(15);
   doc.setTextColor(42, 120, 214);
-  doc.text(`Client: ${clientName}`, pageWidth / 2, logoY + 19, { align: "center" });
+  doc.text(`Client Name: ${clientName}`, pageWidth / 2, logoY + 19, { align: "center" });
 
   doc.setFont(undefined, "normal");
   doc.setFontSize(11);
   doc.setTextColor(100);
   doc.text(`Kiosk ID: ${kioskLabel}`, pageWidth / 2, logoY + 27, { align: "center" });
-  doc.text(`Range: ${rangeLabel}`, pageWidth / 2, logoY + 33, { align: "center" });
+  doc.text(`${tabLabel} · Range: ${rangeLabel}`, pageWidth / 2, logoY + 33, { align: "center" });
   doc.setTextColor(0);
 
   const dividerY = logoY + 42;
@@ -10106,42 +10367,40 @@ window.downloadAdminAnalyticsPDF = async function () {
   doc.line(14, dividerY, pageWidth - 14, dividerY);
 
   let cursorY = dividerY + 8;
-  const chartSvg = document.querySelector("#admin-analytics-print-area .analytics-chart-wrap svg");
-  const chart = buckets.length ? await svgElementToPngDataUrl(chartSvg) : null;
+  const marginX = 14;
+  const chartDisplayWidth = Math.min(pageWidth - marginX * 2, 180);
 
-  if (chart) {
-    const marginX = 14;
-    const maxChartWidth = pageWidth - marginX * 2;
-    const chartWidth = Math.min(maxChartWidth, 180);
-    const chartHeight = chartWidth * (chart.height / chart.width);
-    doc.addImage(chart.dataUrl, "PNG", (pageWidth - chartWidth) / 2, cursorY, chartWidth, chartHeight);
-    cursorY += chartHeight + 10;
+  const sections = [
+    { title: "Monthly", buckets: seriesFn("monthly"), type: "bar" }
+  ];
+
+  for (const section of sections) {
+    if (!section.buckets.length) continue;
+
+    const html = section.type === "bar"
+      ? renderAdminAnalyticsBarChart(section.buckets, { forPrint: true })
+      : renderAdminAnalyticsLineChart(section.buckets, { forPrint: true });
+    const chart = await adminAnalyticsPrintSafeChartImage(html);
+    if (!chart) continue;
+
+    const chartHeight = chartDisplayWidth * (chart.height / chart.width);
+    if (cursorY + 20 + chartHeight > pageHeight - 14) {
+      doc.addPage();
+      cursorY = 20;
+    }
+
+    doc.setFont(undefined, "bold");
+    doc.setFontSize(13);
+    doc.setTextColor(27, 175, 122);
+    doc.text(`${section.title} ${tabLabel}`, marginX, cursorY);
+    doc.setTextColor(0);
+    cursorY += 6;
+
+    doc.addImage(chart.dataUrl, "PNG", (pageWidth - chartDisplayWidth) / 2, cursorY, chartDisplayWidth, chartHeight);
+    cursorY += chartHeight + 14;
   }
 
-  const tableData = buckets.map((bucket) => [
-    `${bucket.label} ${bucket.year}`,
-    money(bucket.amount)
-  ]);
-  const totalAmount = buckets.reduce((sum, bucket) => sum + bucket.amount, 0);
-  tableData.push(["Total", money(totalAmount)]);
-
-  doc.autoTable({
-    startY: cursorY,
-    head: [["Month", "Amount (Rs.)"]],
-    body: tableData,
-    theme: "grid",
-    ...PDF_TABLE_STYLE,
-    columnStyles: { 1: { halign: "center" } },
-    didParseCell: (hookData) => {
-      if (hookData.row.index === tableData.length - 1) {
-        hookData.cell.styles.fillColor = [27, 175, 122];
-        hookData.cell.styles.textColor = 255;
-        hookData.cell.styles.fontStyle = "bold";
-      }
-    }
-  });
-
-  doc.save(`Graphical_Analytics_${clientName.replace(/[^a-z0-9]+/gi, "_")}_${rangeLabel.replace(/[^a-z0-9]+/gi, "_")}.pdf`);
+  doc.save(`Graphical_Analytics_${tabLabel.replace(/[^a-z0-9]+/gi, "_")}_${clientName.replace(/[^a-z0-9]+/gi, "_")}_${rangeLabel.replace(/[^a-z0-9]+/gi, "_")}.pdf`);
 };
 
 function getTemplateName(templateId) {
@@ -11872,9 +12131,6 @@ async function handleClick(event) {
     if (!(TEST_HOOKS_ENABLED && state.adminToken === "ui-test-session")) {
       loadAdminData();
     }
-    if (target.dataset.adminPage === "idle-screensaver") {
-      loadAdminIdleScreensaver();
-    }
     return;
   }
 
@@ -12134,6 +12390,7 @@ async function handleClick(event) {
         confirmPassword: ""
       };
       render();
+      loadAdminIdleScreensaver();
       break;
     case "admin-close-settings":
       state.adminSettingsModalOpen = false;
