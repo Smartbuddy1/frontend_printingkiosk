@@ -1951,17 +1951,28 @@ window.downloadRevenueReportPDF = async function () {
   doc.setLineWidth(0.6);
   doc.line(14, dividerY, pageWidth - 14, dividerY);
 
-  const tableData = records.map((r) => [
-    r.date || "-",
-    r.kiosk || "Unknown",
-    r.client || "Unknown",
-    money(r.amount || 0),
-    r.status || "Completed"
-  ]);
+  const dailyTotals = new Map();
+  records.forEach((r) => {
+    const d = new Date(r.dateValue);
+    const hasDate = !Number.isNaN(d.getTime());
+    const sortKey = hasDate ? `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}` : "unknown";
+    const label = hasDate ? d.toLocaleDateString("en-IN", { year: "numeric", month: "2-digit", day: "2-digit" }) : "Unknown";
+    const entry = dailyTotals.get(sortKey) || { label, count: 0, amount: 0 };
+    entry.count += 1;
+    entry.amount += Number(r.amount || 0);
+    dailyTotals.set(sortKey, entry);
+  });
+
+  const sortedDays = [...dailyTotals.entries()].sort(([a], [b]) => a.localeCompare(b));
+  const grandTotal = sortedDays.reduce((sum, [, entry]) => sum + entry.amount, 0);
+  const grandCount = sortedDays.reduce((sum, [, entry]) => sum + entry.count, 0);
+
+  const tableData = sortedDays.map(([, entry]) => [entry.label, String(entry.count), money(entry.amount)]);
+  tableData.push(["Total", String(grandCount), money(grandTotal)]);
 
   doc.autoTable({
     startY: dividerY + 8,
-    head: [["Date", "Kiosk", "Client", "Amount", "Status"]],
+    head: [["Date", "Transactions", "Total Amount"]],
     body: tableData,
     theme: "grid",
     ...PDF_TABLE_STYLE
@@ -2282,7 +2293,7 @@ function formSellingBucketedSeries(basis = "monthly") {
   return buckets;
 }
 
-function renderAnalyticsFilterCard() {
+function renderAnalyticsFilterCard(hasData) {
   const draft = state.analyticsFilterDraft;
   const clients = data("kioskAdmins");
   const kiosks = analyticsKiosksForClient(draft.clientId);
@@ -2333,6 +2344,7 @@ function renderAnalyticsFilterCard() {
           </label>
         `}
         <button class="primary-button revenue-apply-filter-btn" onclick="window.applyAnalyticsFilter()">${uiIcon("filter", 16)} Apply Filter</button>
+        <button class="primary-button analytics-download-pdf-btn" ${hasData ? "" : "disabled"} onclick="window.downloadAnalyticsPDF()">${uiIcon("download", 16)} Download PDF</button>
       </div>
     </div>
   `;
@@ -2354,10 +2366,7 @@ function renderAnalytics() {
   const hasData = monthlyBuckets.some((bucket) => bucket.amount > 0);
 
   return `
-    ${renderHeader("Graphical Analytics", "Revenue and form-selling trends by financial year or custom date range.", `
-      <button class="secondary-button" ${hasData ? "" : "disabled"} onclick="window.print()">${uiIcon("printer", 16)} Print</button>
-      <button class="primary-button" ${hasData ? "" : "disabled"} onclick="window.downloadAnalyticsPDF()">${uiIcon("download", 16)} Download PDF</button>
-    `)}
+    ${renderHeader("Graphical Analytics", "Revenue and form-selling trends by financial year or custom date range.")}
     ${renderNotice()}
 
     <div class="analytics-tabs" data-print-hide>
@@ -2365,7 +2374,7 @@ function renderAnalytics() {
       <button class="analytics-tab-button ${tab === "form" ? "active" : ""}" onclick="window.setAnalyticsTab('form')">${uiIcon("printer", 16)} Form Selling</button>
     </div>
 
-    ${renderAnalyticsFilterCard()}
+    ${renderAnalyticsFilterCard(hasData)}
 
     <div class="analytics-report-area" id="analytics-print-area">
       <div class="module-card analytics-report-header-card">
