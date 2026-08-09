@@ -1907,7 +1907,7 @@ window.downloadRevenueReportPDF = async function () {
 
   const [clientLogo, companyLogo] = await Promise.all([
     loadImageAsDataUrl(selectedClient?.logoUrl || ""),
-    loadImageAsDataUrl("./assets/printhub-logo-transparent.png")
+    loadImageAsDataUrl("./assets/aarya-innovtech-logo-full.png")
   ]);
   const [clientLogoSize, companyLogoSize] = await Promise.all([
     loadImageNaturalSize(clientLogo),
@@ -2003,7 +2003,7 @@ window.downloadFormPrintReportPDF = async function () {
 
   const [clientLogo, companyLogo] = await Promise.all([
     loadImageAsDataUrl(selectedClient?.logoUrl || ""),
-    loadImageAsDataUrl("./assets/printhub-logo-transparent.png")
+    loadImageAsDataUrl("./assets/aarya-innovtech-logo-full.png")
   ]);
   const [clientLogoSize, companyLogoSize] = await Promise.all([
     loadImageNaturalSize(clientLogo),
@@ -2376,7 +2376,7 @@ function renderAnalytics() {
             ${selectedClient ? `<p class="analytics-report-client">Client Name: ${escapeHtml(clientLabel)}</p>` : ""}
             <p class="analytics-report-meta">Kiosk ID: ${escapeHtml(filter.kioskId || "All Kiosks")} &nbsp;·&nbsp; ${escapeHtml(rangeLabel)}</p>
           </div>
-          <img class="analytics-report-logo analytics-report-logo-wide" src="./assets/printhub-logo-transparent.png" alt="Aarya Innovtech" />
+          <img class="analytics-report-logo analytics-report-logo-wide" src="./assets/aarya-innovtech-logo-full.png" alt="Aarya Innovtech" />
         </div>
         <div class="analytics-summary-row">
           <div class="analytics-summary-tile is-total">
@@ -2767,7 +2767,7 @@ window.downloadAnalyticsPDF = async function () {
 
   const [clientLogo, companyLogo] = await Promise.all([
     loadImageAsDataUrl(selectedClient?.logoUrl || ""),
-    loadImageAsDataUrl("./assets/printhub-logo-transparent.png")
+    loadImageAsDataUrl("./assets/aarya-innovtech-logo-full.png")
   ]);
   const [clientLogoSize, companyLogoSize] = await Promise.all([
     loadImageNaturalSize(clientLogo),
