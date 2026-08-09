@@ -1970,29 +1970,82 @@ window.downloadRevenueReportPDF = async function () {
   doc.save(`Revenue_Report_${filter.start}_to_${filter.end}.pdf`);
 };
 
-window.downloadFormPrintReportPDF = function () {
+window.downloadFormPrintReportPDF = async function () {
+  const filter = state.revenueFilter;
+  const clients = data("kioskAdmins");
+  const selectedClient = filter.clientId ? clients.find((client) => client.adminId === filter.clientId) : null;
+  const clientLabel = selectedClient ? (selectedClient.name || selectedClient.email || selectedClient.adminId) : "All Clients";
+  const kioskLabel = filter.kioskId || "All Kiosks";
+
   const { jsPDF } = window.jspdf;
   const doc = new jsPDF();
+  const pageWidth = doc.internal.pageSize.getWidth();
   const stats = data("dailyStats") || [];
 
-  const startObj = new Date(state.revenueFilter.start);
+  const startObj = new Date(filter.start);
   startObj.setHours(0, 0, 0, 0);
-  const endObj = new Date(state.revenueFilter.end);
+  const endObj = new Date(filter.end);
   endObj.setHours(23, 59, 59, 999);
 
   const filteredStats = stats.filter(stat => {
     if (!stat.date) return false;
     const statDate = new Date(stat.date.split("T")[0]);
     if (statDate < startObj || statDate > endObj) return false;
-    if (state.revenueFilter.clientId && stat.clientId !== state.revenueFilter.clientId) return false;
-    if (state.revenueFilter.kioskId && String(stat.kioskId || "").toUpperCase() !== state.revenueFilter.kioskId.toUpperCase()) return false;
+    if (filter.clientId && stat.clientId !== filter.clientId) return false;
+    if (filter.kioskId && String(stat.kioskId || "").toUpperCase() !== filter.kioskId.toUpperCase()) return false;
     return true;
   });
 
-  doc.setFontSize(18);
-  doc.text("Form Print Data (Kiosk-wise)", 14, 22);
+  const logoMaxWidth = 32;
+  const logoMaxHeight = 24;
+  const companyLogoMaxWidth = 50;
+  const logoY = 12;
+
+  const [clientLogo, companyLogo] = await Promise.all([
+    loadImageAsDataUrl(selectedClient?.logoUrl || ""),
+    loadImageAsDataUrl("./assets/printhub-logo-transparent.png")
+  ]);
+  const [clientLogoSize, companyLogoSize] = await Promise.all([
+    loadImageNaturalSize(clientLogo),
+    loadImageNaturalSize(companyLogo)
+  ]);
+
+  drawPdfWatermark(doc, companyLogo, companyLogoSize);
+
+  if (clientLogo) {
+    const box = fitImageBox(clientLogoSize, logoMaxWidth, logoMaxHeight);
+    doc.addImage(clientLogo, dataUrlImageFormat(clientLogo), 14, logoY + (logoMaxHeight - box.height) / 2, box.width, box.height);
+  }
+
+  if (companyLogo) {
+    const box = fitImageBox(companyLogoSize, companyLogoMaxWidth, logoMaxHeight);
+    doc.addImage(companyLogo, dataUrlImageFormat(companyLogo), pageWidth - 14 - box.width, logoY + (logoMaxHeight - box.height) / 2, box.width, box.height);
+  }
+
+  doc.setFont(undefined, "bold");
+  doc.setFontSize(20);
+  doc.setTextColor(27, 175, 122);
+  doc.text("Form Print Report", pageWidth / 2, logoY + 10, { align: "center" });
+
+  let headerY = logoY + 19;
+  if (selectedClient) {
+    doc.setFontSize(15);
+    doc.setTextColor(42, 120, 214);
+    doc.text(`Client Name: ${clientLabel}`, pageWidth / 2, headerY, { align: "center" });
+    headerY += 8;
+  }
+
+  doc.setFont(undefined, "normal");
   doc.setFontSize(11);
-  doc.text(`Date Range: ${state.revenueFilter.start} to ${state.revenueFilter.end}`, 14, 30);
+  doc.setTextColor(100);
+  doc.text(`Kiosk ID: ${kioskLabel}`, pageWidth / 2, headerY, { align: "center" });
+  doc.text(`Range: ${filter.start} to ${filter.end}`, pageWidth / 2, headerY + 6, { align: "center" });
+  doc.setTextColor(0);
+
+  const dividerY = headerY + 15;
+  doc.setDrawColor(42, 120, 214);
+  doc.setLineWidth(0.6);
+  doc.line(14, dividerY, pageWidth - 14, dividerY);
 
   const tableData = filteredStats.map(stat => [
     stat.date ? stat.date.split("T")[0] : "",
@@ -2004,14 +2057,14 @@ window.downloadFormPrintReportPDF = function () {
   ]);
 
   doc.autoTable({
-    startY: 36,
+    startY: dividerY + 8,
     head: [['Date', 'Kiosk ID', 'Client ID', 'Successful Prints', 'Failed Prints', 'Revenue']],
     body: tableData,
     theme: 'grid',
-    styles: { fontSize: 9 }
+    ...PDF_TABLE_STYLE
   });
 
-  doc.save(`Form_Print_Report_${state.revenueFilter.start}_to_${state.revenueFilter.end}.pdf`);
+  doc.save(`Form_Print_Report_${filter.start}_to_${filter.end}.pdf`);
 };
 
 function financialYearDateStrings(offset = 0) {
@@ -2525,20 +2578,37 @@ window.applyAnalyticsFilter = () => {
   render();
 };
 
+function blobToDataUrl(blob) {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(reader.result);
+    reader.onerror = reject;
+    reader.readAsDataURL(blob);
+  });
+}
+
+// Client logos can be hosted on S3/CloudFront (see backend's client-logo
+// upload path) - those buckets are "public read" so an <img> tag shows them
+// fine, but a browser fetch() from the admin panel's own origin is blocked
+// because the bucket has no CORS policy, so PDF export (which needs to read
+// the image into a canvas) silently gets nothing. If the direct fetch fails
+// for that reason, retry through the backend's own asset-proxy endpoint,
+// which fetches the same URL server-side (no CORS applies there) and
+// returns it with an open CORS header.
 async function loadImageAsDataUrl(url) {
   if (!url) return null;
 
   try {
     const response = await fetch(url, { mode: "cors" });
-    if (!response.ok) return null;
-    const blob = await response.blob();
+    if (response.ok) return await blobToDataUrl(await response.blob());
+  } catch {
+    // fall through to the proxy
+  }
 
-    return await new Promise((resolve, reject) => {
-      const reader = new FileReader();
-      reader.onload = () => resolve(reader.result);
-      reader.onerror = reject;
-      reader.readAsDataURL(blob);
-    });
+  try {
+    const proxied = await fetch(`${BACKEND_URL}/api/asset-proxy?url=${encodeURIComponent(url)}`);
+    if (!proxied.ok) return null;
+    return await blobToDataUrl(await proxied.blob());
   } catch {
     return null;
   }

@@ -9661,9 +9661,15 @@ window.downloadRevenueReportPDF = async function () {
   doc.save(`Revenue_Report_${filter.start}_to_${filter.end}.pdf`);
 };
 
-window.downloadFormPrintReportPDF = function() {
+window.downloadFormPrintReportPDF = async function () {
+  const filter = state.revenueFilter;
+  const kioskLabel = filter.kioskId || "All Kiosks";
+  const clientName = state.adminAccount?.name || state.adminAccount?.email || "Client";
+  const clientLogoUrl = state.adminAccount?.logoUrl || "";
+
   const { jsPDF } = window.jspdf;
   const doc = new jsPDF();
+  const pageWidth = doc.internal.pageSize.getWidth();
   const tableData = calculateFormSellingReport().map(row => [
     row.kioskId,
     row.templateName,
@@ -9671,20 +9677,62 @@ window.downloadFormPrintReportPDF = function() {
     money(row.revenue)
   ]);
 
-  doc.setFontSize(18);
-  doc.text("Form Print Data (Kiosk-wise)", 14, 22);
+  const logoMaxWidth = 32;
+  const logoMaxHeight = 24;
+  const companyLogoMaxWidth = 50;
+  const logoY = 12;
+
+  const [clientLogo, companyLogo] = await Promise.all([
+    loadImageAsDataUrl(clientLogoUrl),
+    loadImageAsDataUrl("./assets/printhub-logo-transparent.png")
+  ]);
+  const [clientLogoSize, companyLogoSize] = await Promise.all([
+    loadImageNaturalSize(clientLogo),
+    loadImageNaturalSize(companyLogo)
+  ]);
+
+  drawPdfWatermark(doc, companyLogo, companyLogoSize);
+
+  if (clientLogo) {
+    const box = fitImageBox(clientLogoSize, logoMaxWidth, logoMaxHeight);
+    doc.addImage(clientLogo, dataUrlImageFormat(clientLogo), 14, logoY + (logoMaxHeight - box.height) / 2, box.width, box.height);
+  }
+
+  if (companyLogo) {
+    const box = fitImageBox(companyLogoSize, companyLogoMaxWidth, logoMaxHeight);
+    doc.addImage(companyLogo, dataUrlImageFormat(companyLogo), pageWidth - 14 - box.width, logoY + (logoMaxHeight - box.height) / 2, box.width, box.height);
+  }
+
+  doc.setFont(undefined, "bold");
+  doc.setFontSize(20);
+  doc.setTextColor(27, 175, 122);
+  doc.text("Form Print Report", pageWidth / 2, logoY + 10, { align: "center" });
+
+  doc.setFontSize(15);
+  doc.setTextColor(42, 120, 214);
+  doc.text(`Client Name: ${clientName}`, pageWidth / 2, logoY + 19, { align: "center" });
+
+  doc.setFont(undefined, "normal");
   doc.setFontSize(11);
-  doc.text(`Date Range: ${state.revenueFilter.start} to ${state.revenueFilter.end}`, 14, 30);
+  doc.setTextColor(100);
+  doc.text(`Kiosk ID: ${kioskLabel}`, pageWidth / 2, logoY + 27, { align: "center" });
+  doc.text(`Range: ${filter.start} to ${filter.end}`, pageWidth / 2, logoY + 33, { align: "center" });
+  doc.setTextColor(0);
+
+  const dividerY = logoY + 42;
+  doc.setDrawColor(42, 120, 214);
+  doc.setLineWidth(0.6);
+  doc.line(14, dividerY, pageWidth - 14, dividerY);
 
   doc.autoTable({
-    startY: 36,
+    startY: dividerY + 8,
     head: [['Kiosk ID', 'Form', 'Prints', 'Revenue']],
     body: tableData,
     theme: 'grid',
-    styles: { fontSize: 9 }
+    ...PDF_TABLE_STYLE
   });
 
-  doc.save(`Form_Print_Report_${state.revenueFilter.start}_to_${state.revenueFilter.end}.pdf`);
+  doc.save(`Form_Print_Report_${filter.start}_to_${filter.end}.pdf`);
 };
 
 // ── Graphical Analytics (Admin / Client) ─────────────────────────────
@@ -10163,20 +10211,37 @@ window.applyAdminAnalyticsFilter = function () {
   render();
 };
 
+function blobToDataUrl(blob) {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(reader.result);
+    reader.onerror = reject;
+    reader.readAsDataURL(blob);
+  });
+}
+
+// Client logos can be hosted on S3/CloudFront (see backend's client-logo
+// upload path) - those buckets are "public read" so an <img> tag shows them
+// fine, but a browser fetch() from the admin panel's own origin is blocked
+// because the bucket has no CORS policy, so PDF export (which needs to read
+// the image into a canvas) silently gets nothing. If the direct fetch fails
+// for that reason, retry through the backend's own asset-proxy endpoint,
+// which fetches the same URL server-side (no CORS applies there) and
+// returns it with an open CORS header.
 async function loadImageAsDataUrl(url) {
   if (!url) return null;
 
   try {
     const response = await fetch(url, { mode: "cors" });
-    if (!response.ok) return null;
-    const blob = await response.blob();
+    if (response.ok) return await blobToDataUrl(await response.blob());
+  } catch {
+    // fall through to the proxy
+  }
 
-    return await new Promise((resolve, reject) => {
-      const reader = new FileReader();
-      reader.onload = () => resolve(reader.result);
-      reader.onerror = reject;
-      reader.readAsDataURL(blob);
-    });
+  try {
+    const proxied = await fetch(`${BACKEND_URL}/api/asset-proxy?url=${encodeURIComponent(url)}`);
+    if (!proxied.ok) return null;
+    return await blobToDataUrl(await proxied.blob());
   } catch {
     return null;
   }
