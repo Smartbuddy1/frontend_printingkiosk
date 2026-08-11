@@ -16504,3 +16504,26 @@ input, textarea { -webkit-user-select: auto; user-select: auto; }
   min-height: 0;
   object-fit: contain;
 }
+
+/* Enforce Cambria Font across Admin side */
+body.admin-page,
+body.admin-page *,
+body.admin-mode,
+body.admin-mode *,
+.admin-mode,
+.admin-mode *,
+.admin-shell,
+.admin-shell *,
+.super-admin-layout,
+.super-admin-layout *,
+.admin-screen,
+.admin-screen *,
+.admin-main,
+.admin-main *,
+.admin-login-wrapper,
+.admin-login-wrapper *,
+.super-admin-login-card,
+.super-admin-login-card * {
+  font-family: Cambria, "Nirmala UI", "Mangal", Georgia, "Times New Roman", serif !important;
+}
+

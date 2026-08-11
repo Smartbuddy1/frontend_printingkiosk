@@ -74,6 +74,7 @@ let customerInactivityEventsBound = false;
 let lastCustomerRenderedStep = null;
 let lastPrinterHealthSyncAt = 0;
 let lastPrinterHealthSyncSignature = "";
+let printerHealthSyncInFlight = false;
 let printerStatusRefreshInFlight = false;
 const pdfPreviewRenderCache = new Map();
 const PDF_PREVIEW_CACHE_LIMIT = 12;
@@ -1690,6 +1691,8 @@ const state = {
     email: "",
     password: ""
   },
+  adminLoginPasswordVisible: false,
+  adminLoginThemeDark: false,
   revenueFilter: (() => {
     const now = new Date();
     const fyStartYear = now.getMonth() >= 3 ? now.getFullYear() : now.getFullYear() - 1;
@@ -2307,6 +2310,7 @@ function expireAdminSession(message = "Session expired. Please sign in again.") 
   state.adminLoginError = message;
   clearAdminSession();
   stopAdminPolling();
+  stopAdminSocket();
   render();
 }
 
@@ -4882,6 +4886,72 @@ function startAdminPolling() {
   }, 5000);
 }
 
+// ── Live push (WebSocket) ────────────────────────────────────────────────
+// Mirrors super-admin.js: backend pushes a "data-changed" ping whenever
+// anything is saved, so admin data updates the moment something actually
+// changes instead of waiting for the next 5s poll tick. The 5s poll above
+// stays as a fallback in case the socket drops without a clean close event.
+let adminSocket = null;
+let adminSocketReconnectTimer = null;
+let adminSocketReconnectDelay = 2000;
+
+function adminSocketUrl() {
+  const url = new URL(`${BACKEND_URL}/ws`);
+  url.protocol = url.protocol === "https:" ? "wss:" : "ws:";
+  return url.toString();
+}
+
+function stopAdminSocket() {
+  if (adminSocketReconnectTimer) {
+    clearTimeout(adminSocketReconnectTimer);
+    adminSocketReconnectTimer = null;
+  }
+  if (adminSocket) {
+    adminSocket.onclose = null;
+    adminSocket.close();
+    adminSocket = null;
+  }
+}
+
+function startAdminSocket() {
+  if (!state.adminAuthed || adminSocket) return;
+
+  try {
+    adminSocket = new WebSocket(adminSocketUrl());
+  } catch {
+    return; // Polling fallback keeps the dashboard live either way.
+  }
+
+  adminSocket.onopen = () => {
+    adminSocketReconnectDelay = 2000;
+  };
+
+  adminSocket.onmessage = (event) => {
+    let message;
+    try {
+      message = JSON.parse(event.data);
+    } catch {
+      return;
+    }
+    if (message?.type === "data-changed" && state.mode === "admin" && state.adminAuthed && !document.hidden) {
+      loadAdminData({ rerender: !isEditingFormField() });
+    }
+  };
+
+  adminSocket.onclose = () => {
+    adminSocket = null;
+    if (!state.adminAuthed) return;
+    adminSocketReconnectTimer = setTimeout(() => {
+      adminSocketReconnectDelay = Math.min(adminSocketReconnectDelay * 1.5, 30000);
+      startAdminSocket();
+    }, adminSocketReconnectDelay);
+  };
+
+  adminSocket.onerror = () => {
+    adminSocket?.close();
+  };
+}
+
 function isEditingFormField() {
   const element = document.activeElement;
   if (!element) return false;
@@ -5409,6 +5479,30 @@ async function startRazorpayPayment() {
   }
 }
 
+// Stages the thank-you screen through payment_done -> printing -> thankyou
+// (renderThankYouPaymentDone / renderThankYouPrinting / renderThankYouFinal)
+// instead of jumping straight to the final screen, so the customer sees the
+// payment-success checkmark and the printing animation before "Thank You".
+function beginThankYouPhaseSequence() {
+  state.thankYouPhase = "payment_done";
+  state.thankYouSecondsLeft = null;
+  state.step = 4;
+  render();
+
+  setTimeout(() => {
+    if (state.step !== 4) return;
+    state.thankYouPhase = "printing";
+    render();
+
+    setTimeout(() => {
+      if (state.step !== 4) return;
+      state.thankYouPhase = "thankyou";
+      state.thankYouSecondsLeft = THANK_YOU_HOME_REDIRECT_SECONDS;
+      render();
+    }, 4000);
+  }, 2000);
+}
+
 async function startFreePrintJob() {
   if (state.paymentBusy) return;
 
@@ -5446,10 +5540,7 @@ async function startLocalPrintJob() {
     state.printError = "";
     state.printStatusMessage = `Printed ${documentCount} document${documentCount === 1 ? "" : "s"}.`;
     addJob("Completed");
-    state.thankYouPhase = "thankyou";
-    state.thankYouSecondsLeft = THANK_YOU_HOME_REDIRECT_SECONDS;
-    state.step = 4;
-    render();
+    beginThankYouPhaseSequence();
     return;
   }
 
@@ -5597,10 +5688,7 @@ async function startLocalPrintJob() {
     state.printProgress = 5;
     state.printStatusMessage = "Printing completed successfully.";
     addJob("Completed");
-    state.thankYouPhase = "thankyou";
-    state.thankYouSecondsLeft = THANK_YOU_HOME_REDIRECT_SECONDS;
-    state.step = 4;
-    render();
+    beginThankYouPhaseSequence();
   } catch (error) {
     if (state.activeJobId !== baseJobId) return;
 
@@ -5682,11 +5770,13 @@ function openAdmin(page = "dashboard") {
   if (state.adminAuthed) {
     loadAdminData();
     startAdminPolling();
+    startAdminSocket();
   }
 }
 
 function openCustomer(reset = false) {
   stopAdminPolling();
+  stopAdminSocket();
   startPrinterStatusPolling();
 
   if (reset) {
@@ -5953,13 +6043,48 @@ function render() {
   }
 
   const app = qs("#app");
-  app.innerHTML = state.mode === "customer" ? renderCustomerShell() : renderAdminShell();
+  if (state.mode === "admin") {
+    document.body.classList.add("admin-mode", "admin-page");
+  } else {
+    document.body.classList.remove("admin-mode", "admin-page");
+  }
+  const mainEl = document.querySelector(".admin-main, .main, .content");
+  const scrollTop = mainEl ? mainEl.scrollTop : 0;
+  const winScrollY = window.scrollY || window.pageYOffset || 0;
+
+  if (window.morphdom && app.firstElementChild && state.mode === "admin" && state.adminAuthed) {
+    try {
+      const tempDiv = document.createElement("div");
+      tempDiv.innerHTML = renderAdminShell();
+      window.morphdom(app.firstElementChild, tempDiv.firstElementChild, {
+        onBeforeElUpdated: function(fromEl, toEl) {
+          if (fromEl === document.activeElement && (fromEl.tagName === "INPUT" || fromEl.tagName === "TEXTAREA")) {
+            return false;
+          }
+          return true;
+        }
+      });
+    } catch {
+      app.innerHTML = renderAdminShell();
+    }
+  } else {
+    app.innerHTML = state.mode === "customer" ? renderCustomerShell() : renderAdminShell();
+  }
+
   applyCustomerTranslations(app);
   applyAdminTranslations(app);
   bindEvents();
   updateKioskClock();
   hydrateFormThumbnails(app);
   scheduleCustomerInactivityTimer();
+
+  const newMainEl = document.querySelector(".admin-main, .main, .content");
+  if (newMainEl && scrollTop > 0) {
+    newMainEl.scrollTop = scrollTop;
+  }
+  if (winScrollY > 0) {
+    window.scrollTo(window.scrollX, winScrollY);
+  }
 
   try {
     if (state.mode === "customer" && state.step !== undefined) {
@@ -6409,14 +6534,10 @@ function renderAdminTopbar() {
   return `
     <header class="topbar admin-topbar">
       <div class="brand">
-        <div class="brand-mark" style="background: #ffffff !important;"><img src="./assets/printhub-mark.png" alt="Print Kiosk" draggable="false" data-no-visual-search /></div>
-        <div>
-          <div class="brand-title">Print Kiosk Admin Console</div>
-          <div class="brand-subtitle">${escapeHtml(adminLabel)} | assigned project management</div>
-        </div>
+        <div class="brand-logo-full-card"><img class="brand-logo-full" src="./assets/aarya-innovtech-logo-full.png" alt="Aarya Innovtech Pvt. Ltd." draggable="false" data-no-visual-search /></div>
       </div>
       <div class="topbar-actions">
-        
+
         ${state.adminAuthed ? `
           <button class="notification-button" data-admin-page="alerts" aria-label="Open alerts">
             ${uiIcon("bell", 22)}
@@ -7928,11 +8049,28 @@ function syncPrinterHealthToBackend(health) {
     queueLength: health.queueLength,
     detectedErrorState: health.detectedErrorState
   });
+  // In-flight guard is separate from the "recently synced" throttle below —
+  // a request already in flight is skipped regardless of signature/age, but
+  // only a request that actually SUCCEEDED counts as "synced". Marking a
+  // failed attempt (e.g. no internet) as synced used to suppress retries for
+  // up to 30s at a time, which is exactly the gap that let a kiosk that just
+  // went offline keep reporting stale "online" status for longer than the
+  // backend's own timeout expected. On failure, nothing is recorded, so the
+  // very next printer-health tick (~2s later) retries immediately.
+  if (printerHealthSyncInFlight) return;
+
   const now = Date.now();
   if (signature === lastPrinterHealthSyncSignature && now - lastPrinterHealthSyncAt < 30000) return;
 
-  lastPrinterHealthSyncSignature = signature;
-  lastPrinterHealthSyncAt = now;
+  printerHealthSyncInFlight = true;
+
+  // Without an explicit timeout, a request made right as the network drops
+  // can sit unresolved for tens of seconds (default OS/TCP timeout) before
+  // fetch() ever rejects — during which printerHealthSyncInFlight blocks
+  // every retry. An 8s AbortController cap keeps failed attempts cheap so
+  // the ~2s IPC cadence can actually retry that often while offline.
+  const abortController = new AbortController();
+  const abortTimer = setTimeout(() => abortController.abort(), 8000);
 
   fetch(`${BACKEND_URL}/api/kiosk/health`, {
     method: "POST",
@@ -7940,9 +8078,18 @@ function syncPrinterHealthToBackend(health) {
     body: JSON.stringify({
       kioskId: KIOSK_ID,
       printerHealth: health
-    })
+    }),
+    signal: abortController.signal
+  }).then((response) => {
+    if (response.ok) {
+      lastPrinterHealthSyncSignature = signature;
+      lastPrinterHealthSyncAt = Date.now();
+    }
   }).catch(() => {
-    // The next printer health update will retry.
+    // The next printer health update will retry immediately.
+  }).finally(() => {
+    clearTimeout(abortTimer);
+    printerHealthSyncInFlight = false;
   });
 }
 
@@ -8418,16 +8565,11 @@ function renderAdmin() {
 function renderAdminNavFooter() {
   return `
     <div class="admin-nav-footer">
-      <a class="admin-nav-support" href="tel:+919359604384">
-        <span class="admin-nav-support-icon">${uiIcon("headset", 18)}</span>
-        <span class="admin-nav-support-copy">
-          <small>Need help? Call us</small>
-          <strong>+91 9359604384</strong>
-        </span>
-      </a>
-      <div class="admin-nav-brand">
-        <img src="./assets/aarya-innovtech-logo-transparent.png" alt="Aarya Innovtech" />
-        <span>Powered by <strong>Aarya Innovtech</strong></span>
+      <div class="sidebar-user-card">
+        <button data-action="logout" class="sidebar-logout-btn" title="Logout" aria-label="Logout">
+          ${uiIcon("logout", 16)}
+          <span>Logout</span>
+        </button>
       </div>
     </div>
   `;
@@ -8435,26 +8577,45 @@ function renderAdminNavFooter() {
 
 function renderLogin() {
   return `
-    <div class="login-view">
+    <div class="login-view ${state.adminLoginThemeDark ? "login-theme-dark" : ""}">
+      <button type="button" class="login-theme-toggle" data-action="toggle-admin-login-theme" aria-label="${state.adminLoginThemeDark ? "Switch to light theme" : "Switch to dark theme"}">
+        ${uiIcon(state.adminLoginThemeDark ? "sun" : "moon", 20)}
+      </button>
       <div class="login-panel">
-        <h1>Print Kiosk Admin Login</h1>
-        <p class="helper-text">Use your admin credentials. The system opens the right dashboard automatically.</p>
+        <img class="login-logo" src="./assets/aarya-innovtech-logo-full.png" alt="Aarya Innovtech Pvt. Ltd." />
+        <h1 class="login-title">Welcome</h1>
+        <p class="login-subtitle">Please enter your credentials to access your portal</p>
         ${state.adminLoginError ? `<div class="empty-note">${escapeHtml(state.adminLoginError)}</div>` : ""}
-        <label>Email or mobile
-          <input name="username" value="${escapeHtml(state.adminLoginDraft.email)}" autocomplete="username" data-admin-login-field="email" />
+        <label class="login-field">
+          <span class="login-field-label">Mobile Number</span>
+          <span class="login-input-wrap">
+            ${uiIcon("phone", 18)}
+            <input name="username" value="${escapeHtml(state.adminLoginDraft.email)}" autocomplete="username" data-admin-login-field="email" />
+          </span>
         </label>
-        <label>Password
-          <input type="password" name="password" value="${escapeHtml(state.adminLoginDraft.password)}" autocomplete="current-password" data-admin-login-field="password" />
+        <label class="login-field">
+          <span class="login-field-label">Password</span>
+          <span class="login-input-wrap">
+            ${uiIcon("lock", 18)}
+            <input type="${state.adminLoginPasswordVisible ? "text" : "password"}" name="password" value="${escapeHtml(state.adminLoginDraft.password)}" autocomplete="current-password" data-admin-login-field="password" />
+            <button type="button" class="login-password-toggle" data-action="toggle-admin-login-password" aria-label="${state.adminLoginPasswordVisible ? "Hide password" : "Show password"}">
+              ${uiIcon(state.adminLoginPasswordVisible ? "eye-off" : "eye", 18)}
+            </button>
+          </span>
         </label>
-        <button class="primary-button" data-action="admin-login">Sign in</button>
-        <div class="login-footer-links" style="display: flex; gap: 12px; justify-content: center; margin-top: 24px; font-size: 0.85em; flex-wrap: wrap;">
-          <a href="terms.html" style="color: var(--muted); text-decoration: none;">Terms & Conditions</a>
-          <span style="color: var(--muted);">|</span>
-          <a href="refund.html" style="color: var(--muted); text-decoration: none;">Refund Policy</a>
-          <span style="color: var(--muted);">|</span>
-          <a href="privacy.html" style="color: var(--muted); text-decoration: none;">Privacy Policy</a>
-          <span style="color: var(--muted);">|</span>
-          <a href="contact.html" style="color: var(--muted); text-decoration: none;">Contact Us</a>
+        <a class="login-forgot" href="tel:+919359604384">${uiIcon("lock", 14)} Forgot Password?</a>
+        <button class="login-submit" data-action="admin-login">
+          <span>Login to Continue</span>
+          ${uiIcon("arrow-right", 18)}
+        </button>
+        <div class="login-footer-links">
+          <a href="terms.html">Terms & Conditions</a>
+          <span>|</span>
+          <a href="privacy.html">Privacy Policy</a>
+          <span>|</span>
+          <a href="refund.html">Refund Policy</a>
+          <span>|</span>
+          <a href="contact.html">Contact Us</a>
         </div>
       </div>
     </div>
@@ -9427,8 +9588,8 @@ function dashboardMetrics() {
   const activeKiosks = dashboard.activeKiosks ?? kiosks.filter((kiosk) => kiosk.status === "online").length;
 
   return [
-    ["Kiosks", String(kiosks.length), `${activeKiosks} online`, "kiosks", "purple"],
     ["Projects", String(projects.length), `${kiosks.length} kiosk(s) assigned`, "hierarchy", "blue"],
+    ["Kiosks", String(kiosks.length), `${activeKiosks} online`, "kiosks", "purple"],
     ["Payments", String(transactions.length), money(revenue.gross ?? 0), "payments", "green"],
     ["Refunds", String(refunds.length), `${pendingRefunds.length} pending`, "refunds", pendingRefunds.length ? "red" : "green"],
     ["Net Revenue", money(revenue.net ?? 0), "After refunds", "pricing", "green"]
@@ -9439,20 +9600,25 @@ function renderDashboard() {
   const failedJobs = liveJobs().map(jobRow).filter((job) => job.print.includes("Failed"));
   const queuedJobs = liveJobs().map(jobRow).filter((job) => /queue|printing|pending/i.test(job.print));
   const alerts = adminOperationalAlerts();
+  const canManage = kioskAdminCanManageSetup();
 
   return `
+    ${renderAdminHeader("Dashboard", "Hello Admin, here is your system overview.")}
     ${adminNotice()}
     <div class="metrics-grid dashboard-metrics">
-      ${dashboardMetrics().map(([label, value, detail, icon, tone]) => `
-        <div class="metric-card has-icon tone-${tone}">
-          <span class="metric-icon">${uiIcon(icon, 25)}</span>
-          <div class="metric-copy">
-            <span>${label}</span>
-            <strong>${value}</strong>
-            <small>${detail}</small>
+      ${dashboardMetrics().map(([label, value, detail, icon, tone]) => {
+        const toneMap = { purple: '#8b5cf6', blue: '#3b82f6', green: '#10b981', red: '#ef4444' };
+        const bg = toneMap[tone] || '#3b82f6';
+        const isNegative = tone === 'red';
+        return `
+          <div class="metric-card">
+            <span>${escapeHtml(label)}</span>
+            <strong>${escapeHtml(value)}</strong>
+            <span class="trend-pill ${isNegative ? 'negative' : ''}">${escapeHtml(detail)}</span>
+            <div class="metric-icon-box" style="background: ${bg};">${uiIcon(icon, 24)}</div>
           </div>
-        </div>
-      `).join("")}
+        `;
+      }).join("")}
     </div>
     <div class="module-grid dashboard-modules">
       ${renderRevenuePanel(true)}
@@ -9469,6 +9635,37 @@ function renderDashboard() {
         <div class="info-list dashboard-alert-list">
           ${(alerts.length ? alerts.slice(0, 5) : [{ title: "No live printer alerts", detail: "Paper, toner, door, and queue checks are clear.", tone: "good" }]).map((alert, index) => `<div class="info-row ${alerts.length ? "is-alert" : "is-clear"}"><span class="alert-row-icon">${uiIcon(alerts.length ? (index ? "activity" : "alert") : "system", 19)}</span><span>${escapeHtml(alert.title)}${alert.detail ? `<small>${escapeHtml(alert.detail)}</small>` : ""}</span><strong>${alerts.length ? "Open" : "OK"}</strong></div>`).join("")}
         </div>
+      </div>
+    </div>
+    <div class="quick-actions-section">
+      <h2 class="quick-actions-title">Quick Actions</h2>
+      <div class="quick-actions-grid">
+        ${canManage ? `
+        <button type="button" class="quick-action-card" data-action="create-project">
+          <span class="quick-action-icon-box tone-blue">${uiIcon("hierarchy", 22)}</span>
+          <span class="quick-action-info">
+            <h3>New Project</h3>
+            <p>Create a project and assign kiosks</p>
+          </span>
+          <span class="quick-action-arrow">${uiIcon("arrow-right", 18)}</span>
+        </button>
+        <button type="button" class="quick-action-card" data-action="create-kiosk">
+          <span class="quick-action-icon-box tone-orange">${uiIcon("kiosks", 22)}</span>
+          <span class="quick-action-info">
+            <h3>Add Kiosk</h3>
+            <p>Register a new kiosk to a project</p>
+          </span>
+          <span class="quick-action-arrow">${uiIcon("arrow-right", 18)}</span>
+        </button>
+        ` : ""}
+        <button type="button" class="quick-action-card" data-admin-page="analytics">
+          <span class="quick-action-icon-box tone-green">${uiIcon("activity", 22)}</span>
+          <span class="quick-action-info">
+            <h3>View Analytics</h3>
+            <p>See revenue and usage trends</p>
+          </span>
+          <span class="quick-action-arrow">${uiIcon("arrow-right", 18)}</span>
+        </button>
       </div>
     </div>
   `;
@@ -9943,46 +10140,47 @@ function renderAdminAnalyticsFilterCard(hasData) {
   const kiosks = state.adminData.kiosks || [];
 
   return `
-    <div class="module-card analytics-filter-card" data-print-hide>
-      <div class="settings-grid analytics-filter-grid">
-        <label class="setting-field">Kiosk ID
-          <select onchange="window.updateAdminAnalyticsFilterDraft('kioskId', this.value)">
+    <div class="module-card analytics-filter-card" data-print-hide style="margin-bottom: 24px;">
+      <div class="analytics-filter-type-row" style="margin-bottom: 16px; border-bottom: 1px solid var(--line); padding-bottom: 16px;">
+        <span style="display: block; font-size: 0.8rem; font-weight: 600; color: var(--muted); margin-bottom: 8px;">Filter Type</span>
+        <div style="display: flex; gap: 16px;">
+          <label class="analytics-radio" style="display: flex; align-items: center; gap: 6px; font-size: 0.875rem;">
+            <input type="radio" name="admin-analytics-filter-type" value="financialYear" ${draft.filterType === "financialYear" ? "checked" : ""} onchange="window.updateAdminAnalyticsFilterDraft('filterType', this.value); window.applyAdminAnalyticsFilter();" />
+            <span>Financial Year</span>
+          </label>
+          <label class="analytics-radio" style="display: flex; align-items: center; gap: 6px; font-size: 0.875rem;">
+            <input type="radio" name="admin-analytics-filter-type" value="dateRange" ${draft.filterType === "dateRange" ? "checked" : ""} onchange="window.updateAdminAnalyticsFilterDraft('filterType', this.value); window.applyAdminAnalyticsFilter();" />
+            <span>Date Range</span>
+          </label>
+        </div>
+      </div>
+
+      <div class="settings-grid analytics-filter-grid" style="display: grid; grid-template-columns: repeat(2, 1fr); gap: 16px;">
+        <label class="setting-field" style="display: flex; flex-direction: column; gap: 6px; font-size: 0.875rem; font-weight: 600; color: var(--muted);">Machine ID
+          <select style="width: 100%; padding: 10px; border-radius: 8px;" onchange="window.updateAdminAnalyticsFilterDraft('kioskId', this.value); window.applyAdminAnalyticsFilter();">
             <option value="" ${!draft.kioskId ? "selected" : ""}>-- All Kiosks --</option>
             ${kiosks.map((kiosk) => `<option value="${escapeHtml(kiosk.kioskId)}" ${draft.kioskId === kiosk.kioskId ? "selected" : ""}>${escapeHtml(kiosk.kioskId)}${kiosk.branch ? ` | ${escapeHtml(kiosk.branch)}` : ""}</option>`).join("")}
           </select>
         </label>
-      </div>
-
-      <div class="analytics-filter-type-row" style="margin-top: 16px;">
-        <label class="analytics-radio">
-          <input type="radio" name="admin-analytics-filter-type" value="financialYear" ${draft.filterType === "financialYear" ? "checked" : ""} onchange="window.updateAdminAnalyticsFilterDraft('filterType', this.value)" />
-          <span>Financial Year</span>
-        </label>
-        <label class="analytics-radio">
-          <input type="radio" name="admin-analytics-filter-type" value="dateRange" ${draft.filterType === "dateRange" ? "checked" : ""} onchange="window.updateAdminAnalyticsFilterDraft('filterType', this.value)" />
-          <span>Date Range</span>
-        </label>
-      </div>
-
-      <div class="revenue-filter-apply-row">
+        
         ${draft.filterType === "financialYear" ? `
-          <label class="setting-field">Financial Year
-            <select onchange="window.updateAdminAnalyticsFilterDraft('financialYear', this.value)">
+          <label class="setting-field" style="display: flex; flex-direction: column; gap: 6px; font-size: 0.875rem; font-weight: 600; color: var(--muted);">Financial Year
+            <select style="width: 100%; padding: 10px; border-radius: 8px;" onchange="window.updateAdminAnalyticsFilterDraft('financialYear', this.value); window.applyAdminAnalyticsFilter();">
               <option value="current" ${draft.financialYear === "current" ? "selected" : ""}>Current FY (Apr-Mar)</option>
               <option value="last" ${draft.financialYear === "last" ? "selected" : ""}>Last FY</option>
               <option value="previous" ${draft.financialYear === "previous" ? "selected" : ""}>Previous FY</option>
             </select>
           </label>
         ` : `
-          <label class="setting-field">Start Date
-            <input type="date" value="${escapeHtml(draft.start)}" onchange="window.updateAdminAnalyticsFilterDraft('start', this.value)" />
-          </label>
-          <label class="setting-field">End Date
-            <input type="date" value="${escapeHtml(draft.end)}" onchange="window.updateAdminAnalyticsFilterDraft('end', this.value)" />
-          </label>
+          <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 16px;">
+            <label class="setting-field" style="display: flex; flex-direction: column; gap: 6px; font-size: 0.875rem; font-weight: 600; color: var(--muted);">Start Date
+              <input type="date" style="width: 100%; padding: 10px; border-radius: 8px;" value="${escapeHtml(draft.start)}" onchange="window.updateAdminAnalyticsFilterDraft('start', this.value); window.applyAdminAnalyticsFilter();" />
+            </label>
+            <label class="setting-field" style="display: flex; flex-direction: column; gap: 6px; font-size: 0.875rem; font-weight: 600; color: var(--muted);">End Date
+              <input type="date" style="width: 100%; padding: 10px; border-radius: 8px;" value="${escapeHtml(draft.end)}" onchange="window.updateAdminAnalyticsFilterDraft('end', this.value); window.applyAdminAnalyticsFilter();" />
+            </label>
+          </div>
         `}
-        <button class="primary-button revenue-apply-filter-btn" onclick="window.applyAdminAnalyticsFilter()">${uiIcon("filter", 16)} Apply Filter</button>
-        <button class="primary-button analytics-download-pdf-btn" ${hasData ? "" : "disabled"} onclick="window.downloadAdminAnalyticsPDF()">${uiIcon("download", 16)} Download PDF</button>
       </div>
     </div>
   `;
@@ -10003,37 +10201,17 @@ function renderAdminAnalytics() {
   const hasData = monthlyBuckets.some((bucket) => bucket.amount > 0);
 
   return `
-    ${renderAdminHeader("Graphical Analytics", "Revenue and form-selling trends by financial year or custom date range.")}
+    ${renderAdminHeader("Graphical Analytics", "", `
+      <button class="secondary-button" style="border-radius: 20px; padding: 8px 16px; display: inline-flex; align-items: center; gap: 8px; font-weight: 500;" ${hasData ? "" : "disabled"} onclick="window.print()">${uiIcon("printer", 16)} Print</button>
+      <button class="primary-button" style="border-radius: 20px; padding: 8px 16px; display: inline-flex; align-items: center; gap: 8px; font-weight: 500; background: #6366f1; border: none; color: white;" ${hasData ? "" : "disabled"} onclick="window.downloadAdminAnalyticsPDF()">${uiIcon("download", 16)} Download PDF</button>
+    `)}
     ${adminNotice()}
-
-    <div class="analytics-tabs" data-print-hide>
-      <button class="analytics-tab-button ${tab === "revenue" ? "active" : ""}" onclick="window.setAdminAnalyticsTab('revenue')">${uiIcon("payments", 16)} Revenue</button>
-      <button class="analytics-tab-button ${tab === "form" ? "active" : ""}" onclick="window.setAdminAnalyticsTab('form')">${uiIcon("printer", 16)} Form Selling</button>
-    </div>
 
     ${renderAdminAnalyticsFilterCard(hasData)}
 
-    <div class="analytics-report-area" id="admin-analytics-print-area">
-      <div class="module-card analytics-report-header-card">
-        <div class="analytics-report-header">
-          ${clientLogoUrl ? `<img class="analytics-report-logo" src="${escapeHtml(clientLogoUrl)}" alt="${escapeHtml(clientName)}" />` : `<div class="analytics-report-logo analytics-report-logo-placeholder"></div>`}
-          <div class="analytics-report-heading">
-            <h1>${tab === "form" ? "Form Selling Report" : "Revenue Report"}</h1>
-            <p class="analytics-report-client">Client Name: ${escapeHtml(clientName)}</p>
-            <p class="analytics-report-meta">Kiosk ID: ${escapeHtml(filter.kioskId || "All Kiosks")} &nbsp;·&nbsp; ${escapeHtml(rangeLabel)}</p>
-          </div>
-          <img class="analytics-report-logo analytics-report-logo-wide" src="./assets/aarya-innovtech-logo-full.png" alt="Aarya Innovtech" />
-        </div>
-        <div class="analytics-summary-row">
-          <div class="analytics-summary-tile is-total">
-            <span>Total ${escapeHtml(tabLabel)} (${escapeHtml(rangeLabel)})</span>
-            <strong>${escapeHtml(money(totalAmount))}</strong>
-          </div>
-        </div>
-      </div>
-
-      <div class="module-card analytics-chart-card" data-chart="monthly">
-        <div class="section-heading"><h2>📊 Monthly ${escapeHtml(tabLabel)}</h2></div>
+    <div class="analytics-report-area module-card" id="admin-analytics-print-area" style="padding: 32px; margin-top: 24px;">
+      <div class="analytics-chart-card" data-chart="monthly">
+        <div class="section-heading" style="text-align: center; margin-bottom: 40px;"><h2>💰 Yearly Transaction Revenue (₹)</h2></div>
         ${monthlyBuckets.length ? renderAdminAnalyticsBarChart(monthlyBuckets) : `<div class="empty-note">No data for this range yet.</div>`}
       </div>
     </div>
@@ -10047,6 +10225,37 @@ function adminAnalyticsBarLabel(bucket) {
   return bucket.label.startsWith("FY ") ? bucket.label : `${bucket.label} ${String(bucket.year).slice(-2)}`;
 }
 
+// Picks a readable axis max + step from the actual data instead of a fixed
+// 0-10 scale — a flat floor of 10 squashed every bar to a sliver whenever
+// real revenue was much smaller than that, and rounding ticks to quarters
+// of 10 produced odd values like 3 and 8 instead of round numbers. Snaps
+// the tick step to 1/2/5/10 x a power of ten (the standard "nice numbers"
+// chart-axis algorithm) so the gap between ticks matches the data's own
+// scale, and the highest bar/point always reaches close to the top.
+function adminAnalyticsNiceAxis(maxValue, tickCount = 5) {
+  if (!(maxValue > 0)) return { max: tickCount, step: 1 };
+
+  const roughStep = maxValue / (tickCount - 1);
+  const magnitude = Math.pow(10, Math.floor(Math.log10(roughStep)));
+  const residual = roughStep / magnitude;
+  const niceResidual = residual > 5 ? 10 : residual > 2 ? 5 : residual > 1 ? 2 : 1;
+  const step = Math.max(1, niceResidual * magnitude);
+  const max = Math.ceil(maxValue / step) * step;
+
+  return { max, step };
+}
+
+function adminAnalyticsYTicks(maxValue, padding, chartHeight) {
+  const { max, step } = adminAnalyticsNiceAxis(maxValue);
+  const tickCount = Math.round(max / step) + 1;
+  const ticks = [];
+  for (let i = 0; i < tickCount; i += 1) {
+    const value = i * step;
+    ticks.push({ value: Math.round(value), y: padding.top + chartHeight - (value / max) * chartHeight });
+  }
+  return { ticks, max };
+}
+
 function renderAdminAnalyticsBarChart(buckets, { forPrint = false } = {}) {
   const printColor = "#1e4fb0";
   const minGroupWidth = 40;
@@ -10056,15 +10265,10 @@ function renderAdminAnalyticsBarChart(buckets, { forPrint = false } = {}) {
   const width = chartWidth + padding.left + padding.right;
   const height = 320;
   const chartHeight = height - padding.top - padding.bottom;
-  const maxValue = Math.max(1, ...buckets.map((bucket) => bucket.amount));
-  const yMax = Math.max(10, Math.ceil(maxValue / 10) * 10);
+  const maxValue = Math.max(0, ...buckets.map((bucket) => bucket.amount));
+  const { ticks: yTicks, max: yMax } = adminAnalyticsYTicks(maxValue, padding, chartHeight);
   const groupWidth = chartWidth / buckets.length;
   const barWidth = Math.max(6, groupWidth * 0.5);
-
-  const yTicks = [0, 0.25, 0.5, 0.75, 1].map((ratio) => ({
-    value: Math.round(yMax * ratio),
-    y: padding.top + chartHeight - ratio * chartHeight
-  }));
 
   const bars = buckets.map((bucket, index) => {
     const groupX = padding.left + index * groupWidth;
@@ -10095,14 +10299,17 @@ function renderAdminAnalyticsBarChart(buckets, { forPrint = false } = {}) {
       <svg viewBox="0 0 ${width} ${height}" role="img" aria-label="Bar chart" style="min-width: 100%; width: ${width}px; height: ${height}px;">
         <g>
           ${yTicks.map((tick) => `
-            <line x1="${padding.left}" x2="${width - padding.right}" y1="${tick.y.toFixed(1)}" y2="${tick.y.toFixed(1)}" stroke="#e2e8f0" stroke-width="1" />
-            <text x="${padding.left - 10}" y="${(tick.y + 4).toFixed(1)}" text-anchor="end" fill="#64748b" font-size="11px" font-weight="500">${escapeHtml(money(tick.value).replace("Rs. ", ""))}</text>
+            <line x1="${padding.left}" x2="${width - padding.right}" y1="${tick.y.toFixed(1)}" y2="${tick.y.toFixed(1)}" stroke="#f1f5f9" stroke-width="2" stroke-dasharray="6,6" />
+            <text x="${padding.left - 10}" y="${(tick.y + 4).toFixed(1)}" text-anchor="end" fill="#64748b" font-size="12px" font-family="Inter, sans-serif">${escapeHtml(money(tick.value).replace("Rs. ", ""))}</text>
           `).join("")}
         </g>
         <g>
-          ${bars.map((bar) => `
+          ${bars.map((bar, index) => {
+            const colors = ["#3b82f6", "#10b981", "#8b5cf6", "#f59e0b"];
+            const barColor = colors[index % colors.length];
+            return `
             <g class="analytics-bar-group">
-              <rect class="analytics-bar" x="${bar.barX.toFixed(1)}" y="${bar.barY.toFixed(1)}" width="${barWidth.toFixed(1)}" height="${Math.max(0, bar.barHeight).toFixed(1)}" rx="4" fill="${forPrint ? printColor : "var(--amount-color)"}" />
+              <rect class="analytics-bar" x="${bar.barX.toFixed(1)}" y="${bar.barY.toFixed(1)}" width="${barWidth.toFixed(1)}" height="${Math.max(0, bar.barHeight).toFixed(1)}" rx="4" fill="${forPrint ? printColor : barColor}" />
               <rect x="${(bar.centerX - groupWidth / 2).toFixed(1)}" y="${padding.top}" width="${groupWidth.toFixed(1)}" height="${chartHeight}" fill="transparent" />
               <text x="${bar.centerX.toFixed(1)}" y="${height - 16}" text-anchor="middle" fill="#64748b" font-size="11px" font-weight="500">${escapeHtml(bar.label)}</text>
               ${forPrint ? "" : `
@@ -10112,7 +10319,8 @@ function renderAdminAnalyticsBarChart(buckets, { forPrint = false } = {}) {
                 </g>
               `}
             </g>
-          `).join("")}
+          `;
+          }).join("")}
         </g>
       </svg>
     </div>
@@ -10128,14 +10336,9 @@ function renderAdminAnalyticsLineChart(buckets, { forPrint = false } = {}) {
   const width = chartWidth + padding.left + padding.right;
   const height = 320;
   const chartHeight = height - padding.top - padding.bottom;
-  const maxValue = Math.max(1, ...buckets.map((bucket) => bucket.amount));
-  const yMax = Math.max(10, Math.ceil(maxValue / 10) * 10);
+  const maxValue = Math.max(0, ...buckets.map((bucket) => bucket.amount));
+  const { ticks: yTicks, max: yMax } = adminAnalyticsYTicks(maxValue, padding, chartHeight);
   const groupWidth = buckets.length > 1 ? chartWidth / (buckets.length - 1) : chartWidth;
-
-  const yTicks = [0, 0.25, 0.5, 0.75, 1].map((ratio) => ({
-    value: Math.round(yMax * ratio),
-    y: padding.top + chartHeight - ratio * chartHeight
-  }));
 
   const points = buckets.map((bucket, index) => {
     const x = buckets.length > 1 ? padding.left + index * groupWidth : padding.left + chartWidth / 2;
@@ -12114,6 +12317,7 @@ async function adminLogin() {
     render();
     loadAdminData();
     startAdminPolling();
+    startAdminSocket();
   } catch (error) {
     state.adminAuthed = false;
     state.adminToken = "";
@@ -12485,6 +12689,7 @@ async function handleClick(event) {
       state.adminAccount = null;
       clearAdminSession();
       stopAdminPolling();
+      stopAdminSocket();
       openAdmin();
       break;
     case "reset-session":
@@ -12636,6 +12841,14 @@ async function handleClick(event) {
       break;
     case "admin-login":
       await adminLogin();
+      break;
+    case "toggle-admin-login-password":
+      state.adminLoginPasswordVisible = !state.adminLoginPasswordVisible;
+      render();
+      break;
+    case "toggle-admin-login-theme":
+      state.adminLoginThemeDark = !state.adminLoginThemeDark;
+      render();
       break;
     case "save-pricing":
       savePricingSettings();
@@ -13231,6 +13444,7 @@ if (!isMobilePaymentEntry && state.mode === "customer") {
 if (!isMobilePaymentEntry && state.adminAuthed) {
   loadAdminData();
   startAdminPolling();
+  startAdminSocket();
 }
 
 setInterval(updateKioskClock, 1000);

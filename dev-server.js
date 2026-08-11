@@ -6,7 +6,7 @@ const path = require("node:path");
 const { URL } = require("node:url");
 
 const ROOT_DIR = __dirname;
-const HOST = process.env.HOST || "127.0.0.1";
+const HOST = process.env.HOST || "0.0.0.0";
 const DEFAULT_PORT = Number(process.env.PORT || 5173);
 const BACKEND_URL = (
   process.env.FRONTEND_BACKEND_URL ||

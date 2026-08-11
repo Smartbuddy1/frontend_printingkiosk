@@ -8,6 +8,12 @@
 
 /* ================= Design Tokens ================= */
 :root {
+  --font-admin: Cambria, "Nirmala UI", "Mangal", Georgia, "Times New Roman", serif;
+  --font-sans: var(--font-admin) !important;
+  --font-serif: var(--font-admin) !important;
+  --font-primary: var(--font-admin) !important;
+  --font-main: var(--font-admin) !important;
+
   --erp-navy-1: #061b45;
   --erp-navy-2: #0b2a63;
   --erp-accent-1: #1e4fb0;
@@ -27,12 +33,42 @@
   --erp-shadow-glow: 0 10px 22px rgba(30, 79, 176, 0.28);
 }
 
-/* ================= Typography (Cambria + Devanagari carve-out) ================= */
+/* ================= Typography (Cambria for whole Admin side) ================= */
+body.admin-page,
+body.admin-page *,
+body.admin-mode,
+body.admin-mode *,
+.admin-mode,
+.admin-mode *,
 .admin-shell,
-.admin-shell * {
+.admin-shell *,
+.super-admin-layout,
+.super-admin-layout *,
+.super-admin-root,
+.super-admin-root *,
+.admin-screen,
+.admin-screen *,
+.admin-main,
+.admin-main *,
+.admin-login-wrapper,
+.admin-login-wrapper *,
+.super-admin-login-card,
+.super-admin-login-card *,
+.admin-modal,
+.admin-modal * {
   font-family: Cambria, "Nirmala UI", "Mangal", Georgia, "Times New Roman", serif !important;
 }
 
+body.admin-page.hindi,
+body.admin-page.marathi,
+body.admin-page.devanagari,
+body.admin-page[lang="hi"],
+body.admin-page[lang="mr"],
+body.admin-page.hindi *,
+body.admin-page.marathi *,
+body.admin-page.devanagari *,
+body.admin-page[lang="hi"] *,
+body.admin-page[lang="mr"] *,
 .admin-shell.hindi,
 .admin-shell.marathi,
 .admin-shell.devanagari,
@@ -43,53 +79,341 @@
 .admin-shell.devanagari *,
 .admin-shell[lang="hi"] *,
 .admin-shell[lang="mr"] * {
-  font-family: var(--font-devanagari) !important;
+  font-family: var(--font-devanagari, "Noto Sans Devanagari", "Mangal", sans-serif) !important;
+}
+
+/* Lock admin page body & html viewport to exact 100vh with zero window scrollbar */
+html.admin-mode,
+body.admin-mode,
+body.admin-page,
+body.admin-page #app,
+body.admin-mode #app {
+  margin: 0 !important;
+  padding: 0 !important;
+  height: 100vh !important;
+  height: 100dvh !important;
+  max-height: 100vh !important;
+  max-height: 100dvh !important;
+  overflow: hidden !important;
+}
+
+.app-shell.admin-shell {
+  height: 100vh !important;
+  height: 100dvh !important;
+  max-height: 100vh !important;
+  max-height: 100dvh !important;
+  overflow: hidden !important;
+  display: flex !important;
+  flex-direction: column !important;
+}
+
+.topbar.admin-topbar {
+  flex: 0 0 70px !important;
+  height: 70px !important;
+  max-height: 70px !important;
+}
+
+.main.admin-screen {
+  flex: 1 1 0px !important;
+  min-height: 0 !important;
+  height: calc(100vh - 70px) !important;
+  max-height: calc(100vh - 70px) !important;
+  overflow: hidden !important;
+  display: flex !important;
 }
 
 .admin-shell,
 .admin-screen,
 .admin-main {
-  background: var(--erp-bg) !important;
+  background: #f8fafc !important;
 }
 
-/* ================= Topbar ================= */
-.admin-topbar {
-  background: linear-gradient(105deg, var(--erp-navy-1), var(--erp-accent-1)) !important;
-  border-bottom: 1px solid rgba(255, 255, 255, 0.12) !important;
-  box-shadow: 0 4px 14px rgba(6, 27, 69, 0.18) !important;
+.admin-layout,
+.super-admin-layout {
+  display: grid !important;
+  grid-template-columns: 280px minmax(0, 1fr) !important;
+  grid-template-rows: 100% !important;
+  min-height: 0 !important;
+  height: 100% !important;
+  max-height: 100% !important;
+  width: 100% !important;
+  flex: 1 1 0px !important;
+  overflow: hidden !important;
 }
 
-.admin-topbar .brand-title {
+/* ================= Dashboard Header & Section Title Sizing ================= */
+.admin-header h1,
+.stage-header h1,
+.section-heading h2,
+.module-card-title h2 {
+  font-family: var(--font-admin) !important;
+  font-size: 34px !important;
+  font-weight: 700 !important;
+  color: #0f172a !important;
+  margin-top: 0 !important;
+  margin-bottom: 6px !important;
+  line-height: 1.2 !important;
+}
+
+.admin-header p,
+.stage-header p {
+  font-size: 16.5px !important;
+  color: #475569 !important;
+  font-weight: 500 !important;
+  margin-top: 0 !important;
+  margin-bottom: 28px !important;
+  line-height: 1.4 !important;
+}
+
+/* ================= Stat Cards & Grid Layout ================= */
+.metrics-grid,
+.dashboard-metrics {
+  display: grid !important;
+  grid-template-columns: repeat(4, 1fr) !important;
+  gap: 20px !important;
+  margin-bottom: 32px !important;
+}
+
+@media (max-width: 1380px) {
+  .metrics-grid,
+  .dashboard-metrics {
+    grid-template-columns: repeat(2, 1fr) !important;
+  }
+}
+
+@media (max-width: 640px) {
+  .metrics-grid,
+  .dashboard-metrics {
+    grid-template-columns: 1fr !important;
+  }
+}
+
+.metric-card,
+.stat-card,
+.revenue-metric-card {
+  background: #ffffff !important;
+  border: 1px solid #e2e8f0 !important;
+  border-radius: 20px !important;
+  padding: 24px 26px !important;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.03) !important;
+  position: relative !important;
+  display: flex !important;
+  flex-direction: column !important;
+  justify-content: space-between !important;
+  min-height: 148px !important;
+}
+
+.metric-card-title,
+.stat-card-title,
+.metric-title {
+  font-size: 16.5px !important;
+  font-weight: 600 !important;
+  color: #475569 !important;
+  margin-bottom: 6px !important;
+  letter-spacing: 0.01em !important;
+}
+
+.metric-card-value,
+.stat-card-value,
+.metric-value {
+  font-family: var(--font-admin) !important;
+  font-size: 38px !important;
+  font-weight: 800 !important;
+  color: #0f172a !important;
+  line-height: 1.05 !important;
+  letter-spacing: -0.02em !important;
+  margin-bottom: 8px !important;
+}
+
+.trend-pill {
+  font-size: 14px !important;
+  font-weight: 700 !important;
+  padding: 6px 14px !important;
+  border-radius: 999px !important;
+  width: max-content !important;
+}
+
+.metric-icon-box {
+  position: absolute !important;
+  top: 22px !important;
+  right: 22px !important;
+  width: 50px !important;
+  height: 50px !important;
+  border-radius: 14px !important;
+  display: flex !important;
+  align-items: center !important;
+  justify-content: center !important;
   color: #ffffff !important;
 }
 
-.admin-topbar .brand-subtitle {
-  color: rgba(255, 255, 255, 0.72) !important;
+/* ================= Quick Actions Sizing ================= */
+.quick-actions-section {
+  margin-top: 34px !important;
+  margin-bottom: 34px !important;
 }
 
-.admin-topbar .brand-mark {
-  border: 1px solid rgba(255, 255, 255, 0.5) !important;
-  box-shadow: none !important;
+.quick-actions-title {
+  font-family: var(--font-admin) !important;
+  font-size: 24px !important;
+  font-weight: 700 !important;
+  color: #0f172a !important;
+  margin: 34px 0 18px 0 !important;
+}
+
+.quick-actions-grid {
+  display: grid !important;
+  grid-template-columns: repeat(3, 1fr) !important;
+  gap: 20px !important;
+}
+
+@media (max-width: 1024px) {
+  .quick-actions-grid {
+    grid-template-columns: 1fr !important;
+  }
+}
+
+.quick-action-card {
+  background: #ffffff !important;
+  border: 1px solid #e2e8f0 !important;
+  border-radius: 20px !important;
+  padding: 22px 26px !important;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.03) !important;
+}
+
+.quick-action-info h3 {
+  font-family: var(--font-admin) !important;
+  font-size: 18.5px !important;
+  font-weight: 700 !important;
+  color: #0f172a !important;
+  margin-bottom: 4px !important;
+}
+
+.quick-action-info p {
+  font-size: 15px !important;
+  color: #475569 !important;
+  font-weight: 500 !important;
+  line-height: 1.4 !important;
+}
+
+/* Sidebar Header Logo & Vertical Line Fix (Identical to Reference Image)
+   Hardcoded to the same #0b1329 / 280px as .admin-nav below (not the
+   --sidebar-bg variable, which modern-theme.css sets to a different
+   #111827 and which .admin-nav no longer uses) so the topbar brand strip
+   lines up exactly with the sidebar underneath it instead of showing a
+   seam where the colors/widths disagree. */
+.admin-topbar {
+  display: flex !important;
+  align-items: center !important;
+  justify-content: space-between !important;
+  padding: 0 !important;
+  height: 70px !important;
+  background: #ffffff !important;
+  border-bottom: none !important;
+  position: relative !important;
+}
+
+/* Border only under the white topbar content, not under the dark
+   logo column, so it doesn't cut a light line across the sidebar. */
+.admin-topbar::after {
+  content: "" !important;
+  position: absolute !important;
+  left: 280px !important;
+  right: 0 !important;
+  bottom: 0 !important;
+  height: 1px !important;
+  background: #e5e7eb !important;
+}
+
+.admin-topbar .brand {
+  width: 280px !important;
+  min-width: 280px !important;
+  max-width: 280px !important;
+  height: 100% !important;
+  display: flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  padding: 2px !important;
+  background: #0b1329 !important;
+  border-right: 1px solid rgba(255, 255, 255, 0.08) !important;
+  box-sizing: border-box !important;
+  flex-shrink: 0 !important;
+}
+
+.admin-topbar .brand-logo-full-card {
+  width: auto !important;
+  max-width: 220px !important;
+  height: 64px !important;
+  align-items: center !important;
+  justify-content: center !important;
+  background: #ffffff !important;
+  border-radius: 10px !important;
+  display: inline-flex !important;
+  padding: 4px 10px !important;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.12) !important;
+  margin: 0 !important;
+  box-sizing: border-box !important;
+}
+
+.admin-topbar .brand-logo-full {
+  display: block !important;
+  height: 56px !important;
+  max-height: 56px !important;
+  width: 128px !important;
+  max-width: 200px !important;
+  object-fit: contain !important;
+}
+
+.admin-topbar .topbar-page-title {
+  flex: 1 1 auto !important;
+  min-width: 0 !important;
+  padding: 0 24px !important;
+  overflow: hidden !important;
+}
+
+.admin-topbar .topbar-page-title h1 {
+  font-family: var(--font-serif, "Playfair Display", Georgia, serif) !important;
+  font-size: 19px !important;
+  font-weight: 700 !important;
+  color: #1e293b !important;
+  margin: 0 !important;
+  letter-spacing: -0.01em !important;
+  white-space: nowrap !important;
+  overflow: hidden !important;
+  text-overflow: ellipsis !important;
+}
+
+.admin-topbar .topbar-page-title p {
+  font-size: 12px !important;
+  color: #64748b !important;
+  font-weight: 400 !important;
+  margin: 2px 0 0 0 !important;
+  white-space: nowrap !important;
+  overflow: hidden !important;
+  text-overflow: ellipsis !important;
+}
+
+.admin-topbar .topbar-actions {
+  padding-right: 24px !important;
 }
 
 .admin-topbar .notification-button,
 .admin-topbar .mobile-nav-toggle,
 .admin-topbar .profile-avatar-button {
-  background: rgba(255, 255, 255, 0.08) !important;
-  border: 1px solid rgba(255, 255, 255, 0.3) !important;
-  color: #ffffff !important;
+  background: #f1f5f9 !important;
+  border: 1px solid #e2e8f0 !important;
+  color: #0b1329 !important;
 }
 
 .admin-topbar .notification-button:hover,
 .admin-topbar .mobile-nav-toggle:hover,
 .admin-topbar .profile-avatar-button:hover {
-  background: rgba(255, 255, 255, 0.18) !important;
+  background: #e2e8f0 !important;
 }
 
 .admin-topbar .notification-button svg,
 .admin-topbar .mobile-nav-toggle svg,
 .admin-topbar .profile-avatar-button svg {
-  color: #ffffff !important;
+  color: #0b1329 !important;
 }
 
 .admin-topbar .notification-button span {
@@ -99,7 +423,7 @@
 }
 
 .admin-topbar .profile-name {
-  color: #ffffff !important;
+  color: #0b1329 !important;
 }
 
 .admin-topbar .avatar-circle {
@@ -138,45 +462,252 @@
   background: var(--erp-line) !important;
 }
 
-/* ================= Sidebar Nav / Mobile Drawer ================= */
-.admin-nav {
-  background: linear-gradient(180deg, var(--erp-navy-1) 0%, var(--erp-navy-2) 100%) !important;
+/* ================= EXACT REFERENCE NAVBAR DESIGN ================= */
+
+.admin-nav,
+.admin-layout .admin-nav,
+.super-admin-layout .admin-nav {
+  background: #0b1329 !important;
+  border-right: 1px solid rgba(255, 255, 255, 0.08) !important;
+  color: #ffffff !important;
+  display: flex !important;
+  flex-direction: column !important;
+  justify-content: space-between !important;
+  padding: 0 !important;
+  width: 280px !important;
+  min-width: 280px !important;
+  max-width: 280px !important;
+  height: 100% !important;
+  min-height: 0 !important;
+  max-height: 100% !important;
+  flex: 1 1 0px !important;
+  position: relative !important;
+  top: auto !important;
+  overflow: hidden !important;
 }
 
-.admin-nav-drawer-head {
-  background: var(--erp-navy-1) !important;
-  border-bottom: 1px solid rgba(255, 255, 255, 0.12) !important;
+.admin-nav-group {
+  margin: 0 !important;
+  padding: 8px 10px 8px 10px !important;
+  flex: 1 1 0px !important;
+  min-height: 0 !important;
+  overflow-y: auto !important;
+  overflow-x: hidden !important;
+  scrollbar-width: none !important;
+  -ms-overflow-style: none !important;
+}
+
+.admin-nav-group::-webkit-scrollbar {
+  display: none !important;
+  width: 0 !important;
+  height: 0 !important;
 }
 
 .admin-nav-label {
-  color: rgba(255, 255, 255, 0.45) !important;
+  display: block !important;
+  color: #64748b !important;
+  font-family: var(--font-admin) !important;
+  font-size: 11.5px !important;
+  font-weight: 800 !important;
+  letter-spacing: 1.5px !important;
+  text-transform: uppercase !important;
+  margin: 10px 10px 6px 10px !important;
 }
 
-.admin-nav button {
-  border-radius: var(--erp-radius-sm) !important;
-  color: rgba(255, 255, 255, 0.78) !important;
+.admin-nav button,
+.nav-button {
+  align-items: center !important;
+  background: transparent !important;
+  border: 1px solid transparent !important;
+  border-radius: 10px !important;
+  color: #cbd5e1 !important;
+  display: flex !important;
+  font-family: var(--font-admin) !important;
+  font-size: 15px !important;
+  font-weight: 700 !important;
+  gap: 12px !important;
+  margin-bottom: 3px !important;
+  height: 42px !important;
+  min-height: 40px !important;
+  padding: 0 14px !important;
+  width: 100% !important;
+  justify-content: flex-start !important;
+  cursor: pointer !important;
+  transition: all 0.15s ease !important;
 }
 
 .admin-nav button:hover:not(.active) {
-  background: rgba(255, 255, 255, 0.08) !important;
+  background: rgba(255, 255, 255, 0.06) !important;
   color: #ffffff !important;
 }
 
-.admin-nav button.active {
-  background: linear-gradient(105deg, var(--erp-accent-1), var(--erp-accent-2)) !important;
-  border-color: transparent !important;
-  box-shadow: var(--erp-shadow-glow) !important;
+.admin-nav button .admin-nav-icon {
+  display: inline-flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  width: 22px !important;
+  color: #94a3b8 !important;
+  transition: color 0.2s ease !important;
+}
+
+.admin-nav button:hover:not(.active) .admin-nav-icon {
   color: #ffffff !important;
+}
+
+/* Active Nav Button Gradient & Glow (Identical to Image) */
+.admin-nav button.active {
+  background: linear-gradient(135deg, #3b82f6 0%, #6366f1 50%, #8b5cf6 100%) !important;
+  border-color: transparent !important;
+  box-shadow: 0 4px 20px rgba(99, 102, 241, 0.45) !important;
+  color: #ffffff !important;
+  font-weight: 700 !important;
 }
 
 .admin-nav button.active .admin-nav-icon {
   color: #ffffff !important;
 }
 
-/* ================= Sidebar Footer (support + branding) ================= */
+/* Sidebar Footer (User Avatar & Logout Icon - Sticky Always Visible) */
+/* Sidebar Footer - Pin to bottom, ALWAYS visible without scrolling */
 .admin-nav-footer {
   margin-top: auto !important;
-  padding-top: 18px !important;
+  margin-bottom: 18px !important;
+  padding: 8px 10px 0 10px !important;
+  border-top: 1px solid rgba(255, 255, 255, 0.08) !important;
+  background: transparent !important;
+  flex: 0 0 auto !important;
+  flex-shrink: 0 !important;
+  position: relative !important;
+  bottom: 0 !important;
+  z-index: 50 !important;
+  width: 100% !important;
+  box-sizing: border-box !important;
+}
+
+.sidebar-user-card,
+.sidebar-user-section,
+.sidebar-user-profile {
+  display: flex !important;
+  flex-direction: column !important;
+  align-items: stretch !important;
+  gap: 10px !important;
+  padding: 6px 0 !important;
+  background: transparent !important;
+  border: none !important;
+  border-radius: 0 !important;
+  width: 100% !important;
+  box-sizing: border-box !important;
+}
+
+.sidebar-user-info {
+  display: flex !important;
+  align-items: center !important;
+  justify-content: flex-start !important;
+  gap: 8px !important;
+  overflow: hidden !important;
+  flex: 1 1 auto !important;
+  min-width: 0 !important;
+}
+
+.sidebar-user-avatar {
+  width: 30px !important;
+  height: 30px !important;
+  border-radius: 50% !important;
+  background: linear-gradient(135deg, #3b82f6, #2563eb) !important;
+  color: #ffffff !important;
+  display: flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  font-weight: 700 !important;
+  font-size: 13px !important;
+  flex-shrink: 0 !important;
+  box-shadow: 0 2px 8px rgba(59, 130, 246, 0.35) !important;
+}
+
+.sidebar-user-details {
+  display: flex !important;
+  flex-direction: column !important;
+  overflow: hidden !important;
+  min-width: 0 !important;
+}
+
+.sidebar-user-details strong {
+  color: #ffffff !important;
+  font-family: var(--font-admin) !important;
+  font-size: 13px !important;
+  font-weight: 700 !important;
+  white-space: nowrap !important;
+  overflow: hidden !important;
+  text-overflow: ellipsis !important;
+  line-height: 1.2 !important;
+}
+
+.sidebar-user-details span {
+  color: #94a3b8 !important;
+  font-size: 11px !important;
+  margin-top: 1px !important;
+  white-space: nowrap !important;
+  overflow: hidden !important;
+  text-overflow: ellipsis !important;
+}
+
+/* Premium Logout Button with Icon + Clear "Logout" Text */
+.admin-nav-footer .sidebar-logout-btn,
+.admin-nav-footer .sidebar-logout-icon-btn {
+  display: flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  gap: 8px !important;
+  padding: 10px 14px !important;
+  height: 42px !important;
+  width: 100% !important;
+  background: rgba(239, 68, 68, 0.16) !important;
+  border: 1px solid rgba(239, 68, 68, 0.45) !important;
+  color: #fca5a5 !important;
+  font-family: var(--font-admin) !important;
+  font-size: 13px !important;
+  font-weight: 700 !important;
+  border-radius: 12px !important;
+  cursor: pointer !important;
+  flex-shrink: 0 !important;
+  transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1) !important;
+}
+
+.admin-nav-footer .sidebar-logout-btn:hover,
+.admin-nav-footer .sidebar-logout-icon-btn:hover {
+  background: #ef4444 !important;
+  border-color: #ef4444 !important;
+  color: #ffffff !important;
+  transform: translateY(-1px) !important;
+}
+
+.admin-nav-footer .sidebar-logout-btn svg,
+.admin-nav-footer .sidebar-logout-icon-btn svg {
+  color: inherit !important;
+}
+
+@media (min-height: 800px) {
+  .admin-nav button,
+  .nav-button {
+    height: 48px !important;
+    min-height: 46px !important;
+    margin-bottom: 5px !important;
+    font-size: 16px !important;
+  }
+
+  .admin-nav-group {
+    padding: 14px 12px 14px 12px !important;
+  }
+
+  .admin-nav-footer {
+    padding: 12px 14px 14px 14px !important;
+  }
+}
+
+
+.sidebar-logout-btn svg,
+.sidebar-logout-icon-btn svg {
+  color: inherit !important;
 }
 
 .admin-nav-support {
@@ -541,4 +1072,673 @@
 
 .analytics-report-header-card {
   margin-bottom: 18px;
+}
+
+/* ================= Admin Login ================= */
+.login-view {
+  --login-bg-1: #dbe6fb;
+  --login-bg-2: #eef1fd;
+  --login-bg-3: #e4dcfb;
+  --login-card-bg: #ffffff;
+  --login-ink: #0b1b3a;
+  --login-muted: #64748b;
+  --login-line: #e2e8f2;
+  --login-field-bg: #eef4ff;
+
+  align-items: center !important;
+  background: radial-gradient(circle at 8% 8%, var(--login-bg-1), transparent 45%),
+              radial-gradient(circle at 92% 90%, var(--login-bg-3), transparent 45%),
+              linear-gradient(160deg, var(--login-bg-2), var(--login-bg-1)) !important;
+  display: flex !important;
+  justify-content: center !important;
+  min-height: 100vh !important;
+  padding: 40px 20px !important;
+  position: relative !important;
+  width: 100% !important;
+}
+
+.login-view.login-theme-dark {
+  --login-bg-1: #101a33;
+  --login-bg-2: #0b1224;
+  --login-bg-3: #1c1440;
+  --login-card-bg: #131c33;
+  --login-ink: #f4f7ff;
+  --login-muted: #93a2c4;
+  --login-line: #263153;
+  --login-field-bg: #1a2542;
+}
+
+.login-theme-toggle {
+  align-items: center;
+  background: var(--login-card-bg);
+  border: 1px solid var(--login-line);
+  border-radius: 999px;
+  box-shadow: var(--erp-shadow-card);
+  color: var(--login-ink);
+  cursor: pointer;
+  display: inline-flex;
+  height: 44px;
+  justify-content: center;
+  position: absolute;
+  right: 24px;
+  top: 24px;
+  transition: transform 0.15s ease, background 0.15s ease;
+  width: 44px;
+}
+
+.login-theme-toggle:hover {
+  transform: translateY(-1px);
+}
+
+.login-panel {
+  background: var(--login-card-bg) !important;
+  border: none !important;
+  border-radius: 28px !important;
+  box-shadow: 0 30px 70px rgba(20, 35, 80, 0.16) !important;
+  box-sizing: border-box !important;
+  margin: 0 auto !important;
+  max-width: 460px !important;
+  padding: 44px 40px 36px !important;
+  text-align: center !important;
+  width: 100% !important;
+}
+
+.login-panel::before {
+  content: none !important;
+}
+
+.login-logo {
+  display: block;
+  height: auto;
+  margin: 0 auto 20px;
+  max-width: 220px;
+  width: 100%;
+}
+
+.login-title {
+  color: var(--login-ink) !important;
+  font-size: 30px !important;
+  font-weight: 700 !important;
+  margin: 0 0 8px !important;
+}
+
+.login-subtitle {
+  color: var(--login-muted) !important;
+  font-size: 14px !important;
+  margin: 0 0 28px !important;
+}
+
+.login-panel .empty-note {
+  margin: 0 0 18px !important;
+  text-align: left !important;
+}
+
+.login-field {
+  display: block !important;
+  margin: 0 0 18px !important;
+  text-align: left !important;
+}
+
+.login-field-label {
+  color: var(--login-ink);
+  display: block;
+  font-size: 13px;
+  font-weight: 700;
+  margin-bottom: 8px;
+}
+
+.login-input-wrap {
+  align-items: center;
+  background: var(--login-field-bg);
+  border: 1px solid var(--login-line);
+  border-radius: 12px;
+  color: var(--login-muted);
+  display: flex;
+  gap: 10px;
+  padding: 0 14px;
+  transition: border-color 0.15s ease;
+}
+
+.login-input-wrap:focus-within {
+  border-color: var(--erp-accent-1);
+}
+
+.login-input-wrap .ui-icon {
+  flex: 0 0 auto;
+}
+
+.login-panel .login-input-wrap input {
+  background: transparent !important;
+  border: none !important;
+  box-shadow: none !important;
+  color: var(--login-ink) !important;
+  flex: 1 1 auto !important;
+  font-size: 15px !important;
+  height: 52px !important;
+  min-width: 0 !important;
+  padding: 0 !important;
+}
+
+.login-panel .login-input-wrap input:focus {
+  outline: none !important;
+}
+
+.login-password-toggle {
+  background: none;
+  border: none;
+  color: var(--login-muted);
+  cursor: pointer;
+  display: inline-flex;
+  flex: 0 0 auto;
+  padding: 6px;
+}
+
+.login-forgot {
+  align-items: center;
+  color: var(--erp-accent-1);
+  display: inline-flex;
+  font-size: 13px;
+  font-weight: 600;
+  gap: 6px;
+  margin: 2px 0 26px;
+  text-decoration: none;
+}
+
+.login-forgot:hover {
+  text-decoration: underline;
+}
+
+.login-submit {
+  align-items: center;
+  background: linear-gradient(105deg, var(--erp-accent-1), #7c5cf0) !important;
+  border: none !important;
+  border-radius: 14px !important;
+  box-shadow: 0 14px 28px rgba(80, 70, 220, 0.28) !important;
+  color: #ffffff !important;
+  cursor: pointer;
+  display: flex !important;
+  font-size: 16px !important;
+  font-weight: 700 !important;
+  gap: 10px;
+  justify-content: center;
+  padding: 15px !important;
+  transition: transform 0.15s ease, box-shadow 0.15s ease;
+  width: 100% !important;
+}
+
+.login-submit:hover {
+  box-shadow: 0 18px 34px rgba(80, 70, 220, 0.34) !important;
+  transform: translateY(-1px);
+}
+
+.login-footer-links {
+  display: flex;
+  flex-wrap: wrap;
+  font-size: 13px;
+  gap: 10px;
+  justify-content: center;
+  margin-top: 28px;
+}
+
+.login-footer-links a {
+  color: var(--login-muted);
+  text-decoration: none;
+}
+
+.login-footer-links a:hover {
+  color: var(--erp-accent-1);
+  text-decoration: underline;
+}
+
+.login-footer-links span {
+  color: var(--login-line);
+}
+
+/* Premium Glassmorphism Editor Modal Popup Overrides */
+#app .super-admin-layout .editor-modal-shell:not(.service-editor-modal-shell),
+.editor-modal-shell {
+  position: fixed !important;
+  inset: 0 !important;
+  z-index: 99999 !important;
+  display: flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  padding: 24px 16px !important;
+  background: rgba(15, 23, 42, 0.42) !important;
+  backdrop-filter: blur(6px) !important;
+  -webkit-backdrop-filter: blur(6px) !important;
+  animation: fadeInModal 0.2s ease-out !important;
+}
+
+#app .super-admin-layout .editor-modal-shell:not(.service-editor-modal-shell) .editor-modal-backdrop,
+.editor-modal-backdrop {
+  position: fixed !important;
+  inset: 0 !important;
+  border: 0 !important;
+  background: rgba(15, 23, 42, 0.42) !important;
+  backdrop-filter: blur(6px) !important;
+  -webkit-backdrop-filter: blur(6px) !important;
+  cursor: pointer !important;
+  z-index: 1 !important;
+}
+
+#app .super-admin-layout .editor-modal-shell:not(.service-editor-modal-shell) .editor-modal-content,
+.editor-modal-content {
+  position: relative !important;
+  z-index: 10 !important;
+  width: 100% !important;
+  max-width: 760px !important;
+  max-height: none !important;
+  overflow: visible !important;
+  margin: 0 auto !important;
+  background: transparent !important;
+  box-shadow: none !important;
+  animation: popInModal 0.25s cubic-bezier(0.16, 1, 0.3, 1) !important;
+}
+
+.modal-popup-body {
+  overflow-y: auto !important;
+  max-height: calc(85vh - 150px) !important;
+  padding: 24px 28px !important;
+  flex: 1 1 auto !important;
+  min-height: 0 !important;
+  -webkit-overflow-scrolling: touch !important;
+}
+
+/* Service editor's two-column fields (Service Name/Description,
+   Mode/Enabled) get cramped at the shared 760px modal width, forcing
+   a tall, scrolly column instead of a proportional card. Widen just
+   this editor; height stays capped by .service-editor-popup's own
+   max-height, so it doesn't grow taller. Matches the ID-anchored
+   selector above (not just plain .editor-modal-content) so it actually
+   outranks it instead of losing on specificity. */
+#app .super-admin-layout .editor-modal-shell:not(.service-editor-modal-shell) .editor-modal-content.editor-modal-content-services,
+.editor-modal-content.editor-modal-content-services {
+  max-width: min(1080px, calc(100vw - 64px)) !important;
+}
+
+/* Same leftover responsive.css .editor-panel rule (see .modal-popup-card
+   comment below) also hits this card via its .editor-panel class, adding
+   an unbudgeted 20px gap + ~22-30px padding around its 3 rows (head/scroll/
+   flow-actions). That pushes total content past the card's own max-height,
+   so the whole card scrolls internally and the Save/Cancel row sits below
+   the fold on open instead of being visible right away. Zero the
+   gap/padding back out so head/scroll/flow-actions manage their own
+   spacing exactly as designed. */
+#app .super-admin-layout .editor-modal-shell:not(.service-editor-modal-shell) .editor-panel.service-editor-popup,
+.editor-panel.service-editor-popup {
+  padding: 0 !important;
+  gap: 0 !important;
+}
+
+/* modern-theme.css (loaded last) also carries generic ".editor-panel
+   .editor-head" / ".editor-panel .flow-actions" rules for the other modal
+   design, adding a stray 24px margin-bottom / margin-top that isn't part
+   of this popup's own spacing (each section already pads itself). That
+   pushed the grid's row tracks ~50px past the card's max-height, forcing
+   the Save/Cancel row below the fold on open. The 3-class selector here
+   outranks modern-theme's 2-class one regardless of load order. */
+.editor-panel.service-editor-popup .editor-head {
+  margin-bottom: 0 !important;
+}
+
+.editor-panel.service-editor-popup .flow-actions {
+  margin-top: 0 !important;
+}
+
+/* responsive.css still targets the older generic .editor-panel modal shape
+   (.editor-head / .settings-grid / .flow-actions) with a very high-specificity
+   "display: grid !important" + extra padding/gap rule. That rule also matches
+   this card (it carries .editor-panel too), which silently replaces the
+   intended flex column layout and adds unbudgeted padding — pushing the
+   Cancel/Create footer past the card's max-height/overflow:hidden so the
+   buttons get clipped and are no longer clickable. Re-assert the flex
+   column with the same selector specificity so this card always wins. */
+#app .super-admin-layout .editor-modal-shell:not(.service-editor-modal-shell) .editor-panel.modal-popup-card,
+.editor-panel.modal-popup-card {
+  display: flex !important;
+  flex-direction: column !important;
+  padding: 0 !important;
+  gap: 0 !important;
+}
+
+@keyframes fadeInModal {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+@keyframes popInModal {
+  from { opacity: 0; transform: scale(0.95) translateY(10px); }
+  to { opacity: 1; transform: scale(1) translateY(0); }
+}
+
+/* Client Cards (Clients tab in Super Admin) */
+.client-card-grid {
+  display: grid !important;
+  grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)) !important;
+  gap: 16px !important;
+}
+
+.client-card {
+  background: var(--erp-surface, #ffffff) !important;
+  border: 1px solid var(--erp-line, #e2e8f0) !important;
+  border-radius: 14px !important;
+  padding: 16px !important;
+  display: flex !important;
+  flex-direction: column !important;
+  gap: 14px !important;
+  box-shadow: 0 2px 8px rgba(15, 23, 42, 0.04) !important;
+}
+
+.client-card-head {
+  display: flex !important;
+  align-items: flex-start !important;
+  gap: 10px !important;
+}
+
+.client-card-avatar {
+  width: 36px !important;
+  height: 36px !important;
+  border-radius: 50% !important;
+  background: rgba(99, 102, 241, 0.12) !important;
+  color: #4f46e5 !important;
+  display: flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  font-weight: 700 !important;
+  font-size: 14px !important;
+  flex-shrink: 0 !important;
+}
+
+.client-card-title {
+  display: flex !important;
+  flex-direction: column !important;
+  gap: 2px !important;
+  min-width: 0 !important;
+  flex: 1 1 auto !important;
+}
+
+.client-card-title strong {
+  color: var(--erp-ink, #0f172a) !important;
+  font-size: 14px !important;
+  font-weight: 700 !important;
+  white-space: nowrap !important;
+  overflow: hidden !important;
+  text-overflow: ellipsis !important;
+}
+
+.client-card-title span {
+  color: var(--erp-muted, #64748b) !important;
+  font-size: 12px !important;
+  white-space: nowrap !important;
+  overflow: hidden !important;
+  text-overflow: ellipsis !important;
+}
+
+.client-card-status {
+  flex-shrink: 0 !important;
+  display: inline-flex !important;
+  align-items: center !important;
+  gap: 4px !important;
+  padding: 3px 10px !important;
+  border-radius: 999px !important;
+  font-size: 11px !important;
+  font-weight: 700 !important;
+  text-transform: capitalize !important;
+}
+
+.client-card-status.good {
+  background: #dcfce7 !important;
+  color: #15803d !important;
+}
+
+.client-card-status.warn {
+  background: #fef3c7 !important;
+  color: #b45309 !important;
+}
+
+.client-card-status.bad {
+  background: #fee2e2 !important;
+  color: #991b1b !important;
+}
+
+.client-card-meta {
+  display: grid !important;
+  grid-template-columns: 1fr 1fr !important;
+  gap: 12px !important;
+  padding-top: 12px !important;
+  border-top: 1px solid var(--erp-line, #f1f5f9) !important;
+}
+
+.client-card-meta-item {
+  display: flex !important;
+  flex-direction: column !important;
+  gap: 4px !important;
+  min-width: 0 !important;
+}
+
+.client-card-meta-item span {
+  color: var(--erp-muted, #94a3b8) !important;
+  font-size: 10.5px !important;
+  font-weight: 700 !important;
+  text-transform: uppercase !important;
+  letter-spacing: 0.04em !important;
+}
+
+.client-card-meta-item strong {
+  color: var(--erp-ink, #0f172a) !important;
+  font-size: 13px !important;
+  font-weight: 600 !important;
+  white-space: nowrap !important;
+  overflow: hidden !important;
+  text-overflow: ellipsis !important;
+}
+
+.client-card-meta-item strong.is-muted {
+  color: var(--erp-muted, #94a3b8) !important;
+  font-weight: 500 !important;
+  font-style: italic !important;
+}
+
+.client-card-actions {
+  display: flex !important;
+  flex-wrap: wrap !important;
+  justify-content: flex-end !important;
+  gap: 8px !important;
+}
+
+/* Alerts page KPI cards (Open Alerts / Kiosks / Paper-Jam / Toner) */
+.alert-kpi-card {
+  transition: transform 0.18s ease, box-shadow 0.18s ease !important;
+}
+
+.alert-kpi-card:hover {
+  transform: translateY(-3px) !important;
+  box-shadow: 0 16px 34px rgba(15, 23, 42, 0.1) !important;
+}
+
+/* ==================================================================
+   Admin Topbar — Mobile (shared by Super Admin + Kiosk Admin, both
+   render the same .admin-topbar/.brand/.topbar-actions markup).
+   The desktop rules earlier in this file hard-set the topbar to a
+   fixed 70px height and the logo card to a fixed 280px width - on a
+   narrow phone that leaves no room for the page title + bell/menu/
+   profile, so they get squeezed onto a wrapped second line while
+   .main.admin-screen still starts exactly 70px down (also fixed),
+   which cuts page content off behind the overflow. This block gives
+   mobile its own compact single-row topbar and matches
+   .main.admin-screen's offset to the new height so nothing overlaps.
+   ================================================================== */
+@media (max-width: 900px) {
+  /* modern-theme.css (loaded after this file) has its own unconditional
+     !important .topbar.admin-topbar / .main.admin-screen height rules at
+     the same specificity, so it wins ties by load order alone - scope
+     these through the always-present .admin-shell ancestor to outrank it
+     regardless of load order. */
+  .admin-shell .admin-topbar,
+  .admin-shell .topbar.admin-topbar {
+    height: 60px !important;
+    max-height: 60px !important;
+    padding: 0 10px !important;
+    overflow: hidden !important;
+    /* styles.css has a legacy (non-!important) flex-direction: column rule
+       for .topbar/.admin-topbar at max-width:640px, left over from an
+       older topbar design - it wins by default since nothing else
+       contests it. Force row explicitly so brand/title/actions stay
+       side-by-side instead of stacking and overflowing the 60px bar. */
+    flex-direction: row !important;
+  }
+
+  .admin-shell .main.admin-screen {
+    height: calc(100vh - 60px) !important;
+    max-height: calc(100vh - 60px) !important;
+  }
+
+  .admin-topbar .brand {
+    width: auto !important;
+    min-width: 0 !important;
+    flex: 0 1 auto !important;
+    padding: 4px !important;
+    border-right: none !important;
+  }
+
+  .admin-topbar .brand-logo-full-card {
+    max-width: 150px !important;
+    height: 44px !important;
+    padding: 3px 8px !important;
+  }
+
+  .admin-topbar .brand-logo-full {
+    height: 36px !important;
+    max-height: 36px !important;
+    width: auto !important;
+    max-width: 130px !important;
+  }
+
+  .admin-topbar .topbar-page-title {
+    padding: 0 8px !important;
+  }
+
+  .admin-topbar .topbar-page-title h1 {
+    font-size: 13.5px !important;
+  }
+
+  .admin-topbar .topbar-page-title p {
+    display: none !important;
+  }
+
+  .admin-topbar .topbar-actions {
+    flex: 0 0 auto !important;
+    display: flex !important;
+    align-items: center !important;
+    gap: 6px !important;
+    padding-right: 0 !important;
+    width: auto !important;
+  }
+
+  .admin-topbar .notification-button,
+  .admin-topbar .mobile-nav-toggle,
+  .admin-topbar .profile-avatar-button {
+    width: 36px !important;
+    height: 36px !important;
+    min-height: 36px !important;
+    padding: 0 !important;
+    justify-content: center !important;
+  }
+
+  .admin-topbar .profile-name,
+  .admin-topbar .profile-avatar-button svg {
+    display: none !important;
+  }
+
+  .admin-topbar .avatar-circle {
+    width: 26px !important;
+    height: 26px !important;
+    font-size: 11px !important;
+  }
+}
+
+@media (max-width: 420px) {
+  .admin-topbar .brand-logo-full-card {
+    max-width: 110px !important;
+    height: 38px !important;
+  }
+
+  .admin-topbar .brand-logo-full {
+    height: 30px !important;
+    max-height: 30px !important;
+    max-width: 94px !important;
+  }
+
+  .admin-topbar .topbar-page-title {
+    display: none !important;
+  }
+}
+
+/* ==================================================================
+   Editor modal field grids — Mobile
+   renderGenericEditor's field grid and the idle-screensaver settings
+   grid both use an inline "grid-template-columns: 1fr 1fr" (Create/Edit
+   Client, Project, Kiosk). Inline styles beat the pre-existing
+   non-!important ".settings-grid" mobile collapse rule elsewhere in
+   this codebase, so on a narrow phone every field was squeezed into a
+   ~120px-wide half column. Collapse both to one column below 640px.
+   ================================================================== */
+@media (max-width: 640px) {
+  .editor-fields-grid,
+  .modal-popup-body .settings-grid,
+  .service-editor-scroll .settings-grid {
+    grid-template-columns: minmax(0, 1fr) !important;
+  }
+
+  /* Some fields (image-upload, textarea) set an inline "grid-column: span 2"
+     for the 2-column desktop grid - with only 1 explicit column above,
+     that span forces CSS Grid to auto-generate a 2nd implicit column
+     just to satisfy it, silently undoing the single-column collapse. */
+  .editor-fields-grid > *,
+  .modal-popup-body .settings-grid > *,
+  .service-editor-scroll .settings-grid > * {
+    grid-column: auto !important;
+  }
+
+  .kiosk-service-layout .filters {
+    grid-template-columns: minmax(0, 1fr) !important;
+  }
+
+  /* Analytics filter bar (Client/Machine/Filter Type/FY-Date Range/Apply/PDF)
+     - flex-wrap alone still let the radio pair and button pair overflow
+     the card since those inner groups never wrapped themselves. Stack
+     everything to one full-width field per row on mobile instead. */
+  .analytics-filter-bar {
+    flex-direction: column !important;
+    align-items: stretch !important;
+  }
+
+  .analytics-filter-bar > * {
+    flex: 1 1 auto !important;
+    width: 100% !important;
+    min-width: 0 !important;
+  }
+
+  .analytics-filter-type-group {
+    flex-wrap: wrap !important;
+    height: auto !important;
+  }
+
+  .analytics-filter-actions {
+    flex-wrap: wrap !important;
+  }
+
+  .analytics-filter-actions button {
+    flex: 1 1 140px !important;
+    justify-content: center !important;
+  }
+
+  /* Long serif module-card headings (e.g. "Yearly Transaction Revenue (₹)")
+     wrap to 3+ lines at 20px in a narrow phone's padded card. */
+  .module-card > .section-heading h2,
+  .module-card > div > h2 {
+    font-size: 16px !important;
+    line-height: 1.3 !important;
+  }
 }
