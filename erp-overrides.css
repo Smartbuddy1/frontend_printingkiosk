@@ -584,6 +584,16 @@ body.admin-mode #app {
   box-sizing: border-box !important;
 }
 
+/* Only neutralize the bottom padding a legacy modern-theme.css rule adds to
+   .admin-nav (loaded after this file, same selector, wins ties) - that stray
+   24px padding-bottom is what pushes the Logout button up away from the
+   sidebar's true bottom edge. Left/right/top padding, and everything about
+   the nav buttons above, are untouched. */
+#app .admin-layout .admin-nav,
+#app .super-admin-layout .admin-nav {
+  padding-bottom: 0 !important;
+}
+
 .sidebar-user-card,
 .sidebar-user-section,
 .sidebar-user-profile {

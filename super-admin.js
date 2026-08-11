@@ -169,7 +169,7 @@ const collections = {
     title: "Client Management",
     subtitle: "Create client logins first. Allocate each client from the Project form.",
     key: "adminId",
-    columns: ["name", "email", "status", "kioskTitle", "kioskSubtitle", "projectIds", "lastLoginAt"],
+    columns: ["name", "email", "status", "kioskTitle", "kioskSubtitle", "projectIds"],
     fields: [
       { key: "name", label: "Name", required: true },
       { key: "email", label: "Email", required: true },
@@ -1122,17 +1122,26 @@ function renderCurrentPage() {
 // the topbar, so the topbar always reflects whichever page just rendered.
 function renderHeader(title, subtitle, action = "") {
   const isDashboard = title === "Overview" || title === "Dashboard";
-  state.currentHeaderTitle = isDashboard
+  const displayTitle = isDashboard
     ? `Welcome to <span style="color: #2563eb;">Dashboard</span>`
     : escapeHtml(title);
-  state.currentHeaderSubtitle = isDashboard
+  const displaySub = isDashboard
     ? `Hello Admin, here is your system overview.`
     : escapeHtml(subtitle);
 
-  if (!action) return "";
+  // Topbar shows a short, plain page label (just the raw page name) kept
+  // separate from this page-body heading, which keeps its own full
+  // title/subtitle/actions exactly as before - each page gets its own
+  // topbar title and its own in-page heading, not one merged into the other.
+  state.currentHeaderTitle = escapeHtml(title);
+  state.currentHeaderSubtitle = "";
 
   return `
-    <div class="admin-header" style="justify-content: flex-end !important;">
+    <div class="admin-header">
+      <div>
+        <h1 class="page-title">${displayTitle}</h1>
+        <p class="page-subtitle">${displaySub}</p>
+      </div>
       <div class="flow-actions">${action}</div>
     </div>
   `;
@@ -1370,45 +1379,29 @@ function renderKioskStatusDonutChart(counts = {}) {
 
 function renderTopRevenueProjectsChart(projects = []) {
   const dbProjects = data("projects") || [];
-  const dbPayments = data("payments") || [];
+  const dbJobs = data("jobs") || [];
 
+  // Payment records don't carry a projectId, so revenue has to be
+  // attributed via the job's kiosk -> project link (same lookup used by
+  // Analytics/Report filtering) and only completed payments count as
+  // real revenue - matches superAdminSummary()'s "Payment Success" rule
+  // on the backend instead of treating any nonzero amount as revenue.
   const projectRevenueMap = {};
-  dbPayments.forEach((pm) => {
-    if (pm.status === "completed" || pm.status === "SUCCESS" || pm.amount) {
-      const pId = pm.projectId || "unassigned";
-      projectRevenueMap[pId] = (projectRevenueMap[pId] || 0) + (Number(pm.amount) || 0);
-    }
+  dbJobs.forEach((job) => {
+    if (job.paymentStatus !== "Payment Success") return;
+    const project = transactionProjectForKiosk(job.kioskId);
+    if (!project) return;
+    projectRevenueMap[project.projectId] = (projectRevenueMap[project.projectId] || 0) + (Number(job.amount) || 0);
   });
 
-  let list = dbProjects.map((p) => ({
-    name: p.name || p.projectId || "Project",
-    val: projectRevenueMap[p.projectId] || p.revenue || 0
-  }));
+  const list = dbProjects
+    .map((p) => ({ name: p.name || p.projectId || "Project", val: projectRevenueMap[p.projectId] || 0 }))
+    .sort((a, b) => b.val - a.val)
+    .slice(0, 5);
 
-  const fallbackProjects = [
-    { name: "Main Campus Kiosk", val: 380 },
-    { name: "Central Library Site", val: 335 },
-    { name: "Public Kiosk Net", val: 245 },
-    { name: "Inhouse Testing", val: 190 },
-    { name: "Satara Branch Site", val: 20 }
-  ];
-
-  if (list.length < 5) {
-    const existingNames = new Set(list.map((l) => l.name.toLowerCase()));
-    for (const fb of fallbackProjects) {
-      if (!existingNames.has(fb.name.toLowerCase()) && list.length < 5) {
-        list.push(fb);
-      }
-    }
+  if (!list.length) {
+    return `<div class="empty-note">No projects yet. Create a project to see revenue here.</div>`;
   }
-
-  const defaultVals = [380, 335, 245, 190, 20];
-  list = list.slice(0, 5).map((item, i) => {
-    if (!item.val) {
-      return { ...item, val: defaultVals[i % defaultVals.length] };
-    }
-    return item;
-  });
 
   const maxVal = Math.max(400, ...list.map((p) => p.val || 0));
 
@@ -1457,7 +1450,25 @@ function renderTopRevenueProjectsChart(projects = []) {
 
 function renderRecentActivityList() {
   const jobs = data("jobs") || [];
-  const sampleJobs = jobs.length ? jobs.slice(0, 4) : [
+  // Real job records don't have "location"/"time" fields (only kioskId,
+  // amount, createdAt, printStatus) - the old code fed raw job objects
+  // straight into this template, so those two fields always fell back to
+  // generic placeholder text ("Active Kiosk Location" / "Just now") even
+  // for genuinely real jobs. Derive them properly: location from the
+  // job's kiosk -> project/client, time from the real createdAt. Jobs are
+  // appended oldest-first on the backend, so reverse for newest-first -
+  // this is meant to be a *recent* activity feed.
+  const sampleJobs = jobs.length ? [...jobs].reverse().slice(0, 4).map((job) => {
+    const project = transactionProjectForKiosk(job.kioskId);
+    const client = transactionClientForProject(project);
+    return {
+      kioskId: job.kioskId || "Unknown Kiosk",
+      location: [project?.name, client?.name].filter(Boolean).join(" | ") || undefined,
+      amount: job.amount,
+      time: formatDateTime(job.createdAt),
+      status: /failed/i.test(job.printStatus || "") ? "failed" : "success"
+    };
+  }) : [
     { kioskId: "Kiosk K-101 (Print Success)", location: "Main Campus Kiosk | Aarya Innovtech", amount: 10, time: "10:29 AM", status: "success" },
     { kioskId: "Kiosk K-102 (Print Success)", location: "Library Floor 1 | Municipal Client", amount: 5, time: "11:13 AM", status: "success" },
     { kioskId: "Kiosk K-103 (Paper Low)", location: "Reception Kiosk | Testing Site", amount: 2, time: "11:45 AM", status: "failed" },
@@ -1487,11 +1498,21 @@ function renderRecentActivityList() {
 
 function renderRecentMaintenanceLogsList() {
   const alertLogs = data("alertLogs") || [];
-  const sampleLogs = alertLogs.length ? alertLogs.slice(0, 4) : [
-    { title: "Kiosk-101 Paper Tray Refilled", tech: "By Admin - Paper: 500 Sheets Added", date: "7/10/2026", status: "Fixed" },
-    { title: "Kiosk-102 Toner Replaced", tech: "By Tech - Black Cartridge 100%", date: "7/06/2026", status: "Fixed" },
-    { title: "Kiosk-103 Paper Jam Cleared", tech: "By Tech - Roller Cleared", date: "6/25/2026", status: "Fixed" },
-    { title: "Kiosk-101 Printer Diagnostic OK", tech: "By System - Self Test Passed", date: "6/20/2026", status: "Fixed" }
+  // Real alert log records are { title, detail, status: "active"/"resolved",
+  // createdAt, ... } - no "tech" or "date" field, so those always rendered
+  // blank for real logs, and the badge below was hardcoded green "Fixed"
+  // regardless of whether the alert was actually still active.
+  const sampleLogs = alertLogs.length ? [...alertLogs].reverse().slice(0, 4).map((log) => ({
+    title: log.title || "Kiosk Alert",
+    tech: log.detail || "No additional detail recorded",
+    date: formatDateTime(log.createdAt),
+    status: log.status === "resolved" ? "Resolved" : "Active",
+    resolved: log.status === "resolved"
+  })) : [
+    { title: "Kiosk-101 Paper Tray Refilled", tech: "By Admin - Paper: 500 Sheets Added", date: "7/10/2026", status: "Fixed", resolved: true },
+    { title: "Kiosk-102 Toner Replaced", tech: "By Tech - Black Cartridge 100%", date: "7/06/2026", status: "Fixed", resolved: true },
+    { title: "Kiosk-103 Paper Jam Cleared", tech: "By Tech - Roller Cleared", date: "6/25/2026", status: "Fixed", resolved: true },
+    { title: "Kiosk-101 Printer Diagnostic OK", tech: "By System - Self Test Passed", date: "6/20/2026", status: "Fixed", resolved: true }
   ];
 
   return `
@@ -1506,7 +1527,7 @@ function renderRecentMaintenanceLogsList() {
             <span class="activity-subtitle">${escapeHtml(log.tech)}</span>
           </div>
           <div class="activity-meta">
-            <span style="font-size: 11px; font-weight: 700; color: #10b981; background: #e6f4ea; padding: 2px 8px; border-radius: 10px;">${escapeHtml(log.status)}</span>
+            <span style="font-size: 11px; font-weight: 700; color: ${log.resolved ? '#10b981' : '#dc2626'}; background: ${log.resolved ? '#e6f4ea' : '#fee2e2'}; padding: 2px 8px; border-radius: 10px;">${escapeHtml(log.status)}</span>
             <span class="activity-time">${escapeHtml(log.date)}</span>
           </div>
         </div>
@@ -1573,7 +1594,7 @@ function renderDashboard() {
       ["Total Projects", summary.projects || data("projects").length, `↗ ${summary.kioskAdmins || data("kioskAdmins").length} clients`, "hierarchy", "amber"],
       ["Total Kiosks", summary.kiosks || 0, `↗ ${summary.activeKiosks || 0} online`, "kiosks", "purple"],
       ["Total Payments", summary.payments || 0, `↗ ${money(summary.gross || 0)} successful`, "payments", "green"],
-      ["Net Revenue", money(summary.net || 0), "↗ From successful payments, after refunds", "revenue", "emerald"]
+      ["Net Revenue", money(summary.net || 0), "↗ After refunds", "revenue", "emerald"]
     ].map(([label, value, detail, icon, tone]) => {
       const toneMap = {
         purple: 'linear-gradient(135deg, #8b5cf6, #7c3aed)',
@@ -2701,21 +2722,44 @@ window.downloadFormPrintReportPDF = async function () {
   const { jsPDF } = window.jspdf;
   const doc = new jsPDF();
   const pageWidth = doc.internal.pageSize.getWidth();
-  const stats = data("dailyStats") || [];
 
   const startObj = new Date(filter.start);
   startObj.setHours(0, 0, 0, 0);
   const endObj = new Date(filter.end);
   endObj.setHours(23, 59, 59, 999);
 
-  const filteredStats = stats.filter(stat => {
-    if (!stat.date) return false;
-    const statDate = new Date(stat.date.split("T")[0]);
-    if (statDate < startObj || statDate > endObj) return false;
-    if (filter.clientId && stat.clientId !== filter.clientId) return false;
-    if (filter.kioskId && String(stat.kioskId || "").toUpperCase() !== filter.kioskId.toUpperCase()) return false;
-    return true;
+  // Real per-day-per-kiosk print/revenue stats derived from db.jobs (the
+  // "dailyStats" collection this used to read from is never populated
+  // anywhere in the backend, so this report always rendered an empty
+  // table regardless of real activity). Only Payment Success jobs count
+  // as revenue, matching superAdminSummary()'s rule elsewhere.
+  const statsByKey = new Map();
+  data("jobs").forEach((job) => {
+    if (!job.createdAt) return;
+    const jobDate = new Date(job.createdAt);
+    if (Number.isNaN(jobDate.getTime()) || jobDate < startObj || jobDate > endObj) return;
+
+    const kioskId = job.kioskId || "Unassigned";
+    if (filter.kioskId && kioskId.toUpperCase() !== filter.kioskId.toUpperCase()) return;
+    if (filter.clientId) {
+      const project = transactionProjectForKiosk(kioskId);
+      const client = transactionClientForProject(project);
+      if (client?.adminId !== filter.clientId) return;
+    }
+
+    const dateKey = revenueDateKey(job.createdAt);
+    const key = `${dateKey}_${kioskId}`;
+    if (!statsByKey.has(key)) {
+      statsByKey.set(key, { date: dateKey, kioskId, successPrints: 0, failedPrints: 0, revenue: 0 });
+    }
+    const entry = statsByKey.get(key);
+    const printStatus = String(job.printStatus || "").toLowerCase();
+    if (printStatus === "completed") entry.successPrints += 1;
+    else if (printStatus.includes("failed")) entry.failedPrints += 1;
+    if (job.paymentStatus === "Payment Success") entry.revenue += Number(job.amount || 0);
   });
+
+  const filteredStats = [...statsByKey.values()].sort((a, b) => a.date.localeCompare(b.date) || a.kioskId.localeCompare(b.kioskId));
 
   const logoMaxWidth = 32;
   const logoMaxHeight = 24;
@@ -2769,9 +2813,8 @@ window.downloadFormPrintReportPDF = async function () {
   doc.line(14, dividerY, pageWidth - 14, dividerY);
 
   const tableData = filteredStats.map(stat => [
-    stat.date ? stat.date.split("T")[0] : "",
+    stat.date || "",
     stat.kioskId || "Unknown",
-    stat.clientId || "Unknown",
     stat.successPrints || 0,
     stat.failedPrints || 0,
     stat.revenue ? money(stat.revenue) : "0"
@@ -2779,7 +2822,7 @@ window.downloadFormPrintReportPDF = async function () {
 
   doc.autoTable({
     startY: dividerY + 8,
-    head: [['Date', 'Kiosk ID', 'Client ID', 'Successful Prints', 'Failed Prints', 'Revenue']],
+    head: [['Date', 'Kiosk ID', 'Successful Prints', 'Failed Prints', 'Revenue']],
     body: tableData,
     theme: 'grid',
     ...PDF_TABLE_STYLE
@@ -3236,9 +3279,11 @@ function renderAnalyticsFormSellingBarChart() {
   const maxVal = Math.max(25, ...dataList.map((d) => d.forms));
   const { ticks: yTicks, max: yMax } = analyticsYTicks(maxVal, { top: 20, right: 24, bottom: 40, left: 50 }, 240);
 
-  const padding = { top: 36, right: 30, bottom: 45, left: 55 };
+  // Extra top padding/height so the 2 stacked "name · count" labels above
+  // the tallest bar always have room and never get clipped by the SVG edge.
+  const padding = { top: 60, right: 30, bottom: 45, left: 55 };
   const width = 920;
-  const height = 296;
+  const height = 320;
   const chartH = height - padding.top - padding.bottom;
   const chartW = width - padding.left - padding.right;
   const groupW = chartW / dataList.length;
@@ -3265,7 +3310,7 @@ function renderAnalyticsFormSellingBarChart() {
           return `
             <g class="form-bar-group">
               ${topForms.map((f, rank) => {
-                const lineY = barY - 8 - (topForms.length - 1 - rank) * 11;
+                const lineY = barY - 10 - (topForms.length - 1 - rank) * 12;
                 return `<text x="${groupX}" y="${lineY}" font-size="9" font-weight="700" fill="#8b5cf6" text-anchor="middle">${escapeHtml(truncate(f.name, 13))} · ${f.count}</text>`;
               }).join("")}
               <rect x="${barX}" y="${barY}" width="${barW}" height="${Math.max(0, barH)}" rx="6" fill="url(#formSellingGrad)">
@@ -3651,7 +3696,9 @@ function renderAnalyticsBarChart(buckets, { forPrint = false } = {}) {
               <rect class="analytics-bar" x="${bar.barX.toFixed(1)}" y="${bar.barY.toFixed(1)}" width="${barWidth.toFixed(1)}" height="${Math.max(0, bar.barHeight).toFixed(1)}" rx="4" fill="${forPrint ? printColor : barColor}" />
               <rect x="${(bar.centerX - groupWidth / 2).toFixed(1)}" y="${padding.top}" width="${groupWidth.toFixed(1)}" height="${chartHeight}" fill="transparent" />
               <text x="${bar.centerX.toFixed(1)}" y="${height - 16}" text-anchor="middle" fill="#64748b" font-size="11px" font-weight="500">${escapeHtml(bar.label)}</text>
-              ${forPrint ? "" : `
+              ${forPrint
+                ? (bar.amount > 0 ? `<text x="${bar.centerX.toFixed(1)}" y="${Math.max(padding.top + 10, bar.barY - 6).toFixed(1)}" text-anchor="middle" fill="${printColor}" font-size="11px" font-weight="700">${escapeHtml(money(bar.amount))}</text>` : "")
+                : `
                 <g class="analytics-bar-tooltip" transform="translate(${Math.min(width - 100, Math.max(4, bar.centerX - 50))}, ${Math.max(padding.top, bar.barY - 30)})">
                   <rect width="100" height="26" rx="6" fill="#ffffff" stroke="#e2e8f0" />
                   <text x="10" y="17" fill="var(--amount-color)" font-size="11px" font-weight="700">${escapeHtml(money(bar.amount))}</text>
@@ -3729,7 +3776,9 @@ function renderAnalyticsLineChart(buckets, { forPrint = false } = {}) {
             <g class="analytics-line-point-group">
               <circle class="analytics-line-point" cx="${point.x.toFixed(1)}" cy="${point.y.toFixed(1)}" r="3.5" fill="${forPrint ? printColor : "var(--amount-color)"}" stroke="#ffffff" stroke-width="1.5" />
               ${index % labelStep === 0 ? `<text x="${point.x.toFixed(1)}" y="${height - 16}" text-anchor="middle" fill="#64748b" font-size="11px" font-weight="500">${escapeHtml(point.label)}</text>` : ""}
-              ${forPrint ? "" : `
+              ${forPrint
+                ? (index % labelStep === 0 && point.amount > 0 ? `<text x="${point.x.toFixed(1)}" y="${Math.max(padding.top + 10, point.y - 8).toFixed(1)}" text-anchor="middle" fill="${printColor}" font-size="10.5px" font-weight="700">${escapeHtml(money(point.amount))}</text>` : "")
+                : `
                 <g class="analytics-line-tooltip" transform="translate(${Math.min(width - 100, Math.max(4, point.x - 50))}, ${Math.max(padding.top, point.y - 34)})">
                   <rect width="100" height="26" rx="6" fill="#ffffff" stroke="#e2e8f0" />
                   <text x="10" y="17" fill="var(--amount-color)" font-size="11px" font-weight="700">${escapeHtml(money(point.amount))}</text>

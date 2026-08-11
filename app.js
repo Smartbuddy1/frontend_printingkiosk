@@ -3572,13 +3572,7 @@ function completeDemoPayment() {
   state.paymentStatusMessage = "Payment successful. Starting print...";
   state.paymentError = "";
   state.paymentBusy = false;
-  state.step = 3;
-  state.printProgress = 0;
-  state.printError = "";
-  state.printStatusMessage = "";
-  state.printJob = null;
-  render();
-  startLocalPrintJob();
+  beginPrintFlowAfterPayment();
 }
 
 function demoPaymentUrl(details = priceDetails()) {
@@ -5203,13 +5197,7 @@ async function checkKioskPaymentStatus({ rerender = true } = {}) {
     state.paymentStatusMessage = "Payment received on mobile. Starting print...";
     state.paymentError = "";
     state.paymentBusy = false;
-    state.step = 3;
-    state.printProgress = 0;
-    state.printError = "";
-    state.printStatusMessage = "";
-    state.printJob = null;
-    render();
-    startLocalPrintJob();
+    beginPrintFlowAfterPayment();
     return true;
   }
 
@@ -5385,13 +5373,7 @@ async function verifyRazorpayPayment(response, { updateKiosk = true, jobId = cur
     paymentId: response.razorpay_payment_id,
     orderId: response.razorpay_order_id
   };
-  state.step = 3;
-  state.printProgress = 0;
-  state.printError = "";
-  state.printStatusMessage = "";
-  state.printJob = null;
-  render();
-  startLocalPrintJob();
+  beginPrintFlowAfterPayment();
   return payload;
 }
 
@@ -5479,28 +5461,60 @@ async function startRazorpayPayment() {
   }
 }
 
-// Stages the thank-you screen through payment_done -> printing -> thankyou
-// (renderThankYouPaymentDone / renderThankYouPrinting / renderThankYouFinal)
-// instead of jumping straight to the final screen, so the customer sees the
-// payment-success checkmark and the printing animation before "Thank You".
+// Called once the real print job (startLocalPrintJob) has resolved
+// successfully. If beginPrintFlowAfterPayment() already put us on the
+// "printing" phase before the real job started, that phase was already on
+// screen for the job's entire real duration - so jump straight to Thank You
+// instead of tacking on another artificial wait. Callers that still start
+// this from step 3 (retry-print, free print - untouched, unchanged) get the
+// original brief printing-phase transition before Thank You.
 function beginThankYouPhaseSequence() {
-  state.thankYouPhase = "payment_done";
+  if (state.step === 4 && state.thankYouPhase === "printing") {
+    state.thankYouPhase = "thankyou";
+    state.thankYouSecondsLeft = THANK_YOU_HOME_REDIRECT_SECONDS;
+    render();
+    return;
+  }
+
+  state.thankYouPhase = "printing";
   state.thankYouSecondsLeft = null;
   state.step = 4;
   render();
 
   setTimeout(() => {
     if (state.step !== 4) return;
+    state.thankYouPhase = "thankyou";
+    state.thankYouSecondsLeft = THANK_YOU_HOME_REDIRECT_SECONDS;
+    render();
+  }, 2000);
+}
+
+// Runs the instant a real payment succeeds: shows the payment-success
+// checkmark briefly (real, right when it happens - not replayed later), then
+// moves to the printing phase and starts the real print job. The printing
+// screen then stays up for exactly as long as startLocalPrintJob() actually
+// takes (it live-updates state.printStatusMessage/printProgress via its own
+// render() calls while it runs) and only advances past it once that real job
+// resolves. If the printer isn't ready, jams, goes offline, or the job
+// otherwise fails, startLocalPrintJob()'s existing failure handling (fully
+// unchanged) drops back to step 3's retry/failure screen instead of ever
+// reaching "printing"/"thankyou".
+function beginPrintFlowAfterPayment() {
+  state.thankYouPhase = "payment_done";
+  state.thankYouSecondsLeft = null;
+  state.step = 4;
+  state.printProgress = 0;
+  state.printError = "";
+  state.printStatusMessage = "";
+  state.printJob = null;
+  render();
+
+  setTimeout(() => {
+    if (state.step !== 4 || state.thankYouPhase !== "payment_done") return;
     state.thankYouPhase = "printing";
     render();
-
-    setTimeout(() => {
-      if (state.step !== 4) return;
-      state.thankYouPhase = "thankyou";
-      state.thankYouSecondsLeft = THANK_YOU_HOME_REDIRECT_SECONDS;
-      render();
-    }, 4000);
-  }, 2000);
+    startLocalPrintJob();
+  }, 1200);
 }
 
 async function startFreePrintJob() {
@@ -6166,7 +6180,15 @@ function tickPrinterOfflineWatchdog() {
     return;
   }
 
-  const criticallyOffline = state.step === 3 && printerHealthCriticalError();
+  // Covers step 3 (QR/live-tracking) plus the payment_done/printing part of
+  // step 4 - beginPrintFlowAfterPayment() now moves paid jobs into step 4
+  // right after payment, before/while the real print job runs, so this watch
+  // window has to follow it there or a printer going offline in that exact
+  // window would go undetected. The final "thankyou" phase is excluded since
+  // printing has genuinely already succeeded by then.
+  const inActivePrintWindow = state.step === 3
+    || (state.step === 4 && (state.thankYouPhase === "payment_done" || state.thankYouPhase === "printing"));
+  const criticallyOffline = inActivePrintWindow && printerHealthCriticalError();
 
   if (!criticallyOffline) {
     state.printerHealthIssueSince = null;
@@ -6275,11 +6297,16 @@ function renderAdminShell() {
       </div>
     `;
   }
+  // Rendered before the topbar on purpose, same as Super Admin's renderShell():
+  // renderAdmin() calls renderAdminHeader() internally, which sets
+  // state.currentAdminHeaderTitle as a side effect - renderAdminTopbar() below
+  // then picks that up.
+  const mainHtml = renderAdmin();
   return `
     <div class="app-shell admin-shell ${languageClass}" lang="${escapeHtml(state.adminLanguage)}">
       ${renderAdminTopbar()}
       <main class="main admin-screen">
-        ${renderAdmin()}
+        ${mainHtml}
       </main>
     </div>
   `;
@@ -6535,6 +6562,10 @@ function renderAdminTopbar() {
     <header class="topbar admin-topbar">
       <div class="brand">
         <div class="brand-logo-full-card"><img class="brand-logo-full" src="./assets/aarya-innovtech-logo-full.png" alt="Aarya Innovtech Pvt. Ltd." draggable="false" data-no-visual-search /></div>
+      </div>
+      <div class="topbar-page-title">
+        <h1>${state.currentAdminHeaderTitle || ""}</h1>
+        ${state.currentAdminHeaderSubtitle ? `<p>${state.currentAdminHeaderSubtitle}</p>` : ""}
       </div>
       <div class="topbar-actions">
 
@@ -8381,14 +8412,35 @@ function renderThankYouPaymentDone() {
     </div>`;
 }
 
+// Real, currently-polled printer status (state.printerHealth is refreshed in
+// the background by startPrinterStatusPolling() the whole time) with the
+// admin-only emoji prefix stripped, for the customer-facing thank-you screen.
+function customerLivePrinterStatusLabel() {
+  const label = String(printerHealthLabel() || "").replace(/^\S+\s*/, "").trim();
+  return label || "Printer Ready";
+}
+
 function renderThankYouPrinting() {
+  // While startLocalPrintJob() is still actually running, printProgress sits
+  // below 5 and printStatusMessage carries its real, live text ("Sending
+  // document to printer...", "Printing document 1 of 2...", etc.) - this
+  // screen just displays whatever that real job is doing right now. Once it
+  // hits 5 (job resolved), switch to a "come collect it" framing instead of
+  // still claiming to be sending/printing.
+  const stillPrinting = Number(state.printProgress || 0) < 5;
+  const liveStatus = state.printStatusMessage || customerLivePrinterStatusLabel();
+  const documentSent = Number(state.printProgress || 0) >= 2;
+  const heading = stillPrinting ? "Printing Your Document" : "Collecting Your Document";
+  const subtitle = stillPrinting
+    ? "Please wait while the kiosk sends your document to the printer."
+    : "Please collect your pages from the printer tray.";
   return `
     <div class="tq-phase tq-phase-in tq-printing-scene">
       <div class="tq-printing-full">
         <div class="tq-printing-copy">
-          <span class="tq-printing-eyebrow">Print job in progress</span>
-          <h1 class="tq-title">Printing Your Document</h1>
-          <p class="tq-subtitle">Please stay near the kiosk while your pages are printing.</p>
+          <span class="tq-printing-eyebrow">${stillPrinting ? "Print job in progress" : "Print job complete"}</span>
+          <h1 class="tq-title">${escapeHtml(heading)}</h1>
+          <p class="tq-subtitle">${escapeHtml(subtitle)}</p>
         </div>
         <div class="tq-printer-stage" aria-hidden="true">
           <div class="tq-paper-stack tq-paper-stack-left">
@@ -8420,12 +8472,12 @@ function renderThankYouPrinting() {
         </div>
         <div class="tq-print-progress">
           <div class="tq-progress-bar"><div class="tq-progress-fill"></div></div>
-          <span class="tq-progress-label">Sending pages to printer...</span>
+          <span class="tq-progress-label">${escapeHtml(liveStatus)}</span>
         </div>
         <div class="tq-printing-status">
           <span>Payment verified</span>
-          <span>Document queued</span>
-          <span>Printer active</span>
+          <span>${documentSent ? "Document sent" : "Sending document"}</span>
+          <span>${escapeHtml(liveStatus)}</span>
         </div>
       </div>
       <div class="tq-printer-anim">
@@ -8445,12 +8497,12 @@ function renderThankYouPrinting() {
         </div>
       </div>
       <div class="tq-message">
-        <h1 class="tq-title">Printing Your Document</h1>
-        <p class="tq-subtitle">Please don't leave — your document is being printed now</p>
+        <h1 class="tq-title">${escapeHtml(heading)}</h1>
+        <p class="tq-subtitle">${escapeHtml(subtitle)}</p>
       </div>
       <div class="tq-print-progress">
         <div class="tq-progress-bar"><div class="tq-progress-fill"></div></div>
-        <span class="tq-progress-label">Sending to printer…</span>
+        <span class="tq-progress-label">${escapeHtml(liveStatus)}</span>
       </div>
     </div>`;
 }
@@ -8623,21 +8675,22 @@ function renderLogin() {
 }
 
 function adminNavGroups() {
+  // One flat group under a single "MAIN MENU" label, same as Super Admin's
+  // sidebar (super-admin.js pageGroups) - two separate group labels
+  // ("Operate"/"Support") cost extra vertical space for no real benefit and
+  // made this sidebar taller than Super Admin's for the same item count,
+  // pushing the first few items out of view without scrolling.
   return [
     {
-      label: "Operate",
+      label: "MAIN MENU",
       pages: [
         { id: "dashboard", label: "Dashboard", icon: "dashboard" },
         { id: "projects", label: "Projects", icon: "hierarchy" },
         { id: "kiosks", label: "Kiosks", icon: "kiosks" },
+        { id: "pricing", label: "Pricing", icon: "pricing" },
         { id: "revenue", label: "Report", icon: "payments" },
         { id: "analytics", label: "Analytics", icon: "activity" },
-        { id: "alerts", label: "Alerts", icon: "alert" }
-      ]
-    },
-    {
-      label: "Support",
-      pages: [
+        { id: "alerts", label: "Alerts", icon: "alert" },
         { id: "system", label: "System Status", icon: "system" }
       ]
     }
@@ -8649,11 +8702,25 @@ function adminPages() {
 }
 
 function renderAdminHeader(title, subtitle, action = "") {
+  const isDashboard = title === "Dashboard";
+  const displayTitle = isDashboard
+    ? `Welcome to <span style="color: #2563eb;">Dashboard</span>`
+    : escapeHtml(title);
+  const displaySub = isDashboard
+    ? "Hello Admin, here is your system overview."
+    : escapeHtml(subtitle);
+
+  // Topbar shows a short, plain page label (picked up by renderAdminTopbar())
+  // kept separate from this page-body heading, which keeps its own full
+  // title/subtitle/action - mirrors Super Admin's renderHeader() exactly.
+  state.currentAdminHeaderTitle = escapeHtml(title);
+  state.currentAdminHeaderSubtitle = "";
+
   return `
     <div class="admin-header">
       <div>
-        <h1>${title}</h1>
-        <p>${subtitle}</p>
+        <h1 class="page-title">${displayTitle}</h1>
+        <p class="page-subtitle">${displaySub}</p>
       </div>
       ${action ? `<div class="flow-actions">${action}</div>` : ""}
     </div>
@@ -8661,7 +8728,7 @@ function renderAdminHeader(title, subtitle, action = "") {
 }
 
 function renderAdminPage() {
-  if (["services", "service-editor", "pricing"].includes(state.adminPage)) {
+  if (["services", "service-editor"].includes(state.adminPage)) {
     state.adminPage = "dashboard";
   }
   const page = state.adminPage;
@@ -8673,6 +8740,7 @@ function renderAdminPage() {
   if (page === "revenue") return renderRevenue();
   if (page === "analytics") return renderAdminAnalytics();
   if (page === "kiosks") return renderKiosks();
+  if (page === "pricing") return renderPricing();
   if (page === "refunds") return renderRefunds();
   if (page === "alerts") return renderAlerts();
   return renderDashboard();
@@ -9596,11 +9664,311 @@ function dashboardMetrics() {
   ];
 }
 
+// ── Dashboard chart/list components ─────────────────────────────────────
+// Mirror Super Admin's dashboard row layout/markup exactly (same classes,
+// same SVG chart construction) so both admin panels look consistent, scoped
+// down to this kiosk admin's own assigned projects/kiosks/jobs instead of
+// the whole network.
+function adminProjectForKiosk(kioskId = "") {
+  const kiosk = (state.adminData.kiosks || []).find((item) => String(item.kioskId || "").toUpperCase() === String(kioskId || "").toUpperCase());
+  return (state.adminData.projects || []).find((project) => project.projectId === kiosk?.projectId) || null;
+}
+
+function render7DayRevenueChart(series = []) {
+  const last7 = series.slice(-7);
+  while (last7.length < 7) {
+    const d = new Date();
+    d.setDate(d.getDate() - (6 - last7.length));
+    const label = d.toLocaleDateString("en-US", { month: "short", day: "2-digit" });
+    last7.unshift({ label, value: 0 });
+  }
+
+  const maxValue = Math.max(10, ...last7.map(i => i.value));
+  const height = 180;
+  const width = 450;
+  const barWidth = 32;
+  const gap = (width - 40 - (7 * barWidth)) / 6;
+
+  return `
+    <div style="position: relative; width: 100%; overflow-x: auto;">
+      <svg viewBox="0 0 ${width} ${height + 40}" style="width: 100%; height: auto; font-family: var(--font-sans);">
+        <line x1="30" y1="30" x2="${width - 10}" y2="30" stroke="#f1f5f9" stroke-dasharray="3,3" />
+        <line x1="30" y1="80" x2="${width - 10}" y2="80" stroke="#f1f5f9" stroke-dasharray="3,3" />
+        <line x1="30" y1="130" x2="${width - 10}" y2="130" stroke="#f1f5f9" stroke-dasharray="3,3" />
+        <line x1="30" y1="170" x2="${width - 10}" y2="170" stroke="#cbd5e1" />
+
+        <text x="10" y="35" font-size="10" fill="#94a3b8">₹${maxValue}</text>
+        <text x="10" y="105" font-size="10" fill="#94a3b8">₹${Math.round(maxValue / 2)}</text>
+        <text x="10" y="174" font-size="10" fill="#94a3b8">₹0</text>
+
+        ${last7.map((item, idx) => {
+          const x = 40 + idx * (barWidth + gap);
+          const barH = (item.value / maxValue) * 130;
+          const y = 170 - barH;
+          return `
+            <g class="revenue-bar-group">
+              ${item.value > 0 ? `<text x="${x + barWidth/2}" y="${y - 6}" font-size="11" font-weight="700" fill="#2563eb" text-anchor="middle">₹${item.value}</text>` : `<text x="${x + barWidth/2}" y="162" font-size="10" fill="#94a3b8" text-anchor="middle">₹0</text>`}
+              <rect x="${x}" y="${y}" width="${barWidth}" height="${Math.max(4, barH)}" rx="6" fill="url(#adminBluePurpleGrad)" />
+              <text x="${x + barWidth/2}" y="195" font-size="11" fill="#64748b" text-anchor="middle">${escapeHtml(item.label)}</text>
+            </g>
+          `;
+        }).join("")}
+        <defs>
+          <linearGradient id="adminBluePurpleGrad" x1="0" y1="0" x2="0" y2="1">
+            <stop offset="0%" stop-color="#6366f1" />
+            <stop offset="100%" stop-color="#8b5cf6" />
+          </linearGradient>
+        </defs>
+      </svg>
+    </div>
+  `;
+}
+
+function renderKioskStatusDonutChart(counts = {}) {
+  const {
+    total = 1,
+    normal = 0,
+    offline = 1,
+    paper = 0,
+    tonerQueue = 0
+  } = counts;
+
+  const totalCalc = Math.max(1, total);
+  const C = 238.76;
+
+  const segments = [
+    { label: "Normal", val: normal, color: "#10b981" },
+    { label: "Offline", val: offline, color: "#ef4444" },
+    { label: "Paper/Jam", val: paper, color: "#f59e0b" },
+    { label: "Toner/Queue", val: tonerQueue, color: "#3b82f6" }
+  ].filter(s => s.val > 0);
+
+  let currentOffset = 0;
+  const circlesHTML = segments.length ? segments.map(seg => {
+    const len = (seg.val / totalCalc) * C;
+    const dashArray = `${len} ${C - len}`;
+    const dashOffset = -currentOffset;
+    currentOffset += len;
+    return `<circle cx="50" cy="50" r="38" fill="none" stroke="${seg.color}" stroke-width="12" stroke-dasharray="${dashArray}" stroke-dashoffset="${dashOffset}" />`;
+  }).join("") : `<circle cx="50" cy="50" r="38" fill="none" stroke="#e2e8f0" stroke-width="12" />`;
+
+  return `
+    <div style="display: flex; flex-direction: column; align-items: center; justify-content: center; width: 100%;">
+      <div style="position: relative; width: 170px; height: 170px; margin: 12px 0;">
+        <svg viewBox="0 0 100 100" style="width: 100%; height: 100%; transform: rotate(-90deg);">
+          <circle cx="50" cy="50" r="38" fill="none" stroke="#f1f5f9" stroke-width="12" />
+          ${circlesHTML}
+        </svg>
+        <div style="position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; text-align: center;">
+          <strong style="font-size: 24px; font-weight: 800; color: #0f172a; line-height: 1;">${total}</strong>
+          <span style="font-size: 11px; color: #64748b; font-weight: 600; margin-top: 3px;">Total Kiosks</span>
+        </div>
+      </div>
+      <div class="status-pills-row" style="display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; width: 100%; margin-top: 16px;">
+        <div class="status-pill-item active">
+          <span>● Normal</span>
+          <strong>${normal}</strong>
+        </div>
+        <div class="status-pill-item inactive">
+          <span>● Offline</span>
+          <strong>${offline}</strong>
+        </div>
+        <div class="status-pill-item maint">
+          <span>● Paper/Jam</span>
+          <strong>${paper}</strong>
+        </div>
+        <div class="status-pill-item paper-low">
+          <span>● Toner/Queue</span>
+          <strong>${tonerQueue}</strong>
+        </div>
+      </div>
+    </div>
+  `;
+}
+
+function renderTopRevenueProjectsChart() {
+  const dbProjects = state.adminData.projects || [];
+  const dbJobs = state.adminData.jobs || [];
+
+  const projectRevenueMap = {};
+  dbJobs.forEach((job) => {
+    if (job.paymentStatus !== "Payment Success") return;
+    const project = adminProjectForKiosk(job.kioskId);
+    if (!project) return;
+    projectRevenueMap[project.projectId] = (projectRevenueMap[project.projectId] || 0) + (Number(job.amount) || 0);
+  });
+
+  const list = dbProjects
+    .map((p) => ({ name: p.name || p.projectId || "Project", val: projectRevenueMap[p.projectId] || 0 }))
+    .sort((a, b) => b.val - a.val)
+    .slice(0, 5);
+
+  if (!list.length) {
+    return `<div class="empty-note">No projects yet. Create a project to see revenue here.</div>`;
+  }
+
+  const maxVal = Math.max(400, ...list.map((p) => p.val || 0));
+
+  return `
+    <div style="width: 100%; margin-top: 12px;">
+      <svg viewBox="0 0 460 210" style="width: 100%; height: auto; font-family: var(--font-sans, system-ui, sans-serif);">
+        ${[0, 1, 2, 3, 4, 5].map((i) => {
+          const y = 25 + i * 28;
+          return `<line x1="120" y1="${y}" x2="430" y2="${y}" stroke="#e2e8f0" stroke-dasharray="3,3" />`;
+        }).join("")}
+
+        <line x1="120" y1="20" x2="120" y2="168" stroke="#cbd5e1" />
+
+        ${list.map((proj, idx) => {
+          const y = 30 + idx * 28;
+          const barW = Math.max(12, ((proj.val || 0) / maxVal) * 300);
+          return `
+            <g class="project-bar-group">
+              <text x="110" y="${y + 13}" font-size="11" font-weight="500" fill="#475569" text-anchor="end">${escapeHtml(proj.name)}</text>
+              <rect x="120" y="${y}" width="${barW}" height="18" rx="9" fill="url(#adminBlueBarGradient)" />
+            </g>
+          `;
+        }).join("")}
+
+        <line x1="120" y1="168" x2="430" y2="168" stroke="#cbd5e1" />
+        <text x="120" y="188" font-size="10" font-weight="600" fill="#94a3b8" text-anchor="middle">0</text>
+        <text x="197.5" y="188" font-size="10" font-weight="600" fill="#94a3b8" text-anchor="middle">100</text>
+        <text x="275" y="188" font-size="10" font-weight="600" fill="#94a3b8" text-anchor="middle">200</text>
+        <text x="352.5" y="188" font-size="10" font-weight="600" fill="#94a3b8" text-anchor="middle">300</text>
+        <text x="430" y="188" font-size="10" font-weight="600" fill="#94a3b8" text-anchor="middle">400</text>
+
+        <defs>
+          <linearGradient id="adminBlueBarGradient" x1="0" y1="0" x2="1" y2="0">
+            <stop offset="0%" stop-color="#38bdf8" />
+            <stop offset="100%" stop-color="#2563eb" />
+          </linearGradient>
+        </defs>
+      </svg>
+    </div>
+  `;
+}
+
+function renderRecentActivityList() {
+  const jobs = state.adminData.jobs || [];
+  const sampleJobs = jobs.length ? [...jobs].reverse().slice(0, 4).map((job) => {
+    const project = adminProjectForKiosk(job.kioskId);
+    return {
+      kioskId: job.kioskId || "Unknown Kiosk",
+      location: project?.name || undefined,
+      amount: job.amount,
+      time: formatDateTime(job.createdAt),
+      status: /failed/i.test(job.printStatus || "") ? "failed" : "success"
+    };
+  }) : [];
+
+  if (!sampleJobs.length) {
+    return `<div class="empty-note">No print activity yet for your assigned kiosks.</div>`;
+  }
+
+  return `
+    <div class="activity-list">
+      ${sampleJobs.map((job) => `
+        <div class="activity-item">
+          <div class="activity-icon ${job.status === 'failed' ? 'red' : 'green'}">
+            ${uiIcon(job.status === 'failed' ? 'alert' : 'printer', 18)}
+          </div>
+          <div class="activity-content">
+            <span class="activity-title">${escapeHtml(job.kioskId || "Print Job")}</span>
+            <span class="activity-subtitle">${escapeHtml(job.location || "Active Kiosk")}</span>
+          </div>
+          <div class="activity-meta">
+            <span class="activity-amount">₹${job.amount || 0}</span>
+            <span class="activity-time">${escapeHtml(job.time || "Just now")}</span>
+          </div>
+        </div>
+      `).join("")}
+    </div>
+  `;
+}
+
+function renderRecentMaintenanceLogsList() {
+  const alertLogs = state.adminData.alertLogs || [];
+  const sampleLogs = alertLogs.length ? [...alertLogs].reverse().slice(0, 4).map((log) => ({
+    title: log.title || "Kiosk Alert",
+    tech: log.detail || "No additional detail recorded",
+    date: formatDateTime(log.createdAt),
+    status: log.status === "resolved" ? "Resolved" : "Active",
+    resolved: log.status === "resolved"
+  })) : [];
+
+  if (!sampleLogs.length) {
+    return `<div class="empty-note">No maintenance logs yet for your assigned kiosks.</div>`;
+  }
+
+  return `
+    <div class="activity-list">
+      ${sampleLogs.map((log) => `
+        <div class="activity-item">
+          <div class="activity-icon blue">
+            ${uiIcon('system', 18)}
+          </div>
+          <div class="activity-content">
+            <span class="activity-title">${escapeHtml(log.title)}</span>
+            <span class="activity-subtitle">${escapeHtml(log.tech)}</span>
+          </div>
+          <div class="activity-meta">
+            <span style="font-size: 11px; font-weight: 700; color: ${log.resolved ? '#10b981' : '#dc2626'}; background: ${log.resolved ? '#e6f4ea' : '#fee2e2'}; padding: 2px 8px; border-radius: 10px;">${escapeHtml(log.status)}</span>
+            <span class="activity-time">${escapeHtml(log.date)}</span>
+          </div>
+        </div>
+      `).join("")}
+    </div>
+  `;
+}
+
+function renderPaperTonerAlertsCard(alerts = []) {
+  if (!alerts.length) {
+    return `
+      <div class="empty-paper-alerts">
+        <div class="empty-paper-icon">
+          ${uiIcon("printer", 24)}
+        </div>
+        <h3>All Paper & Toner Levels Normal</h3>
+        <p>No low paper, toner empty, or door jam alerts detected across your assigned printing kiosks.</p>
+      </div>
+    `;
+  }
+
+  return `
+    <div class="activity-list">
+      ${alerts.map(a => `
+        <div class="activity-item">
+          <div class="activity-icon red">
+            ${uiIcon('alert', 18)}
+          </div>
+          <div class="activity-content">
+            <span class="activity-title">${escapeHtml(a.title || "Paper Alert")}</span>
+            <span class="activity-subtitle">${escapeHtml(a.detail || "Check kiosk printer tray")}</span>
+          </div>
+          <div class="activity-meta">
+            <span style="font-size: 11px; font-weight: 700; color: #dc2626; background: #fee2e2; padding: 2px 8px; border-radius: 10px;">Open</span>
+          </div>
+        </div>
+      `).join("")}
+    </div>
+  `;
+}
+
 function renderDashboard() {
   const failedJobs = liveJobs().map(jobRow).filter((job) => job.print.includes("Failed"));
   const queuedJobs = liveJobs().map(jobRow).filter((job) => /queue|printing|pending/i.test(job.print));
   const alerts = adminOperationalAlerts();
   const canManage = kioskAdminCanManageSetup();
+
+  const paperAlerts = alerts.filter((alert) => alert.category === "paper").length;
+  const tonerAlerts = alerts.filter((alert) => alert.category === "toner").length;
+  const queueAlerts = alerts.filter((alert) => alert.category === "queue" || alert.category === "service").length;
+  const affectedKiosks = new Set(alerts.map((alert) => alert.kioskId).filter(Boolean)).size;
+  const totalKiosksCount = (state.adminData.kiosks || []).length;
+  const activeKiosksCount = (state.adminData.kiosks || []).filter((kiosk) => kiosk.status === "online").length;
+  const inactiveKiosksCount = Math.max(0, totalKiosksCount - activeKiosksCount);
+  const normalKiosksCount = Math.max(0, activeKiosksCount - affectedKiosks);
+  const series = revenueSeries(7).map((item) => ({ label: item.label, value: item.amount }));
 
   return `
     ${renderAdminHeader("Dashboard", "Hello Admin, here is your system overview.")}
@@ -9612,16 +9980,93 @@ function renderDashboard() {
         const isNegative = tone === 'red';
         return `
           <div class="metric-card">
-            <span>${escapeHtml(label)}</span>
-            <strong>${escapeHtml(value)}</strong>
+            <span class="metric-title">${escapeHtml(label)}</span>
+            <strong class="metric-value">${escapeHtml(value)}</strong>
             <span class="trend-pill ${isNegative ? 'negative' : ''}">${escapeHtml(detail)}</span>
             <div class="metric-icon-box" style="background: ${bg};">${uiIcon(icon, 24)}</div>
           </div>
         `;
       }).join("")}
     </div>
+
+    <!-- Row 1: 7-Day Revenue Chart & Kiosk Status Donut Chart -->
+    <div class="dashboard-two-col">
+      <div class="module-card">
+        <div class="dashboard-card-header">
+          <div>
+            <h2>7-Day Daily Revenue (₹)</h2>
+            <p>Daily collection trend over the last 7 days</p>
+          </div>
+        </div>
+        ${render7DayRevenueChart(series)}
+      </div>
+
+      <div class="module-card">
+        <div class="dashboard-card-header">
+          <div>
+            <h2>Kiosk Alert & Status Distribution</h2>
+            <p>Live hardware alert and status breakdown across your assigned kiosks</p>
+          </div>
+        </div>
+        ${renderKioskStatusDonutChart({
+          total: totalKiosksCount,
+          normal: normalKiosksCount,
+          offline: inactiveKiosksCount,
+          paper: paperAlerts,
+          tonerQueue: tonerAlerts + queueAlerts
+        })}
+      </div>
+    </div>
+
+    <!-- Row 2: Top Revenue Projects & Recent Activity -->
+    <div class="dashboard-two-col">
+      <div class="module-card">
+        <div class="dashboard-card-header">
+          <div>
+            <h2>Top Revenue Projects</h2>
+            <p>Project-wise printing revenue breakdown</p>
+          </div>
+        </div>
+        ${renderTopRevenueProjectsChart()}
+      </div>
+
+      <div class="module-card">
+        <div class="dashboard-card-header">
+          <div>
+            <h2>Recent Activity</h2>
+            <p>Live transaction activity feed</p>
+          </div>
+        </div>
+        ${renderRecentActivityList()}
+      </div>
+    </div>
+
+    <!-- Row 3: Recent Logs & Paper Toner Alerts -->
+    <div class="dashboard-two-col">
+      <div class="module-card">
+        <div class="dashboard-card-header">
+          <div>
+            <h2>Recent Logs</h2>
+            <p>Maintenance and hardware log updates</p>
+          </div>
+          <button class="dashboard-card-action" data-admin-page="alerts">View All</button>
+        </div>
+        ${renderRecentMaintenanceLogsList()}
+      </div>
+
+      <div class="module-card">
+        <div class="dashboard-card-header">
+          <div>
+            <h2>Paper & Toner Alerts</h2>
+            <p>Live paper tray, toner, and jam hardware checks</p>
+          </div>
+          <button class="dashboard-card-action" data-admin-page="kiosks">View Kiosks</button>
+        </div>
+        ${renderPaperTonerAlertsCard(alerts)}
+      </div>
+    </div>
+
     <div class="module-grid dashboard-modules">
-      ${renderRevenuePanel(true)}
       <div class="module-card dashboard-panel">
         <div class="module-card-title"><span>${uiIcon("system", 20)}</span><h2>Failure Safe Queue</h2></div>
         <div class="health-list">
@@ -9721,6 +10166,8 @@ function renderRevenueFilterCard() {
           </label>
         `}
         <button class="primary-button revenue-apply-filter-btn" onclick="window.applyRevenueFilter()">${uiIcon("filter", 16)} Apply Filter</button>
+        ${(state.reportTab || "revenue") === "revenue" ? `<button class="primary-button" onclick="window.downloadRevenueReportPDF()">${uiIcon("download", 16)} Revenue PDF</button>` : ""}
+        ${(state.reportTab || "revenue") === "form" ? `<button class="secondary-button" onclick="window.downloadFormPrintReportPDF()">${uiIcon("download", 16)} Form Print PDF</button>` : ""}
       </div>
     </div>
   `;
@@ -9745,30 +10192,29 @@ function renderRevenue() {
   const currentTab = state.reportTab || "revenue";
 
   return `
-    ${renderAdminHeader("Report", "", "")}
+    ${renderAdminHeader("Report", "Transaction logs, filters, and payment reconciliation for your assigned kiosks.", "")}
     ${adminNotice()}
 
-    <div style="display: flex; gap: 16px; margin-bottom: 24px; border-bottom: 1px solid var(--line); padding-bottom: 0;">
-      <button class="nav-button" style="background: none; border: none; padding: 12px 24px; font-weight: 600; font-size: 1.1em; color: ${currentTab === 'revenue' ? 'var(--primary)' : 'var(--muted)'}; border-bottom: ${currentTab === 'revenue' ? '3px solid var(--primary)' : '3px solid transparent'}; cursor: pointer;" onclick="window.setReportTab('revenue')">Revenue Report</button>
-      <button class="nav-button" style="background: none; border: none; padding: 12px 24px; font-weight: 600; font-size: 1.1em; color: ${currentTab === 'form' ? 'var(--primary)' : 'var(--muted)'}; border-bottom: ${currentTab === 'form' ? '3px solid var(--primary)' : '3px solid transparent'}; cursor: pointer;" onclick="window.setReportTab('form')">Form Report</button>
+    <!-- Clean Tab Bar Navigation (Same as Analytics) -->
+    <div style="display: flex; align-items: center; gap: 32px; border-bottom: 2px solid #e2e8f0; margin-top: 8px; margin-bottom: 24px; padding-bottom: 0;">
+      <button class="analytics-tab-item ${currentTab !== 'form' ? 'active' : ''}" onclick="window.setReportTab('revenue')" style="background: transparent; border: none; padding: 12px 4px; font-family: var(--font-serif, 'Playfair Display', Georgia, serif); font-size: 16.5px; font-weight: 700; cursor: pointer; color: ${currentTab !== 'form' ? '#3b82f6' : '#0f172a'}; border-bottom: ${currentTab !== 'form' ? '3px solid #3b82f6' : '3px solid transparent'}; transition: all 0.2s ease; margin-bottom: -2px;">
+        Revenue Report
+      </button>
+      <button class="analytics-tab-item ${currentTab === 'form' ? 'active' : ''}" onclick="window.setReportTab('form')" style="background: transparent; border: none; padding: 12px 4px; font-family: var(--font-serif, 'Playfair Display', Georgia, serif); font-size: 16.5px; font-weight: 700; cursor: pointer; color: ${currentTab === 'form' ? '#3b82f6' : '#0f172a'}; border-bottom: ${currentTab === 'form' ? '3px solid #3b82f6' : '3px solid transparent'}; transition: all 0.2s ease; margin-bottom: -2px;">
+        Form Report
+      </button>
     </div>
 
     ${renderRevenueFilterCard()}
 
-    <div style="display: flex; gap: 8px; margin: -12px 0 24px; justify-content: flex-end;">
-      ${currentTab === 'revenue' ? `<button class="primary-button" onclick="window.downloadRevenueReportPDF()">${uiIcon("download", 16)} Revenue PDF</button>` : ''}
-      ${currentTab === 'form' ? `<button class="secondary-button" onclick="window.downloadFormPrintReportPDF()">${uiIcon("download", 16)} Form Print PDF</button>` : ''}
-    </div>
 
     ${currentTab === 'revenue' ? `
       ${renderTransactionLog()}
     ` : ''}
 
     ${currentTab === 'form' ? `
-      <div class="revenue-desk-split" style="display: grid; grid-template-columns: 1fr; gap: 24px; align-items: start;">
-        <div class="revenue-desk-section table-section module-card" id="form-selling-report-container">
-          ${renderFormSellingTable()}
-        </div>
+      <div class="revenue-desk-section table-section module-card" id="form-selling-report-container">
+        ${renderFormSellingTable()}
       </div>
     ` : ''}
   `;
@@ -10194,7 +10640,6 @@ function renderAdminAnalytics() {
 
   const tab = state.adminAnalyticsTab === "form" ? "form" : "revenue";
   const seriesFn = tab === "form" ? formSellingBucketedSeries : adminAnalyticsBucketedSeries;
-  const tabLabel = tab === "form" ? "Form Sales" : "Revenue";
 
   const monthlyBuckets = seriesFn("monthly");
   const totalAmount = monthlyBuckets.reduce((sum, bucket) => sum + bucket.amount, 0);
@@ -10202,17 +10647,40 @@ function renderAdminAnalytics() {
 
   return `
     ${renderAdminHeader("Graphical Analytics", "", `
-      <button class="secondary-button" style="border-radius: 20px; padding: 8px 16px; display: inline-flex; align-items: center; gap: 8px; font-weight: 500;" ${hasData ? "" : "disabled"} onclick="window.print()">${uiIcon("printer", 16)} Print</button>
-      <button class="primary-button" style="border-radius: 20px; padding: 8px 16px; display: inline-flex; align-items: center; gap: 8px; font-weight: 500; background: #6366f1; border: none; color: white;" ${hasData ? "" : "disabled"} onclick="window.downloadAdminAnalyticsPDF()">${uiIcon("download", 16)} Download PDF</button>
+      <button class="secondary-button" style="border-radius: 20px; padding: 9px 20px; display: inline-flex; align-items: center; gap: 8px; font-weight: 600; background: #ffffff; border: 1px solid #cbd5e1; color: #334155; font-size: 13.5px; cursor: pointer;" ${hasData ? "" : "disabled"} onclick="window.print()">${uiIcon("printer", 16)} Print</button>
+      <button class="primary-button" style="border-radius: 20px; padding: 9px 20px; display: inline-flex; align-items: center; gap: 8px; font-weight: 600; background: linear-gradient(135deg, #6366f1 0%, #8b5cf6 100%); border: none; color: white; font-size: 13.5px; cursor: pointer; box-shadow: 0 4px 14px rgba(99, 102, 241, 0.35);" ${hasData ? "" : "disabled"} onclick="window.downloadAdminAnalyticsPDF()">${uiIcon("download", 16)} Download PDF</button>
     `)}
     ${adminNotice()}
 
+    <!-- Clean Tab Bar Navigation -->
+    <div class="analytics-tab-underline-bar" style="display: flex; align-items: center; gap: 32px; border-bottom: 2px solid #e2e8f0; margin-top: 8px; margin-bottom: 24px; padding-bottom: 0;">
+      <button class="analytics-tab-item ${tab !== 'form' ? 'active' : ''}" onclick="window.setAdminAnalyticsTab('revenue')" style="background: transparent; border: none; padding: 12px 4px; font-family: var(--font-serif, 'Playfair Display', Georgia, serif); font-size: 16.5px; font-weight: 700; cursor: pointer; color: ${tab !== 'form' ? '#3b82f6' : '#0f172a'}; border-bottom: ${tab !== 'form' ? '3px solid #3b82f6' : '3px solid transparent'}; transition: all 0.2s ease; margin-bottom: -2px;">
+        Revenue Report
+      </button>
+      <button class="analytics-tab-item ${tab === 'form' ? 'active' : ''}" onclick="window.setAdminAnalyticsTab('form')" style="background: transparent; border: none; padding: 12px 4px; font-family: var(--font-serif, 'Playfair Display', Georgia, serif); font-size: 16.5px; font-weight: 700; cursor: pointer; color: ${tab === 'form' ? '#3b82f6' : '#0f172a'}; border-bottom: ${tab === 'form' ? '3px solid #3b82f6' : '3px solid transparent'}; transition: all 0.2s ease; margin-bottom: -2px;">
+        Form Report
+      </button>
+    </div>
+
     ${renderAdminAnalyticsFilterCard(hasData)}
 
-    <div class="analytics-report-area module-card" id="admin-analytics-print-area" style="padding: 32px; margin-top: 24px;">
-      <div class="analytics-chart-card" data-chart="monthly">
-        <div class="section-heading" style="text-align: center; margin-bottom: 40px;"><h2>💰 Yearly Transaction Revenue (₹)</h2></div>
+    <div class="analytics-report-area" id="admin-analytics-print-area" style="display: flex; flex-direction: column; gap: 24px; margin-top: 24px;">
+      <div class="module-card analytics-chart-card" data-chart="monthly" style="background: #ffffff; border: 1px solid #e2e8f0; border-radius: 20px; padding: 36px 32px; box-shadow: 0 10px 30px rgba(0, 0, 0, 0.03);">
+        <div class="section-heading" style="text-align: center; margin-bottom: 24px;">
+          <h2 style="font-family: var(--font-serif, 'Playfair Display', Georgia, serif); font-size: 20px; font-weight: 700; color: #0f172a;">
+            ${tab === "form" ? "📋 Yearly Form Sales Revenue (₹)" : "💰 Yearly Transaction Revenue (₹)"}
+          </h2>
+        </div>
         ${monthlyBuckets.length ? renderAdminAnalyticsBarChart(monthlyBuckets) : `<div class="empty-note">No data for this range yet.</div>`}
+      </div>
+
+      <div class="module-card" style="background: #ffffff; border: 1px solid #e2e8f0; border-radius: 20px; padding: 28px 32px; box-shadow: 0 10px 30px rgba(0, 0, 0, 0.03);">
+        <div style="margin-bottom: 20px;">
+          <h2 style="font-family: var(--font-serif, 'Playfair Display', Georgia, serif); font-size: 20px; font-weight: 700; color: #0f172a; margin: 0;">
+            ${tab === "form" ? "📈 Form Sales Trend" : "📈 Kiosk Performance & Revenue Trend"}
+          </h2>
+        </div>
+        ${monthlyBuckets.length ? renderAdminAnalyticsLineChart(monthlyBuckets) : `<div class="empty-note">No data for this range yet.</div>`}
       </div>
     </div>
   `;
@@ -10312,7 +10780,9 @@ function renderAdminAnalyticsBarChart(buckets, { forPrint = false } = {}) {
               <rect class="analytics-bar" x="${bar.barX.toFixed(1)}" y="${bar.barY.toFixed(1)}" width="${barWidth.toFixed(1)}" height="${Math.max(0, bar.barHeight).toFixed(1)}" rx="4" fill="${forPrint ? printColor : barColor}" />
               <rect x="${(bar.centerX - groupWidth / 2).toFixed(1)}" y="${padding.top}" width="${groupWidth.toFixed(1)}" height="${chartHeight}" fill="transparent" />
               <text x="${bar.centerX.toFixed(1)}" y="${height - 16}" text-anchor="middle" fill="#64748b" font-size="11px" font-weight="500">${escapeHtml(bar.label)}</text>
-              ${forPrint ? "" : `
+              ${forPrint
+                ? (bar.amount > 0 ? `<text x="${bar.centerX.toFixed(1)}" y="${Math.max(padding.top + 10, bar.barY - 6).toFixed(1)}" text-anchor="middle" fill="${printColor}" font-size="11px" font-weight="700">${escapeHtml(money(bar.amount))}</text>` : "")
+                : `
                 <g class="analytics-bar-tooltip" transform="translate(${Math.min(width - 100, Math.max(4, bar.centerX - 50))}, ${Math.max(padding.top, bar.barY - 30)})">
                   <rect width="100" height="26" rx="6" fill="#ffffff" stroke="#e2e8f0" />
                   <text x="10" y="17" fill="var(--amount-color)" font-size="11px" font-weight="700">${escapeHtml(money(bar.amount))}</text>
@@ -10390,7 +10860,9 @@ function renderAdminAnalyticsLineChart(buckets, { forPrint = false } = {}) {
             <g class="analytics-line-point-group">
               <circle class="analytics-line-point" cx="${point.x.toFixed(1)}" cy="${point.y.toFixed(1)}" r="3.5" fill="${forPrint ? printColor : "var(--amount-color)"}" stroke="#ffffff" stroke-width="1.5" />
               ${index % labelStep === 0 ? `<text x="${point.x.toFixed(1)}" y="${height - 16}" text-anchor="middle" fill="#64748b" font-size="11px" font-weight="500">${escapeHtml(point.label)}</text>` : ""}
-              ${forPrint ? "" : `
+              ${forPrint
+                ? (index % labelStep === 0 && point.amount > 0 ? `<text x="${point.x.toFixed(1)}" y="${Math.max(padding.top + 10, point.y - 8).toFixed(1)}" text-anchor="middle" fill="${printColor}" font-size="10.5px" font-weight="700">${escapeHtml(money(point.amount))}</text>` : "")
+                : `
                 <g class="analytics-line-tooltip" transform="translate(${Math.min(width - 100, Math.max(4, point.x - 50))}, ${Math.max(padding.top, point.y - 34)})">
                   <rect width="100" height="26" rx="6" fill="#ffffff" stroke="#e2e8f0" />
                   <text x="10" y="17" fill="var(--amount-color)" font-size="11px" font-weight="700">${escapeHtml(money(point.amount))}</text>
@@ -10648,8 +11120,15 @@ window.downloadAdminAnalyticsPDF = async function () {
   const marginX = 14;
   const chartDisplayWidth = Math.min(pageWidth - marginX * 2, 180);
 
+  const monthlyBuckets = seriesFn("monthly");
+  // Same pairing as the on-screen page (bar chart + trend line chart, same
+  // buckets so both stay consistent) - the PDF used to only ever export the
+  // bar chart, leaving the trend chart and every bar's actual amount label
+  // (normally a hover-only tooltip, which doesn't exist in a static PDF) out
+  // of the download entirely.
   const sections = [
-    { title: "Monthly", buckets: seriesFn("monthly"), type: "bar" }
+    { title: `Monthly ${tabLabel}`, buckets: monthlyBuckets, type: "bar" },
+    { title: `${tabLabel} Trend`, buckets: monthlyBuckets, type: "line" }
   ];
 
   for (const section of sections) {
@@ -10670,7 +11149,7 @@ window.downloadAdminAnalyticsPDF = async function () {
     doc.setFont(undefined, "bold");
     doc.setFontSize(13);
     doc.setTextColor(27, 175, 122);
-    doc.text(`${section.title} ${tabLabel}`, marginX, cursorY);
+    doc.text(section.title, marginX, cursorY);
     doc.setTextColor(0);
     cursorY += 6;
 
@@ -11948,7 +12427,6 @@ function renderKioskManagementTable() {
             <th>Status</th>
             <th>Activation</th>
             <th>Setup Code</th>
-            <th>Last Online</th>
             ${canManage ? "<th>Actions</th>" : ""}
           </tr>
         </thead>
@@ -11962,7 +12440,6 @@ function renderKioskManagementTable() {
               <td>${escapeHtml(kiosk.status || "Unknown")}</td>
               <td>${escapeHtml(kiosk.activatedAt ? "Activated" : "Not activated")}</td>
               <td>${escapeHtml(kiosk.setupCode || "")}</td>
-              <td>${escapeHtml(kiosk.lastOnline ? formatDateTime(kiosk.lastOnline) : "")}</td>
               ${canManage ? `
               <td>
                 <div class="table-actions">
@@ -11973,7 +12450,7 @@ function renderKioskManagementTable() {
               ` : ""}
             </tr>
           `).join("") : `
-            <tr><td colspan="${canManage ? 9 : 8}">No kiosks are assigned to this account.</td></tr>
+            <tr><td colspan="${canManage ? 8 : 7}">No kiosks are assigned to this account.</td></tr>
           `}
         </tbody>
       </table>
@@ -12182,21 +12659,134 @@ function renderRefunds() {
 
 function renderAlerts() {
   const alerts = adminOperationalAlerts();
-  const page = adminPaginated(alerts, "alerts");
+  const affectedKiosks = new Set(alerts.map((alert) => alert.kioskId).filter(Boolean)).size;
+  const paperAlerts = alerts.filter((alert) => alert.category === "paper").length;
+  const tonerAlerts = alerts.filter((alert) => alert.category === "toner").length;
+
+  const headerActions = `
+    <button class="secondary-button" title="Exports the Alert History Logs table below, not this live view" style="border-radius: 20px; padding: 9px 20px; display: inline-flex; align-items: center; gap: 8px; font-weight: 600; background: #ffffff; border: 1px solid #cbd5e1; color: #334155; font-size: 13.5px; cursor: pointer;" onclick="window.downloadAlertsReportPDF()">
+      ${uiIcon("download", 16)} Export Alert History PDF
+    </button>
+  `;
 
   return `
-    ${renderAdminHeader("Notifications", "Live printer hardware alerts by kiosk ID.")}
+    ${renderAdminHeader("Alert Center", "Real-time printer hardware diagnostics, paper level, toner status & network alerts.", headerActions)}
     ${adminNotice()}
-    <div class="module-grid alert-cards-grid">
-      ${(page.items.length ? page.items : [{ title: "No live printer alerts", detail: "Paper, toner, door, and queue checks are clear.", tone: "good" }]).map((alert) => `
-        <div class="module-card admin-alert-card admin-alert-card--${escapeHtml(alert.tone || "warn")}">
-          <h2>${escapeHtml(alert.title)}</h2>
-          <p class="helper-text">${escapeHtml(alert.detail)}</p>
-          <span class="badge ${alert.tone === "bad" ? "bad" : alert.tone || "warn"}">${alert.tone === "good" ? "OK" : "Open"}</span>
+
+    <!-- 4 Aesthetic Metric KPI Cards -->
+    <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(210px, 1fr)); gap: 20px; margin-top: 16px; margin-bottom: 28px;">
+      <div class="alert-kpi-card" style="background: #ffffff; border: 1px solid #fee2e2; border-radius: 20px; padding: 22px 24px; box-shadow: 0 10px 30px rgba(239, 68, 68, 0.04); display: flex; flex-direction: column; justify-content: space-between;">
+        <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 12px;">
+          <span style="font-size: 12px; font-weight: 800; color: #dc2626; text-transform: uppercase; letter-spacing: 0.05em; font-family: var(--font-serif, 'Playfair Display', Georgia, serif);">Open Alerts</span>
+          <div style="width: 40px; height: 40px; border-radius: 12px; background: linear-gradient(135deg, #f87171, #dc2626); color: #ffffff; display: flex; align-items: center; justify-content: center; box-shadow: 0 4px 12px rgba(220, 38, 38, 0.3);">
+            ${uiIcon("alert", 20)}
+          </div>
         </div>
-      `).join("")}
+        <div>
+          <strong style="font-size: 30px; font-weight: 800; color: #991b1b; line-height: 1.1; display: block;">${alerts.length}</strong>
+          <small style="font-size: 12px; color: #ef4444; margin-top: 4px; display: block; font-weight: 500;">${alerts.length ? "Live printer issues requiring action" : "All clear, no active alerts"}</small>
+        </div>
+      </div>
+
+      <div class="alert-kpi-card" style="background: #ffffff; border: 1px solid #fef3c7; border-radius: 20px; padding: 22px 24px; box-shadow: 0 10px 30px rgba(245, 158, 11, 0.04); display: flex; flex-direction: column; justify-content: space-between;">
+        <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 12px;">
+          <span style="font-size: 12px; font-weight: 800; color: #d97706; text-transform: uppercase; letter-spacing: 0.05em; font-family: var(--font-serif, 'Playfair Display', Georgia, serif);">Kiosks</span>
+          <div style="width: 40px; height: 40px; border-radius: 12px; background: linear-gradient(135deg, #fbbf24, #d97706); color: #ffffff; display: flex; align-items: center; justify-content: center; box-shadow: 0 4px 12px rgba(217, 119, 6, 0.3);">
+            ${uiIcon("kiosks", 20)}
+          </div>
+        </div>
+        <div>
+          <strong style="font-size: 30px; font-weight: 800; color: #92400e; line-height: 1.1; display: block;">${affectedKiosks}</strong>
+          <small style="font-size: 12px; color: #b45309; margin-top: 4px; display: block; font-weight: 500;">Kiosk IDs with active alerts</small>
+        </div>
+      </div>
+
+      <div class="alert-kpi-card" style="background: #ffffff; border: 1px solid #ffedd5; border-radius: 20px; padding: 22px 24px; box-shadow: 0 10px 30px rgba(249, 115, 22, 0.04); display: flex; flex-direction: column; justify-content: space-between;">
+        <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 12px;">
+          <span style="font-size: 12px; font-weight: 800; color: #ea580c; text-transform: uppercase; letter-spacing: 0.05em; font-family: var(--font-serif, 'Playfair Display', Georgia, serif);">Paper / Jam</span>
+          <div style="width: 40px; height: 40px; border-radius: 12px; background: linear-gradient(135deg, #fb923c, #ea580c); color: #ffffff; display: flex; align-items: center; justify-content: center; box-shadow: 0 4px 12px rgba(234, 88, 12, 0.3);">
+            ${uiIcon("printer", 20)}
+          </div>
+        </div>
+        <div>
+          <strong style="font-size: 30px; font-weight: 800; color: #9a3412; line-height: 1.1; display: block;">${paperAlerts}</strong>
+          <small style="font-size: 12px; color: #c2410c; margin-top: 4px; display: block; font-weight: 500;">Paper empty, low, jam, door open</small>
+        </div>
+      </div>
+
+      <div class="alert-kpi-card" style="background: #ffffff; border: 1px solid #dbeafe; border-radius: 20px; padding: 22px 24px; box-shadow: 0 10px 30px rgba(59, 130, 246, 0.04); display: flex; flex-direction: column; justify-content: space-between;">
+        <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 12px;">
+          <span style="font-size: 12px; font-weight: 800; color: #2563eb; text-transform: uppercase; letter-spacing: 0.05em; font-family: var(--font-serif, 'Playfair Display', Georgia, serif);">Toner Level</span>
+          <div style="width: 40px; height: 40px; border-radius: 12px; background: linear-gradient(135deg, #60a5fa, #2563eb); color: #ffffff; display: flex; align-items: center; justify-content: center; box-shadow: 0 4px 12px rgba(37, 99, 235, 0.3);">
+            ${uiIcon("toner", 20)}
+          </div>
+        </div>
+        <div>
+          <strong style="font-size: 30px; font-weight: 800; color: #1e40af; line-height: 1.1; display: block;">${tonerAlerts}</strong>
+          <small style="font-size: 12px; color: #1d4ed8; margin-top: 4px; display: block; font-weight: 500;">Low or empty cartridge warning</small>
+        </div>
+      </div>
     </div>
-    ${renderAdminPagination("alerts", page)}
+
+    <!-- Active Live Alerts Section -->
+    <div style="margin-bottom: 32px;">
+      <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 16px;">
+        <h2 style="font-family: var(--font-serif, 'Playfair Display', Georgia, serif); font-size: 18px; font-weight: 800; color: #0f172a; margin: 0; display: flex; align-items: center; gap: 10px;">
+          <span style="width: 10px; height: 10px; border-radius: 50%; background: #ef4444; display: inline-block; box-shadow: 0 0 0 4px rgba(239, 68, 68, 0.2);"></span>
+          Live Active Printer Alerts
+        </h2>
+        <span style="font-size: 13px; font-weight: 600; color: #64748b;">Showing ${alerts.length} active ${alerts.length === 1 ? 'issue' : 'issues'}</span>
+      </div>
+
+      ${alerts.length ? `
+        <div style="display: grid; grid-template-columns: repeat(auto-fill, minmax(360px, 1fr)); gap: 20px;">
+          ${alerts.map(alert => {
+            const isBad = alert.tone === 'bad' || alert.tone === 'red';
+            const statusBg = isBad ? '#fef2f2' : '#fffbeb';
+            const statusBorder = isBad ? '#fecaca' : '#fde68a';
+            const badgeBg = isBad ? '#fee2e2' : '#fef3c7';
+            const badgeColor = isBad ? '#991b1b' : '#92400e';
+            const iconBg = isBad ? 'linear-gradient(135deg, #ef4444, #dc2626)' : 'linear-gradient(135deg, #f59e0b, #d97706)';
+
+            return `
+              <div style="background: #ffffff; border: 1px solid ${statusBorder}; border-radius: 20px; padding: 24px; box-shadow: 0 10px 30px rgba(0, 0, 0, 0.04); display: flex; flex-direction: column; justify-content: space-between; transition: all 0.2s ease;">
+                <div>
+                  <div style="display: flex; align-items: flex-start; justify-content: space-between; gap: 16px; margin-bottom: 14px;">
+                    <div style="display: flex; align-items: center; gap: 14px;">
+                      <div style="width: 44px; height: 44px; border-radius: 14px; background: ${iconBg}; color: white; display: flex; align-items: center; justify-content: center; box-shadow: 0 4px 12px rgba(239, 68, 68, 0.25); flex-shrink: 0;">
+                        ${uiIcon("alert", 22)}
+                      </div>
+                      <div>
+                        <strong style="font-size: 16px; font-weight: 800; color: #0f172a; font-family: var(--font-serif, 'Playfair Display', Georgia, serif); display: block;">${escapeHtml(alert.title || 'Kiosk Alert')}</strong>
+                        <span style="font-size: 12px; font-weight: 600; color: #64748b;">${escapeHtml(alert.kioskId || "All Kiosks")}</span>
+                      </div>
+                    </div>
+                    <span style="background: ${badgeBg}; color: ${badgeColor}; font-size: 11px; font-weight: 800; padding: 4px 12px; border-radius: 20px; text-transform: uppercase; letter-spacing: 0.05em; border: 1px solid ${statusBorder}; flex-shrink: 0;">OPEN</span>
+                  </div>
+                  <p style="font-size: 13.5px; color: #475569; margin: 0 0 16px 0; line-height: 1.5; font-weight: 500; background: ${statusBg}; padding: 12px 16px; border-radius: 12px; border: 1px solid ${statusBorder};">${escapeHtml(alert.detail || 'Printer requires maintenance or inspection.')}</p>
+                </div>
+                <div style="display: flex; align-items: center; justify-content: space-between; padding-top: 14px; border-top: 1px solid #f1f5f9; font-size: 12px; color: #94a3b8;">
+                  <span style="display: flex; align-items: center; gap: 6px; font-weight: 500;">
+                    ${uiIcon("history", 14)} Realtime Diagnostic Log
+                  </span>
+                  <button class="secondary-button" style="background: #ffffff; border: 1px solid #cbd5e1; border-radius: 10px; padding: 6px 14px; font-size: 12px; font-weight: 700; color: #334155; cursor: pointer;" data-admin-page="kiosks">View Kiosk</button>
+                </div>
+              </div>
+            `;
+          }).join('')}
+        </div>
+      ` : `
+        <div style="background: #ffffff; border: 1px solid #bbf7d0; border-radius: 20px; padding: 32px 36px; text-align: center; box-shadow: 0 10px 30px rgba(0, 0, 0, 0.03);">
+          <div style="width: 52px; height: 52px; border-radius: 16px; background: linear-gradient(135deg, #10b981, #059669); color: white; display: inline-flex; align-items: center; justify-content: center; margin-bottom: 14px; box-shadow: 0 4px 14px rgba(16, 185, 129, 0.3);">
+            ${uiIcon("check", 26)}
+          </div>
+          <h4 style="font-size: 18px; font-weight: 800; color: #064e3b; margin: 0 0 6px 0; font-family: var(--font-serif, 'Playfair Display', Georgia, serif);">All Systems Operating Normally</h4>
+          <p style="font-size: 14px; color: #15803d; margin: 0; font-weight: 500;">Paper level, toner cartridges, print queue, and kiosk network connectivity are completely healthy.</p>
+        </div>
+      `}
+    </div>
+
+    ${renderAdminAlertLogsTable()}
   `;
 }
 

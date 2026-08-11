@@ -1,5 +1,5 @@
 window.PRINTING_KIOSK_CONFIG = {
-  "backendUrl": "",
+  "backendUrl": "https://api.theaaryatechnologies.com",
   "publicFrontendUrl": "",
   "localAgentUrl": "",
   "kioskId": "",
