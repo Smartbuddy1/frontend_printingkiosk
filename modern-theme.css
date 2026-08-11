@@ -72,6 +72,27 @@ h1, h2, h3, .admin-header h1, .stage-header h1, .section-heading h2, .module-car
   flex-direction: column !important;
 }
 
+/* Login page — allow full-screen scrollable view, never clip footer links */
+.app-shell.admin-shell.login-app-shell {
+  overflow-y: auto !important;
+  overflow-x: hidden !important;
+  background: transparent !important;
+  height: 100vh !important;
+  height: 100dvh !important;
+  max-height: none !important;
+}
+
+.app-shell.admin-shell.login-app-shell .main.admin-screen {
+  display: block !important;
+  height: auto !important;
+  min-height: 100vh !important;
+  min-height: 100dvh !important;
+  max-height: none !important;
+  overflow: visible !important;
+  background: transparent !important;
+  flex: none !important;
+}
+
 .main.admin-screen {
   min-height: 0 !important;
   height: calc(100vh - 70px) !important;
@@ -135,11 +156,16 @@ h1, h2, h3, .admin-header h1, .stage-header h1, .section-heading h2, .module-car
               radial-gradient(circle at 80% 80%, #f1eef8, transparent 50%),
               #edf2f9 !important;
   align-items: center !important;
+  flex-direction: column !important;
   justify-content: center !important;
   display: flex !important;
+  gap: 20px !important;
   min-height: 100vh !important;
+  min-height: 100dvh !important;
   width: 100% !important;
-  padding: 0 !important;
+  padding: 40px 20px !important;
+  box-sizing: border-box !important;
+  overflow: visible !important;
 }
 
 .login-view.login-theme-dark {
@@ -154,14 +180,16 @@ h1, h2, h3, .admin-header h1, .stage-header h1, .section-heading h2, .module-car
   background: #ffffff !important;
   border-radius: 20px !important;
   box-shadow: 0 10px 40px rgba(0, 0, 0, 0.08) !important;
-  max-width: 400px !important;
+  max-width: 420px !important;
   width: 100% !important;
-  margin: auto !important;
-  padding: 40px 32px 32px !important;
+  margin: 0 !important;
+  padding: 40px 32px 36px !important;
   height: auto !important;
   min-height: auto !important;
   display: block !important;
   border: none !important;
+  flex-shrink: 0 !important;
+  box-sizing: border-box !important;
 }
 
 .login-logo {
@@ -252,20 +280,9 @@ h1, h2, h3, .admin-header h1, .stage-header h1, .section-heading h2, .module-car
   height: 100% !important;
 }
 
+/* Forgot password — hidden (removed from HTML, hide via CSS as safety net) */
 .login-forgot {
-  display: flex !important;
-  align-items: center !important;
-  justify-content: flex-start !important;
-  font-size: 12px !important;
-  color: #6366f1 !important;
-  text-decoration: none !important;
-  margin-bottom: 24px !important;
-}
-
-.login-forgot svg {
-  margin-right: 6px !important;
-  width: 14px !important;
-  height: 14px !important;
+  display: none !important;
 }
 
 .login-submit {
@@ -295,24 +312,40 @@ h1, h2, h3, .admin-header h1, .stage-header h1, .section-heading h2, .module-car
   height: 18px !important;
 }
 
+/* Footer links — visible below the white card, on the gradient background, like the reference design */
 .login-footer-links {
-  margin-top: 32px !important;
   display: flex !important;
+  flex-wrap: wrap !important;
   justify-content: center !important;
-  gap: 12px !important;
-  font-size: 11px !important;
-  color: #a0aec0 !important;
+  align-items: center !important;
+  gap: 4px 10px !important;
+  font-size: 12px !important;
+  color: #718096 !important;
+  margin: 0 !important;
+  padding: 0 !important;
+  background: transparent !important;
+  border: none !important;
+  max-width: 460px !important;
+  width: 100% !important;
+  flex-shrink: 0 !important;
+  line-height: 1.8 !important;
 }
 
 .login-footer-links a {
   color: #718096 !important;
-  text-decoration: underline !important;
-  text-decoration-color: transparent !important;
-  transition: text-decoration-color 0.2s !important;
+  text-decoration: none !important;
+  transition: color 0.2s !important;
+  white-space: nowrap !important;
 }
 
 .login-footer-links a:hover {
-  text-decoration-color: #718096 !important;
+  color: #6366f1 !important;
+  text-decoration: underline !important;
+}
+
+.login-footer-links span {
+  color: #a0aec0 !important;
+  user-select: none !important;
 }
 
 .admin-layout .admin-nav,

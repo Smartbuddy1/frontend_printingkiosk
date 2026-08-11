@@ -63,6 +63,7 @@ function addCacheBusters() {
     if (!fs.existsSync(filePath)) continue;
 
     const html = fs.readFileSync(filePath, "utf8")
+      .replace(/\.\/admin-theme\.css(?:\?v=[^"]*)?/g, `./admin-theme.css?v=${buildVersion}`)
       .replace(/\.\/styles\.css(?:\?v=[^"]*)?/g, `./styles.css?v=${buildVersion}`)
       .replace(/\.\/responsive\.css(?:\?v=[^"]*)?/g, `./responsive.css?v=${buildVersion}`)
       .replace(/\.\/config\.js(?:\?v=[^"]*)?/g, `./config.js?v=${buildVersion}`)

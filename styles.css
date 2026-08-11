@@ -1928,17 +1928,41 @@ button:disabled:hover {
   cursor: pointer;
   display: flex;
   font-weight: var(--weight-medium);
-  gap: 8px;
+  gap: 10px;
+  font-size: 15px;
 }
 
 .analytics-radio input {
   accent-color: var(--blue);
-  height: 16px;
-  width: 16px;
+  height: 18px;
+  width: 18px;
 }
 
 .analytics-filter-grid {
   grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+  gap: 18px;
+}
+
+/* Filter cards on the Analytics/Report pages (both admin panels share this
+   markup/classes) - larger fields/labels/button than the base .setting-field
+   used everywhere else (pricing editors, project/kiosk forms, etc), which is
+   intentionally left untouched. */
+.analytics-filter-card .setting-field {
+  padding: 20px;
+  gap: 10px;
+  border-radius: 10px;
+}
+
+.analytics-filter-card .setting-field label {
+  font-size: 14.5px;
+}
+
+.analytics-filter-card .setting-field input,
+.analytics-filter-card .setting-field select {
+  min-height: 50px;
+  padding: 0 16px;
+  font-size: 15px;
+  border-radius: 10px;
 }
 
 .revenue-filter-apply-row {
@@ -1952,6 +1976,15 @@ button:disabled:hover {
 .revenue-filter-apply-row .setting-field {
   flex: 1;
   min-width: 200px;
+  /* This field sits in the same row as the bare Apply/PDF buttons - keep it
+     borderless/unpadded (just label + input) instead of the boxed card
+     styling other filter fields get, so it stays close in height to the
+     50px buttons instead of stranding them at the bottom of a much taller
+     row with empty space above. */
+  background: transparent;
+  border: none;
+  padding: 0;
+  gap: 8px;
 }
 
 .revenue-apply-filter-btn {
@@ -1959,6 +1992,24 @@ button:disabled:hover {
   border: none;
   margin-left: auto;
   white-space: nowrap;
+  /* !important needed: responsive.css's broad touch-target rule
+     (.primary-button among others, min-height: var(--responsive-touch))
+     loads after this file and ties on specificity, so it silently wins
+     without this. */
+  min-height: 50px !important;
+  padding: 0 26px !important;
+  font-size: 15px !important;
+  border-radius: 999px !important;
+}
+
+/* The Revenue/Form Print PDF download button next to it has no dedicated
+   class, just .primary-button/.secondary-button - match it to the same
+   50px height so the two buttons in this row sit level with each other. */
+.revenue-filter-apply-row .primary-button,
+.revenue-filter-apply-row .secondary-button {
+  min-height: 50px !important;
+  padding: 0 22px !important;
+  font-size: 15px !important;
 }
 
 .revenue-apply-filter-btn:hover {

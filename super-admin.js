@@ -1,7 +1,11 @@
 const runtimeConfig = new URLSearchParams(window.location.search);
 const frontendConfig = window.PRINTING_KIOSK_CONFIG || {};
 const DEFAULT_BACKEND_URL = /^https?:$/.test(window.location.protocol) ? window.location.origin : "http://localhost:5080";
-const BACKEND_URL = (runtimeConfig.get("backendUrl") || frontendConfig.backendUrl || DEFAULT_BACKEND_URL).replace(/\/+$/, "");
+const HOSTED_PROXY_BACKEND_URL = /^https?:$/.test(window.location.protocol) &&
+  (["localhost", "127.0.0.1"].includes(window.location.hostname) || window.location.hostname.endsWith(".vercel.app"))
+  ? window.location.origin
+  : "";
+const BACKEND_URL = (runtimeConfig.get("backendUrl") || HOSTED_PROXY_BACKEND_URL || frontendConfig.backendUrl || DEFAULT_BACKEND_URL).replace(/\/+$/, "");
 const ADMIN_SESSION_KEY = "printingKioskAdminSession";
 const UNASSIGNED_KIOSK_ID = "UNASSIGNED-KIOSK";
 const DEFAULT_KIOSK_CUSTOMER_SETTINGS = Object.freeze({
@@ -29,10 +33,23 @@ const DEFAULT_SERVICE_PRINT_DEFAULTS = Object.freeze({
   range: "all"
 });
 
+function resolveInitialSuperAdminPage() {
+  const hash = (window.location.hash || "").replace(/^#\/?/, "").trim();
+  if (hash === "clients") return "kioskAdmins";
+  if (hash === "reports" || hash === "report") return "revenue";
+  const validPages = ["dashboard", "kioskAdmins", "projects", "kiosks", "pricing", "revenue", "analytics", "alerts", "services"];
+  if (validPages.includes(hash)) return hash;
+  try {
+    const saved = sessionStorage.getItem("super_admin_page");
+    if (validPages.includes(saved)) return saved;
+  } catch (e) {}
+  return "dashboard";
+}
+
 const state = {
   authed: false,
   authToken: "",
-  page: "dashboard",
+  page: resolveInitialSuperAdminPage(),
   snapshot: null,
   snapshotPoller: null,
   loading: false,
@@ -65,8 +82,12 @@ const state = {
     start: new Date(new Date().setHours(0, 0, 0, 0)).toISOString().split('T')[0],
     end: new Date().toISOString().split('T')[0]
   },
-  reportTab: "revenue",
-  analyticsTab: "revenue",
+  reportTab: (() => {
+    try { return sessionStorage.getItem("super_admin_report_tab") || "revenue"; } catch(e) { return "revenue"; }
+  })(),
+  analyticsTab: (() => {
+    try { return sessionStorage.getItem("super_admin_analytics_tab") || "revenue"; } catch(e) { return "revenue"; }
+  })(),
   analyticsFilter: (() => {
     const now = new Date();
     const fyStartYear = now.getMonth() >= 3 ? now.getFullYear() : now.getFullYear() - 1;
@@ -502,6 +523,7 @@ function hydrateAdminSession() {
   if (stored.role === "super-admin") {
     state.authed = true;
     state.authToken = stored.token;
+    state.page = resolveInitialSuperAdminPage();
   }
 }
 
@@ -935,6 +957,20 @@ function render() {
   if (winScrollY > 0 || winScrollX > 0) {
     window.scrollTo(winScrollX, winScrollY);
   }
+
+  if (state.authed && state.page) {
+    try {
+      sessionStorage.setItem("super_admin_page", state.page);
+    } catch (e) {}
+    const targetHash = `#${state.page}`;
+    if (window.location.hash !== targetHash) {
+      if (window.history?.replaceState) {
+        window.history.replaceState(null, "", targetHash);
+      } else {
+        window.location.hash = targetHash;
+      }
+    }
+  }
 }
 
 function renderLogin() {
@@ -951,10 +987,10 @@ function renderLogin() {
             <p class="login-subtitle">Please enter your credentials to access your portal</p>
             ${state.loginError ? `<div class="empty-note">${escapeHtml(state.loginError)}</div>` : ""}
             <label class="login-field">
-              <span class="login-field-label">Mobile Number</span>
+              <span class="login-field-label">Email / Username / Mobile</span>
               <span class="login-input-wrap">
-                ${uiIcon("smartphone", 18) || uiIcon("phone", 18)}
-                <input value="${escapeHtml(state.loginDraft.email)}" autocomplete="username" data-login-field="email" placeholder="Registered mobile" />
+                ${uiIcon("users", 18) || uiIcon("smartphone", 18)}
+                <input value="${escapeHtml(state.loginDraft.email)}" autocomplete="username" data-login-field="email" placeholder="superadmin or superadmin@printingkiosk.local" />
               </span>
             </label>
             <label class="login-field">
@@ -967,20 +1003,19 @@ function renderLogin() {
                 </button>
               </span>
             </label>
-            <a class="login-forgot" href="tel:+919359604384">${uiIcon("lock", 14)} Forgot Password?</a>
             <button class="login-submit" data-action="login">
               <span>Login to Continue</span>
               ${uiIcon("arrow-right", 18)}
             </button>
-            <div class="login-footer-links">
-              <a href="terms.html">Terms & Conditions</a>
-              <span>|</span>
-              <a href="privacy.html">Privacy Policy</a>
-              <span>|</span>
-              <a href="refund.html">Refund Policy</a>
-              <span>|</span>
-              <a href="contact.html">Contact Us</a>
-            </div>
+          </div>
+          <div class="login-footer-links">
+            <a href="terms.html">Terms & Conditions</a>
+            <span>|</span>
+            <a href="privacy.html">Privacy Policy</a>
+            <span>|</span>
+            <a href="refund.html">Refund Policy</a>
+            <span>|</span>
+            <a href="contact.html">Contact Us</a>
           </div>
         </div>
       </main>
@@ -1160,39 +1195,51 @@ function renderSettingsModal() {
   if (!state.settingsModalOpen) return "";
 
   return `
-    <div class="settings-modal-overlay" data-action="close-settings">
-      <div class="settings-modal-card" onclick="event.stopPropagation()">
+    <div class="settings-modal-overlay" onclick="if (event.target === this) window.closeSuperAdminSettingsModal();" data-action="close-settings">
+      <div class="settings-modal-card">
         <div class="settings-modal-header">
-          <h3>Account Settings</h3>
-          <button class="ghost-button" data-action="close-settings" style="padding: 4px 8px; min-height: 32px;">✕</button>
+          <h3 style="font-size: 19px; font-weight: 700; color: #0f172a; margin: 0; font-family: var(--font-sans, 'Inter', system-ui, sans-serif);">Account Settings</h3>
+          <button type="button" class="ghost-button" onclick="window.closeSuperAdminSettingsModal();" data-action="close-settings" style="padding: 6px 12px; min-height: 32px; border-radius: 8px; font-size: 16px; cursor: pointer;">✕</button>
         </div>
         <div class="settings-modal-body">
           ${state.settingsStatus ? `<div class="save-note">${escapeHtml(state.settingsStatus)}</div>` : ""}
-          <label>
-            Admin Email / ID
-            <input type="text" data-settings-field="username" value="${escapeHtml(state.settingsDraft.username || "superadmin@printingkiosk.local")}" placeholder="Enter admin email or ID" />
-          </label>
-          <label>
-            Current Password
-            <input type="password" data-settings-field="currentPassword" value="${escapeHtml(state.settingsDraft.currentPassword || "")}" placeholder="Enter current password" />
-          </label>
-          <label>
-            New Password
-            <input type="password" data-settings-field="newPassword" value="${escapeHtml(state.settingsDraft.newPassword || "")}" placeholder="Enter new password" />
-          </label>
-          <label>
-            Confirm New Password
-            <input type="password" data-settings-field="confirmPassword" value="${escapeHtml(state.settingsDraft.confirmPassword || "")}" placeholder="Confirm new password" />
-          </label>
+          <div class="settings-grid" style="display: grid; grid-template-columns: repeat(2, 1fr); gap: 16px;">
+            <label>
+              Admin Email / ID
+              <input type="text" data-settings-field="username" value="${escapeHtml(state.settingsDraft.username || "superadmin@printingkiosk.local")}" placeholder="Enter admin email or ID" />
+            </label>
+            <label>
+              Current Password
+              <input type="password" data-settings-field="currentPassword" value="${escapeHtml(state.settingsDraft.currentPassword || "")}" placeholder="Enter current password" />
+            </label>
+            <label>
+              New Password
+              <input type="password" data-settings-field="newPassword" value="${escapeHtml(state.settingsDraft.newPassword || "")}" placeholder="Enter new password" />
+            </label>
+            <label>
+              Confirm New Password
+              <input type="password" data-settings-field="confirmPassword" value="${escapeHtml(state.settingsDraft.confirmPassword || "")}" placeholder="Confirm new password" />
+            </label>
+          </div>
         </div>
         <div class="settings-modal-footer">
-          <button class="ghost-button" data-action="close-settings">Cancel</button>
-          <button class="primary-button" data-action="save-settings">Save Changes</button>
+          <button type="button" class="secondary-button" onclick="window.closeSuperAdminSettingsModal();" data-action="close-settings">Cancel</button>
+          <button type="button" class="primary-button" onclick="window.saveSuperAdminSettingsModal();" data-action="save-settings">Save Changes</button>
         </div>
       </div>
     </div>
   `;
 }
+
+window.closeSuperAdminSettingsModal = function () {
+  state.settingsModalOpen = false;
+  state.settingsStatus = "";
+  render();
+};
+
+window.saveSuperAdminSettingsModal = function () {
+  saveSettings();
+};
 
 function superAdminOperationalAlerts() {
   const kiosks = data("kiosks");
@@ -1298,16 +1345,16 @@ function render7DayRevenueChart(series = []) {
           const y = 170 - barH;
           return `
             <g class="revenue-bar-group">
-              ${item.value > 0 ? `<text x="${x + barWidth/2}" y="${y - 6}" font-size="11" font-weight="700" fill="#2563eb" text-anchor="middle">₹${item.value}</text>` : `<text x="${x + barWidth/2}" y="162" font-size="10" fill="#94a3b8" text-anchor="middle">₹0</text>`}
-              <rect x="${x}" y="${y}" width="${barWidth}" height="${Math.max(4, barH)}" rx="6" fill="url(#bluePurpleGrad)" />
+              ${item.value > 0 ? `<text x="${x + barWidth/2}" y="${y - 6}" font-size="11" font-weight="700" fill="#059669" text-anchor="middle">₹${item.value}</text>` : `<text x="${x + barWidth/2}" y="162" font-size="10" fill="#94a3b8" text-anchor="middle">₹0</text>`}
+              <rect class="analytics-bar-emerald" x="${x}" y="${y}" width="${barWidth}" height="${Math.max(4, barH)}" rx="6" fill="url(#superEmeraldGrad)" />
               <text x="${x + barWidth/2}" y="195" font-size="11" fill="#64748b" text-anchor="middle">${escapeHtml(item.label)}</text>
             </g>
           `;
         }).join("")}
         <defs>
-          <linearGradient id="bluePurpleGrad" x1="0" y1="0" x2="0" y2="1">
-            <stop offset="0%" stop-color="#6366f1" />
-            <stop offset="100%" stop-color="#8b5cf6" />
+          <linearGradient id="superEmeraldGrad" x1="0" y1="0" x2="0" y2="1">
+            <stop offset="0%" stop-color="#10b981" />
+            <stop offset="100%" stop-color="#059669" />
           </linearGradient>
         </defs>
       </svg>
@@ -1736,71 +1783,53 @@ function renderAlerts() {
   const queueAlerts = alerts.filter((alert) => alert.category === "queue").length;
   const serviceAlerts = alerts.filter((alert) => alert.category === "service").length;
 
-  const headerActions = `
-    <button class="secondary-button" title="Exports the Alert History Logs table below, not this live view" style="border-radius: 20px; padding: 9px 20px; display: inline-flex; align-items: center; gap: 8px; font-weight: 600; background: #ffffff; border: 1px solid #cbd5e1; color: #334155; font-size: 13.5px; cursor: pointer;" onclick="window.downloadAlertsReportPDF()">
-      ${uiIcon("download", 16)} Export Alert History PDF
-    </button>
-  `;
-
   return `
-    ${renderHeader("Alert Center", "Real-time printer hardware diagnostics, paper level, toner status & network alerts.", headerActions)}
+    ${renderHeader("Alert Center", "Real-time printer hardware diagnostics, paper level, toner status & network alerts.")}
     ${renderNotice()}
 
-    <!-- 4 Aesthetic Metric KPI Cards -->
+    <!-- 4 KPI Cards: colored left-border accent, circle icon, number + label -->
     <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(210px, 1fr)); gap: 20px; margin-top: 16px; margin-bottom: 28px;">
       <!-- Card 1: Open Alerts -->
-      <div class="alert-kpi-card" style="background: #ffffff; border: 1px solid #fee2e2; border-radius: 20px; padding: 22px 24px; box-shadow: 0 10px 30px rgba(239, 68, 68, 0.04); display: flex; flex-direction: column; justify-content: space-between;">
-        <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 12px;">
-          <span style="font-size: 12px; font-weight: 800; color: #dc2626; text-transform: uppercase; letter-spacing: 0.05em; font-family: var(--font-serif, 'Playfair Display', Georgia, serif);">Open Alerts</span>
-          <div style="width: 40px; height: 40px; border-radius: 12px; background: linear-gradient(135deg, #f87171, #dc2626); color: #ffffff; display: flex; align-items: center; justify-content: center; box-shadow: 0 4px 12px rgba(220, 38, 38, 0.3);">
-            ${uiIcon("alert", 20)}
-          </div>
+      <div class="alert-kpi-card" style="background: #ffffff; border: 1px solid #e2e8f0; border-left: 4px solid #ef4444; border-radius: 14px; padding: 20px 22px; box-shadow: 0 1px 3px rgba(15, 23, 42, 0.04); display: flex; align-items: center; gap: 16px;">
+        <div style="width: 52px; height: 52px; border-radius: 50%; background: #fee2e2; color: #dc2626; display: flex; align-items: center; justify-content: center; flex-shrink: 0;">
+          ${uiIcon("alert", 22)}
         </div>
         <div>
-          <strong style="font-size: 30px; font-weight: 800; color: #991b1b; line-height: 1.1; display: block;">${alerts.length}</strong>
-          <small style="font-size: 12px; color: #ef4444; margin-top: 4px; display: block; font-weight: 500;">${alerts.length ? "Live printer issues requiring action" : "All clear, no active alerts"}</small>
+          <strong style="font-size: 28px; font-weight: 800; color: #0f172a; line-height: 1.1; display: block;">${alerts.length}</strong>
+          <span style="font-size: 13.5px; color: #64748b; font-weight: 600;">Open Alerts</span>
         </div>
       </div>
 
       <!-- Card 2: Affected Kiosks -->
-      <div class="alert-kpi-card" style="background: #ffffff; border: 1px solid #fef3c7; border-radius: 20px; padding: 22px 24px; box-shadow: 0 10px 30px rgba(245, 158, 11, 0.04); display: flex; flex-direction: column; justify-content: space-between;">
-        <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 12px;">
-          <span style="font-size: 12px; font-weight: 800; color: #d97706; text-transform: uppercase; letter-spacing: 0.05em; font-family: var(--font-serif, 'Playfair Display', Georgia, serif);">Kiosks</span>
-          <div style="width: 40px; height: 40px; border-radius: 12px; background: linear-gradient(135deg, #fbbf24, #d97706); color: #ffffff; display: flex; align-items: center; justify-content: center; box-shadow: 0 4px 12px rgba(217, 119, 6, 0.3);">
-            ${uiIcon("kiosks", 20)}
-          </div>
+      <div class="alert-kpi-card" style="background: #ffffff; border: 1px solid #e2e8f0; border-left: 4px solid #f59e0b; border-radius: 14px; padding: 20px 22px; box-shadow: 0 1px 3px rgba(15, 23, 42, 0.04); display: flex; align-items: center; gap: 16px;">
+        <div style="width: 52px; height: 52px; border-radius: 50%; background: #fef3c7; color: #d97706; display: flex; align-items: center; justify-content: center; flex-shrink: 0;">
+          ${uiIcon("kiosks", 22)}
         </div>
         <div>
-          <strong style="font-size: 30px; font-weight: 800; color: #92400e; line-height: 1.1; display: block;">${affectedKiosks}</strong>
-          <small style="font-size: 12px; color: #b45309; margin-top: 4px; display: block; font-weight: 500;">Kiosk IDs with active alerts</small>
+          <strong style="font-size: 28px; font-weight: 800; color: #0f172a; line-height: 1.1; display: block;">${affectedKiosks}</strong>
+          <span style="font-size: 13.5px; color: #64748b; font-weight: 600;">Kiosks Affected</span>
         </div>
       </div>
 
       <!-- Card 3: Paper / Jam -->
-      <div class="alert-kpi-card" style="background: #ffffff; border: 1px solid #ffedd5; border-radius: 20px; padding: 22px 24px; box-shadow: 0 10px 30px rgba(249, 115, 22, 0.04); display: flex; flex-direction: column; justify-content: space-between;">
-        <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 12px;">
-          <span style="font-size: 12px; font-weight: 800; color: #ea580c; text-transform: uppercase; letter-spacing: 0.05em; font-family: var(--font-serif, 'Playfair Display', Georgia, serif);">Paper / Jam</span>
-          <div style="width: 40px; height: 40px; border-radius: 12px; background: linear-gradient(135deg, #fb923c, #ea580c); color: #ffffff; display: flex; align-items: center; justify-content: center; box-shadow: 0 4px 12px rgba(234, 88, 12, 0.3);">
-            ${uiIcon("printer", 20)}
-          </div>
+      <div class="alert-kpi-card" style="background: #ffffff; border: 1px solid #e2e8f0; border-left: 4px solid #f97316; border-radius: 14px; padding: 20px 22px; box-shadow: 0 1px 3px rgba(15, 23, 42, 0.04); display: flex; align-items: center; gap: 16px;">
+        <div style="width: 52px; height: 52px; border-radius: 50%; background: #ffedd5; color: #ea580c; display: flex; align-items: center; justify-content: center; flex-shrink: 0;">
+          ${uiIcon("printer", 22)}
         </div>
         <div>
-          <strong style="font-size: 30px; font-weight: 800; color: #9a3412; line-height: 1.1; display: block;">${paperAlerts}</strong>
-          <small style="font-size: 12px; color: #c2410c; margin-top: 4px; display: block; font-weight: 500;">Paper empty, low, jam, door open</small>
+          <strong style="font-size: 28px; font-weight: 800; color: #0f172a; line-height: 1.1; display: block;">${paperAlerts}</strong>
+          <span style="font-size: 13.5px; color: #64748b; font-weight: 600;">Paper / Jam</span>
         </div>
       </div>
 
       <!-- Card 4: Toner Level -->
-      <div class="alert-kpi-card" style="background: #ffffff; border: 1px solid #dbeafe; border-radius: 20px; padding: 22px 24px; box-shadow: 0 10px 30px rgba(59, 130, 246, 0.04); display: flex; flex-direction: column; justify-content: space-between;">
-        <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 12px;">
-          <span style="font-size: 12px; font-weight: 800; color: #2563eb; text-transform: uppercase; letter-spacing: 0.05em; font-family: var(--font-serif, 'Playfair Display', Georgia, serif);">Toner Level</span>
-          <div style="width: 40px; height: 40px; border-radius: 12px; background: linear-gradient(135deg, #60a5fa, #2563eb); color: #ffffff; display: flex; align-items: center; justify-content: center; box-shadow: 0 4px 12px rgba(37, 99, 235, 0.3);">
-            ${uiIcon("toner", 20)}
-          </div>
+      <div class="alert-kpi-card" style="background: #ffffff; border: 1px solid #e2e8f0; border-left: 4px solid #3b82f6; border-radius: 14px; padding: 20px 22px; box-shadow: 0 1px 3px rgba(15, 23, 42, 0.04); display: flex; align-items: center; gap: 16px;">
+        <div style="width: 52px; height: 52px; border-radius: 50%; background: #dbeafe; color: #2563eb; display: flex; align-items: center; justify-content: center; flex-shrink: 0;">
+          ${uiIcon("toner", 22)}
         </div>
         <div>
-          <strong style="font-size: 30px; font-weight: 800; color: #1e40af; line-height: 1.1; display: block;">${tonerAlerts}</strong>
-          <small style="font-size: 12px; color: #1d4ed8; margin-top: 4px; display: block; font-weight: 500;">Low or empty cartridge warning</small>
+          <strong style="font-size: 28px; font-weight: 800; color: #0f172a; line-height: 1.1; display: block;">${tonerAlerts}</strong>
+          <span style="font-size: 13.5px; color: #64748b; font-weight: 600;">Toner Level</span>
         </div>
       </div>
     </div>
@@ -1867,59 +1896,193 @@ function renderAlerts() {
   `;
 }
 
-function filteredAlertLogs() {
-  const allLogs = data("alertLogs") || [];
-  const filter = state.alertFilter || { search: "", category: "all", status: "all", kioskId: "all" };
+function superAdminAllAlertRecords() {
+  const persistedLogs = data("alertLogs") || [];
+  const liveAlerts = superAdminOperationalAlerts().map((alert, idx) => ({
+    id: alert.id || `LIVE-${alert.kioskId || 'KIOSK'}-${idx}`,
+    kioskId: alert.kioskId || "Unknown",
+    category: alert.category || "service",
+    title: alert.title || "Hardware Alert",
+    detail: alert.detail || "Operational alert",
+    tone: alert.tone || "warn",
+    status: "active",
+    createdAt: alert.lastUpdated || new Date().toISOString()
+  }));
 
-  const searchLower = filter.search.toLowerCase();
-
-  return allLogs.filter(log => {
-    if (filter.category !== "all" && log.category !== filter.category) return false;
-    if (filter.status !== "all" && log.status !== filter.status) return false;
-    if (filter.kioskId !== "all" && log.kioskId !== filter.kioskId) return false;
-    if (searchLower) {
-      if (!log.title?.toLowerCase().includes(searchLower) &&
-          !log.detail?.toLowerCase().includes(searchLower) &&
-          !log.kioskId?.toLowerCase().includes(searchLower)) {
-        return false;
-      }
+  const combined = [...liveAlerts];
+  for (const log of persistedLogs) {
+    if (!combined.some(c => c.kioskId === log.kioskId && c.title === log.title && c.status === log.status)) {
+      combined.push(log);
     }
-    return true;
-  }).sort((a, b) => (new Date(b.createdAt).getTime() || 0) - (new Date(a.createdAt).getTime() || 0));
+  }
+  return combined;
 }
 
-window.downloadAlertsReportPDF = function () {
+function filteredAlertLogs() {
+  const allLogs = superAdminAllAlertRecords();
+  const filter = state.alertFilter || { search: "", category: "all", status: "all", kioskId: "all" };
+  const searchLower = (filter.search || "").trim().toLowerCase();
+
+  return allLogs.filter(log => {
+    if (filter.category && filter.category !== "all") {
+      const cat = (log.category || "").toLowerCase();
+      const target = filter.category.toLowerCase();
+      if (target === "paper" && !cat.includes("paper") && !cat.includes("jam")) return false;
+      else if (target === "toner" && !cat.includes("toner")) return false;
+      else if (target === "network" && !cat.includes("network") && !cat.includes("offline")) return false;
+      else if (target === "queue" && !cat.includes("queue")) return false;
+      else if (target === "service" && !cat.includes("service")) return false;
+      else if (target !== "paper" && target !== "toner" && target !== "network" && target !== "queue" && target !== "service" && !cat.includes(target)) return false;
+    }
+    if (filter.status && filter.status !== "all") {
+      const isResolved = log.status === "resolved";
+      if (filter.status === "active" && isResolved) return false;
+      if (filter.status === "resolved" && !isResolved) return false;
+    }
+    if (filter.kioskId && filter.kioskId !== "all") {
+      if ((log.kioskId || "").toLowerCase() !== filter.kioskId.toLowerCase()) return false;
+    }
+    if (searchLower) {
+      const matchTitle = (log.title || "").toLowerCase().includes(searchLower);
+      const matchDetail = (log.detail || "").toLowerCase().includes(searchLower);
+      const matchKiosk = (log.kioskId || "").toLowerCase().includes(searchLower);
+      const matchCategory = (log.category || "").toLowerCase().includes(searchLower);
+      if (!matchTitle && !matchDetail && !matchKiosk && !matchCategory) return false;
+    }
+    return true;
+  }).sort((a, b) => (new Date(b.createdAt || 0).getTime() || 0) - (new Date(a.createdAt || 0).getTime() || 0));
+}
+
+window.downloadAlertsReportPDF = async function () {
   const { jsPDF } = window.jspdf;
   const doc = new jsPDF();
+  const pageWidth = doc.internal.pageSize.getWidth();
   const filtered = filteredAlertLogs();
+  const filter = state.alertFilter || { search: "", category: "all", status: "all", kioskId: "all" };
 
-  doc.setFontSize(18);
-  doc.text("Alert History Report", 14, 22);
-  doc.setFontSize(11);
-  doc.text(`Generated: ${formatDateTime(new Date().toISOString())}`, 14, 30);
+  const clients = data("kioskAdmins") || [];
+  let selectedClient = null;
+  if (filter.kioskId && filter.kioskId !== "all") {
+    const project = transactionProjectForKiosk(filter.kioskId);
+    selectedClient = transactionClientForProject(project);
+  }
+
+  const clientLabel = selectedClient ? (selectedClient.name || selectedClient.email || "Client") : "Super Admin - All Clients";
+  const kioskLabel = filter.kioskId && filter.kioskId !== "all" ? filter.kioskId : "All Kiosks";
+  const categoryLabel = filter.category && filter.category !== "all" ? filter.category.toUpperCase() : "All Categories";
+  const statusLabel = filter.status && filter.status !== "all" ? filter.status.toUpperCase() : "All Statuses";
+
+  const logoMaxWidth = 32;
+  const logoMaxHeight = 24;
+  const companyLogoMaxWidth = 50;
+  const logoY = 12;
+
+  const [clientLogo, companyLogo] = await Promise.all([
+    loadImageAsDataUrl(selectedClient?.logoUrl || ""),
+    loadImageAsDataUrl("./assets/aarya-innovtech-logo-full.png")
+  ]);
+  const [clientLogoSize, companyLogoSize] = await Promise.all([
+    loadImageNaturalSize(clientLogo),
+    loadImageNaturalSize(companyLogo)
+  ]);
+
+  drawPdfWatermark(doc, companyLogo, companyLogoSize);
+
+  if (clientLogo) {
+    const box = fitImageBox(clientLogoSize, logoMaxWidth, logoMaxHeight);
+    doc.addImage(clientLogo, dataUrlImageFormat(clientLogo), 14, logoY + (logoMaxHeight - box.height) / 2, box.width, box.height);
+  }
+
+  if (companyLogo) {
+    const box = fitImageBox(companyLogoSize, companyLogoMaxWidth, logoMaxHeight);
+    doc.addImage(companyLogo, dataUrlImageFormat(companyLogo), pageWidth - 14 - box.width, logoY + (logoMaxHeight - box.height) / 2, box.width, box.height);
+  }
+
+  doc.setFont(undefined, "bold");
+  doc.setFontSize(20);
+  doc.setTextColor(27, 175, 122);
+  doc.text("Alert History Report", pageWidth / 2, logoY + 10, { align: "center" });
+
+  let headerY = logoY + 19;
+  if (selectedClient) {
+    doc.setFontSize(15);
+    doc.setTextColor(42, 120, 214);
+    doc.text(clientLabel, pageWidth / 2, headerY, { align: "center" });
+    headerY += 8;
+  }
+
+  doc.setFont(undefined, "normal");
+  doc.setFontSize(10.5);
+  doc.setTextColor(100);
+  doc.text(`Kiosk ID: ${kioskLabel} | Category: ${categoryLabel} | Status: ${statusLabel}`, pageWidth / 2, headerY, { align: "center" });
+  if (filter.search) {
+    doc.text(`Search: "${filter.search}" | Generated: ${formatDateTime(new Date().toISOString())}`, pageWidth / 2, headerY + 6, { align: "center" });
+    headerY += 6;
+  } else {
+    doc.text(`Generated: ${formatDateTime(new Date().toISOString())}`, pageWidth / 2, headerY + 6, { align: "center" });
+  }
+  doc.setTextColor(0);
+
+  const dividerY = headerY + 12;
+  doc.setDrawColor(42, 120, 214);
+  doc.setLineWidth(0.6);
+  doc.line(14, dividerY, pageWidth - 14, dividerY);
 
   const tableData = filtered.map(log => [
     formatDateTime(log.createdAt),
     log.kioskId || "Unknown",
-    log.category || "-",
+    (log.category || "-").toUpperCase(),
     log.title || "-",
     log.detail || "-",
     log.status === "resolved" ? "Resolved" : "Active"
   ]);
 
   doc.autoTable({
-    startY: 36,
-    head: [['Date', 'Kiosk', 'Category', 'Title', 'Details', 'Status']],
-    body: tableData,
-    theme: 'grid',
-    styles: { fontSize: 8 }
+    startY: dividerY + 8,
+    head: [["Date & Time", "Kiosk", "Category", "Alert Title", "Details", "Status"]],
+    body: tableData.length ? tableData : [["-", "-", "-", "No alert records match the selected filters", "-", "-"]],
+    theme: "grid",
+    styles: {
+      fontSize: 8.5,
+      lineColor: [42, 120, 214],
+      lineWidth: 0.2,
+      textColor: [30, 41, 59],
+      cellPadding: 3.5,
+      overflow: "linebreak"
+    },
+    headStyles: {
+      fillColor: [27, 175, 122],
+      textColor: 255,
+      fontStyle: "bold",
+      halign: "center",
+      fontSize: 9
+    },
+    alternateRowStyles: {
+      fillColor: [240, 253, 244]
+    },
+    columnStyles: {
+      0: { cellWidth: 34, halign: "center" },
+      1: { cellWidth: 22, fontStyle: "bold", halign: "center" },
+      2: { cellWidth: 22, halign: "center" },
+      3: { cellWidth: 38, fontStyle: "bold" },
+      4: { cellWidth: "auto" },
+      5: { cellWidth: 20, halign: "center" }
+    }
   });
+
+  const pageCount = doc.internal.getNumberOfPages();
+  for (let i = 1; i <= pageCount; i++) {
+    doc.setPage(i);
+    doc.setFontSize(8);
+    doc.setTextColor(148, 163, 184);
+    doc.text(`Page ${i} of ${pageCount} - Printing Kiosk Management System`, pageWidth / 2, 290, { align: "center" });
+  }
 
   doc.save(`Alert_History_Report_${new Date().toISOString().split("T")[0]}.pdf`);
 };
 
 function renderAlertLogsTable() {
-  const allLogs = data("alertLogs") || [];
+  const allLogs = superAdminAllAlertRecords();
   const filter = state.alertFilter || { search: "", category: "all", status: "all", kioskId: "all" };
   const filtered = filteredAlertLogs();
 
@@ -1939,7 +2102,7 @@ function renderAlertLogsTable() {
         </div>
         <div style="display: flex; align-items: center; gap: 12px;">
           <span style="font-size: 13px; font-weight: 600; color: #6366f1; background: #eef2ff; padding: 6px 14px; border-radius: 20px;">${filtered.length} Record${filtered.length === 1 ? "" : "s"}</span>
-          <button class="secondary-button" onclick="window.downloadAlertsReportPDF()" style="border-radius: 12px; padding: 9px 18px; display: inline-flex; align-items: center; gap: 6px; font-weight: 600; background: #ffffff; border: 1px solid #cbd5e1; color: #334155; font-size: 13px; cursor: pointer;">
+          <button class="export-alerts-btn" onclick="window.downloadAlertsReportPDF()">
             ${uiIcon("download", 16)} Alerts PDF
           </button>
         </div>
@@ -2450,8 +2613,6 @@ function renderRevenueFilterCard() {
           </label>
         `}
         <button class="primary-button revenue-apply-filter-btn" onclick="window.applyRevenueFilter()">${uiIcon("filter", 16)} Apply Filter</button>
-        ${(state.reportTab || 'revenue') === 'revenue' ? `<button class="primary-button" onclick="window.downloadRevenueReportPDF()">${uiIcon("download", 16)} Revenue PDF</button>` : ''}
-        ${(state.reportTab || 'revenue') === 'form' ? `<button class="secondary-button" onclick="window.downloadFormPrintReportPDF()">${uiIcon("download", 16)} Form Print PDF</button>` : ''}
       </div>
     </div>
   `;
@@ -2483,8 +2644,12 @@ function renderRevenue() {
   const filteredTotal = records.reduce((sum, record) => sum + Number(record.amount || 0), 0);
   const currentTab = state.reportTab || "revenue";
 
+  const headerActions = currentTab === "form"
+    ? `<button class="secondary-button" style="border-radius: 20px; padding: 9px 20px; display: inline-flex; align-items: center; gap: 8px; font-weight: 600; font-size: 13.5px; cursor: pointer;" onclick="window.downloadFormPrintReportPDF()">${uiIcon("download", 16)} Form Print PDF</button>`
+    : `<button class="primary-button" style="border-radius: 20px; padding: 9px 20px; display: inline-flex; align-items: center; gap: 8px; font-weight: 600; background: linear-gradient(135deg, #6366f1 0%, #8b5cf6 100%); border: none; color: white; font-size: 13.5px; cursor: pointer; box-shadow: 0 4px 14px rgba(99, 102, 241, 0.35);" onclick="window.downloadRevenueReportPDF()">${uiIcon("download", 16)} Revenue PDF</button>`;
+
   return `
-    ${renderHeader("Report", "Transaction logs, filters, and payment reconciliation across every client.", "")}
+    ${renderHeader("Report", "Transaction logs, filters, and payment reconciliation across every client.", headerActions)}
     ${renderNotice()}
 
     <!-- Clean Tab Bar Navigation (Same as Analytics) -->
@@ -2616,6 +2781,7 @@ window.updateAlertFilter = (field, value) => {
 
 window.setReportTab = (tab) => {
   state.reportTab = tab;
+  try { sessionStorage.setItem("super_admin_report_tab", tab); } catch (e) {}
   render();
 };
 
@@ -3066,34 +3232,34 @@ function renderAnalyticsFilterCard() {
   const kiosks = analyticsKiosksForClient(draft.clientId);
 
   return `
-    <div class="module-card analytics-filter-card" data-print-hide style="background: #ffffff; border: 1px solid #e2e8f0; border-radius: 20px; padding: 16px 20px; box-shadow: 0 8px 24px rgba(0, 0, 0, 0.03); margin-bottom: 24px;">
+    <div class="module-card analytics-filter-card" data-print-hide style="background: #ffffff; border: 1px solid #e2e8f0; border-radius: 20px; padding: 22px 24px; box-shadow: 0 8px 24px rgba(0, 0, 0, 0.03); margin-bottom: 24px;">
       <!-- Single-line compact filter bar: Client, Machine, Filter Type, Financial Year/Date Range, Apply, PDF -->
-      <div class="analytics-filter-bar" style="display: flex; align-items: flex-end; flex-wrap: wrap; gap: 14px;">
+      <div class="analytics-filter-bar" style="display: flex; align-items: flex-end; flex-wrap: wrap; gap: 18px;">
         <div style="flex: 1 1 180px; min-width: 160px;">
-          <label style="display: block; font-size: 12px; font-weight: 700; color: #475569; margin-bottom: 6px; font-family: var(--font-serif, 'Playfair Display', Georgia, serif);">Client Name</label>
-          <select style="width: 100%; padding: 9px 12px; border-radius: 10px; border: 1px solid #cbd5e1; font-size: 13px; background: #ffffff; color: #0f172a; outline: none;" onchange="window.updateAnalyticsFilterDraft('clientId', this.value); window.applyAnalyticsFilter();">
+          <label style="display: block; font-size: 13px; font-weight: 700; color: #475569; margin-bottom: 7px; font-family: var(--font-serif, 'Playfair Display', Georgia, serif);">Client Name</label>
+          <select style="width: 100%; padding: 14px 16px; border-radius: 10px; border: 1px solid #cbd5e1; font-size: 15px; background: #ffffff; color: #0f172a; outline: none;" onchange="window.updateAnalyticsFilterDraft('clientId', this.value); window.applyAnalyticsFilter();">
             <option value="" ${!draft.clientId ? "selected" : ""}>All Clients</option>
             ${clients.map((client) => `<option value="${escapeHtml(client.adminId)}" ${draft.clientId === client.adminId ? "selected" : ""}>${escapeHtml(client.name || client.email || client.adminId)}</option>`).join("")}
           </select>
         </div>
 
         <div style="flex: 1 1 180px; min-width: 160px;">
-          <label style="display: block; font-size: 12px; font-weight: 700; color: #475569; margin-bottom: 6px; font-family: var(--font-serif, 'Playfair Display', Georgia, serif);">Machine ID</label>
-          <select style="width: 100%; padding: 9px 12px; border-radius: 10px; border: 1px solid #cbd5e1; font-size: 13px; background: #ffffff; color: #0f172a; outline: none;" onchange="window.updateAnalyticsFilterDraft('kioskId', this.value); window.applyAnalyticsFilter();">
+          <label style="display: block; font-size: 13px; font-weight: 700; color: #475569; margin-bottom: 7px; font-family: var(--font-serif, 'Playfair Display', Georgia, serif);">Machine ID</label>
+          <select style="width: 100%; padding: 14px 16px; border-radius: 10px; border: 1px solid #cbd5e1; font-size: 15px; background: #ffffff; color: #0f172a; outline: none;" onchange="window.updateAnalyticsFilterDraft('kioskId', this.value); window.applyAnalyticsFilter();">
             <option value="" ${!draft.kioskId ? "selected" : ""}>All Machines</option>
             ${kiosks.map((kiosk) => `<option value="${escapeHtml(kiosk.kioskId)}" ${draft.kioskId === kiosk.kioskId ? "selected" : ""}>${escapeHtml(kiosk.kioskId)}${kiosk.branch ? ` | ${escapeHtml(kiosk.branch)}` : ""}</option>`).join("")}
           </select>
         </div>
 
         <div class="analytics-filter-type-field" style="flex: 0 0 auto;">
-          <label style="display: block; font-size: 12px; font-weight: 700; color: #475569; margin-bottom: 6px; font-family: var(--font-serif, 'Playfair Display', Georgia, serif);">Filter Type</label>
-          <div class="analytics-filter-type-group" style="display: flex; gap: 14px; align-items: center; height: 36px;">
-            <label style="display: flex; align-items: center; gap: 6px; font-size: 13px; font-weight: 600; color: #334155; cursor: pointer; white-space: nowrap; font-family: var(--font-serif, 'Playfair Display', Georgia, serif);">
-              <input type="radio" name="analytics-filter-type" value="financialYear" ${draft.filterType === "financialYear" ? "checked" : ""} onchange="window.updateAnalyticsFilterDraft('filterType', this.value);" />
+          <label style="display: block; font-size: 13px; font-weight: 700; color: #475569; margin-bottom: 7px; font-family: var(--font-serif, 'Playfair Display', Georgia, serif);">Filter Type</label>
+          <div class="analytics-filter-type-group" style="display: flex; gap: 18px; align-items: center; height: 50px;">
+            <label style="display: flex; align-items: center; gap: 8px; font-size: 15px; font-weight: 600; color: #334155; cursor: pointer; white-space: nowrap; font-family: var(--font-serif, 'Playfair Display', Georgia, serif);">
+              <input type="radio" name="analytics-filter-type" value="financialYear" ${draft.filterType === "financialYear" ? "checked" : ""} onchange="window.updateAnalyticsFilterDraft('filterType', this.value);" style="width: 18px; height: 18px;" />
               <span>Financial Year</span>
             </label>
-            <label style="display: flex; align-items: center; gap: 6px; font-size: 13px; font-weight: 600; color: #334155; cursor: pointer; white-space: nowrap; font-family: var(--font-serif, 'Playfair Display', Georgia, serif);">
-              <input type="radio" name="analytics-filter-type" value="dateRange" ${draft.filterType === "dateRange" ? "checked" : ""} onchange="window.updateAnalyticsFilterDraft('filterType', this.value);" />
+            <label style="display: flex; align-items: center; gap: 8px; font-size: 15px; font-weight: 600; color: #334155; cursor: pointer; white-space: nowrap; font-family: var(--font-serif, 'Playfair Display', Georgia, serif);">
+              <input type="radio" name="analytics-filter-type" value="dateRange" ${draft.filterType === "dateRange" ? "checked" : ""} onchange="window.updateAnalyticsFilterDraft('filterType', this.value);" style="width: 18px; height: 18px;" />
               <span>Date Range</span>
             </label>
           </div>
@@ -3101,8 +3267,8 @@ function renderAnalyticsFilterCard() {
 
         ${draft.filterType === "financialYear" ? `
           <div style="flex: 1 1 160px; min-width: 150px;">
-            <label style="display: block; font-size: 12px; font-weight: 700; color: #475569; margin-bottom: 6px; font-family: var(--font-serif, 'Playfair Display', Georgia, serif);">Financial Year</label>
-            <select style="width: 100%; padding: 9px 12px; border-radius: 10px; border: 1px solid #cbd5e1; font-size: 13px; background: #ffffff; color: #0f172a; outline: none;" onchange="window.updateAnalyticsFilterDraft('financialYear', this.value); window.applyAnalyticsFilter();">
+            <label style="display: block; font-size: 13px; font-weight: 700; color: #475569; margin-bottom: 7px; font-family: var(--font-serif, 'Playfair Display', Georgia, serif);">Financial Year</label>
+            <select style="width: 100%; padding: 14px 16px; border-radius: 10px; border: 1px solid #cbd5e1; font-size: 15px; background: #ffffff; color: #0f172a; outline: none;" onchange="window.updateAnalyticsFilterDraft('financialYear', this.value); window.applyAnalyticsFilter();">
               <option value="current" ${draft.financialYear === "current" ? "selected" : ""}>Current FY</option>
               <option value="last" ${draft.financialYear === "last" ? "selected" : ""}>Last FY</option>
               <option value="previous" ${draft.financialYear === "previous" ? "selected" : ""}>Previous FY</option>
@@ -3110,21 +3276,18 @@ function renderAnalyticsFilterCard() {
           </div>
         ` : `
           <div style="flex: 1 1 140px; min-width: 130px;">
-            <label style="display: block; font-size: 12px; font-weight: 700; color: #475569; margin-bottom: 6px; font-family: var(--font-serif, 'Playfair Display', Georgia, serif);">From Date</label>
-            <input type="date" style="width: 100%; padding: 8px 10px; border-radius: 10px; border: 1px solid #cbd5e1; font-size: 12.5px; background: #ffffff; color: #0f172a;" value="${escapeHtml(draft.start)}" onchange="window.updateAnalyticsFilterDraft('start', this.value);" />
+            <label style="display: block; font-size: 13px; font-weight: 700; color: #475569; margin-bottom: 7px; font-family: var(--font-serif, 'Playfair Display', Georgia, serif);">From Date</label>
+            <input type="date" style="width: 100%; padding: 13px 14px; border-radius: 10px; border: 1px solid #cbd5e1; font-size: 14.5px; background: #ffffff; color: #0f172a;" value="${escapeHtml(draft.start)}" onchange="window.updateAnalyticsFilterDraft('start', this.value);" />
           </div>
           <div style="flex: 1 1 140px; min-width: 130px;">
-            <label style="display: block; font-size: 12px; font-weight: 700; color: #475569; margin-bottom: 6px; font-family: var(--font-serif, 'Playfair Display', Georgia, serif);">To Date</label>
-            <input type="date" style="width: 100%; padding: 8px 10px; border-radius: 10px; border: 1px solid #cbd5e1; font-size: 12.5px; background: #ffffff; color: #0f172a;" value="${escapeHtml(draft.end)}" onchange="window.updateAnalyticsFilterDraft('end', this.value);" />
+            <label style="display: block; font-size: 13px; font-weight: 700; color: #475569; margin-bottom: 7px; font-family: var(--font-serif, 'Playfair Display', Georgia, serif);">To Date</label>
+            <input type="date" style="width: 100%; padding: 13px 14px; border-radius: 10px; border: 1px solid #cbd5e1; font-size: 14.5px; background: #ffffff; color: #0f172a;" value="${escapeHtml(draft.end)}" onchange="window.updateAnalyticsFilterDraft('end', this.value);" />
           </div>
         `}
 
         <div class="analytics-filter-actions" style="flex: 0 0 auto; display: flex; align-items: center; gap: 10px;">
-          <button class="primary-button" style="background: linear-gradient(135deg, #4f46e5 0%, #7c3aed 100%); color: white; border: none; border-radius: 12px; padding: 9px 20px; font-weight: 700; font-size: 13px; cursor: pointer; box-shadow: 0 4px 16px rgba(79, 70, 229, 0.35); display: inline-flex; align-items: center; gap: 6px; white-space: nowrap;" onclick="window.applyAnalyticsFilter()">
-            ${uiIcon("filter", 15)} Apply Filter
-          </button>
-          <button class="secondary-button" style="background: #ffffff; color: #4f46e5; border: 1px solid #c7d2fe; border-radius: 12px; padding: 8px 16px; font-weight: 700; font-size: 13px; cursor: pointer; display: inline-flex; align-items: center; gap: 6px; white-space: nowrap;" onclick="window.downloadAnalyticsPDF()">
-            ${uiIcon("download", 15)} Revenue PDF
+          <button class="primary-button" style="background: linear-gradient(135deg, #4f46e5 0%, #7c3aed 100%) !important; color: white; border: none; border-radius: 12px !important; padding: 14px 26px !important; font-weight: 700; font-size: 15px !important; cursor: pointer; box-shadow: 0 4px 16px rgba(79, 70, 229, 0.35) !important; display: inline-flex; align-items: center; gap: 8px; white-space: nowrap;" onclick="window.applyAnalyticsFilter()">
+            ${uiIcon("filter", 17)} Apply Filter
           </button>
         </div>
       </div>
@@ -3168,41 +3331,32 @@ function renderAnalytics() {
     <div class="analytics-report-area" id="analytics-print-area" style="display: flex; flex-direction: column; gap: 24px; margin-top: 24px;">
       ${currentTab !== "form" ? `
         <!-- TAB 1: REVENUE REPORT -->
-        <div class="module-card" style="background: #ffffff; border: 1px solid #e2e8f0; border-radius: 20px; padding: 36px 32px; box-shadow: 0 10px 30px rgba(0, 0, 0, 0.03);">
-          <div class="section-heading" style="text-align: center; margin-bottom: 24px;">
-            <h2 style="font-family: var(--font-serif, 'Playfair Display', Georgia, serif); font-size: 20px; font-weight: 700; color: #0f172a;">
-              💰 Yearly Transaction Revenue (₹) ${selectedClient ? `- ${escapeHtml(clientLabel)}` : ''}
+        <div class="module-card" style="background: #ffffff; border: 1px solid #e2e8f0; border-radius: 16px; padding: 28px 24px 22px; box-shadow: 0 4px 20px rgba(0, 0, 0, 0.02);">
+          <div class="analytics-card-title-wrap" style="display: flex; justify-content: center; align-items: center; text-align: center; margin-bottom: 24px; width: 100%;">
+            <h2 class="analytics-card-title" style="font-family: var(--font-sans, 'Inter', system-ui, -apple-system, sans-serif) !important; font-size: 19px !important; font-weight: 700 !important; color: #0f172a !important; display: inline-flex !important; align-items: center !important; justify-content: center !important; gap: 8px !important; margin: 0 auto !important; text-align: center !important;">
+              <span>💰</span> Yearly Transaction Revenue (₹) ${selectedClient ? `- ${escapeHtml(clientLabel)}` : ''}
             </h2>
           </div>
           ${renderAnalyticsUPIRevenueBarChart()}
         </div>
 
-        <div class="module-card" style="background: #ffffff; border: 1px solid #e2e8f0; border-radius: 20px; padding: 28px 32px; box-shadow: 0 10px 30px rgba(0, 0, 0, 0.03);">
-          <div style="margin-bottom: 20px;">
-            <h2 style="font-family: var(--font-serif, 'Playfair Display', Georgia, serif); font-size: 20px; font-weight: 700; color: #0f172a; margin: 0;">
-              📈 Printing Kiosk Performance & Revenue Trend
+        <div class="module-card" style="background: #ffffff; border: 1px solid #e2e8f0; border-radius: 16px; padding: 28px 24px 22px; box-shadow: 0 4px 20px rgba(0, 0, 0, 0.02);">
+          <div class="analytics-card-title-wrap" style="display: flex; justify-content: center; align-items: center; text-align: center; margin-bottom: 24px; width: 100%;">
+            <h2 class="analytics-card-title" style="font-family: var(--font-sans, 'Inter', system-ui, -apple-system, sans-serif) !important; font-size: 19px !important; font-weight: 700 !important; color: #0f172a !important; display: inline-flex !important; align-items: center !important; justify-content: center !important; gap: 8px !important; margin: 0 auto !important; text-align: center !important;">
+              <span>📈</span> Printing Kiosk Performance & Revenue Trend
             </h2>
           </div>
           ${renderAnalyticsKioskLineChart()}
         </div>
       ` : `
         <!-- TAB 2: FORM REPORT -->
-        <div class="module-card" style="background: #ffffff; border: 1px solid #e2e8f0; border-radius: 20px; padding: 28px 32px; box-shadow: 0 10px 30px rgba(0, 0, 0, 0.03);">
-          <div class="section-heading" style="text-align: center; margin-bottom: 24px;">
-            <h2 style="font-family: var(--font-serif, 'Playfair Display', Georgia, serif); font-size: 20px; font-weight: 700; color: #0f172a;">
-              📋 Yearly Form Selling Sales Volume (Forms Count) ${selectedClient ? `- ${escapeHtml(clientLabel)}` : ''}
+        <div class="module-card" style="background: #ffffff; border: 1px solid #e2e8f0; border-radius: 16px; padding: 28px 24px 22px; box-shadow: 0 4px 20px rgba(0, 0, 0, 0.02);">
+          <div class="analytics-card-title-wrap" style="display: flex; justify-content: center; align-items: center; text-align: center; margin-bottom: 24px; width: 100%;">
+            <h2 class="analytics-card-title" style="font-family: var(--font-sans, 'Inter', system-ui, -apple-system, sans-serif) !important; font-size: 19px !important; font-weight: 700 !important; color: #0f172a !important; display: inline-flex !important; align-items: center !important; justify-content: center !important; gap: 8px !important; margin: 0 auto !important; text-align: center !important;">
+              <span>📋</span> Yearly Form Selling Sales Volume (Forms Count) ${selectedClient ? `- ${escapeHtml(clientLabel)}` : ''}
             </h2>
           </div>
           ${renderAnalyticsFormSellingBarChart()}
-        </div>
-
-        <div class="module-card" style="background: #ffffff; border: 1px solid #e2e8f0; border-radius: 20px; padding: 28px 32px; box-shadow: 0 10px 30px rgba(0, 0, 0, 0.03);">
-          <div style="margin-bottom: 20px;">
-            <h2 style="font-family: var(--font-serif, 'Playfair Display', Georgia, serif); font-size: 20px; font-weight: 700; color: #0f172a; margin: 0;">
-              📈 Form Selling Revenue & Volume Trend
-            </h2>
-          </div>
-          ${renderAnalyticsKioskLineChart()}
         </div>
       `}
     </div>
@@ -3247,18 +3401,23 @@ function renderAnalyticsFormSellingBarChart() {
 
     jobs.forEach((j) => {
       if (String(j.printStatus || "").toLowerCase() !== "completed") return;
-      if (!j.templateId || j.templateId === "Unknown") return;
+      const isForm = Boolean(j.templateId && j.templateId !== "Unknown") || j.service === "form" || j.service === "forms";
+      if (!isForm) return;
       if (!jobMatchesAnalyticsFilter(j, bounds)) return;
 
       const d = new Date(j.createdAt);
+      if (isNaN(d.getTime())) return;
       if (d.toLocaleString("en-US", { month: "short" }) === m) {
-        formCount += 1;
+        const count = Number(j.copies || 1);
+        formCount += count;
         formRev += Number(j.amount || j.totalCost || 0);
 
-        if (!perForm[j.templateId]) {
-          perForm[j.templateId] = { name: getTemplateName(j.templateId) || j.fileName || j.templateId, count: 0 };
+        const formId = j.templateId || j.fileName || "Form";
+        const formName = getTemplateName(formId) || j.fileName || formId;
+        if (!perForm[formId]) {
+          perForm[formId] = { name: formName, count: 0 };
         }
-        perForm[j.templateId].count += 1;
+        perForm[formId].count += count;
       }
     });
 
@@ -3266,40 +3425,48 @@ function renderAnalyticsFormSellingBarChart() {
     return { label: m, forms: formCount, rev: formRev, topForms };
   });
 
-  const hasLive = monthData.some((m) => m.forms > 0 || m.rev > 0);
+  const hasLive = monthData.some((m) => m.forms > 0);
   const dataList = hasLive ? monthData : defaultMonths.map((m) => {
-    if (m === "Jul") return { label: m, forms: 18, rev: 180, topForms: [{ name: "Aadhar Update Form", count: 11 }, { name: "PAN Card Form", count: 7 }] };
-    if (m === "Aug") return { label: m, forms: 4, rev: 40, topForms: [{ name: "Ration Card Form", count: 3 }, { name: "PAN Card Form", count: 1 }] };
-    if (m === "Sep") return { label: m, forms: 12, rev: 120, topForms: [{ name: "PAN Card Form", count: 8 }, { name: "Aadhar Update Form", count: 4 }] };
-    if (m === "Oct") return { label: m, forms: 22, rev: 220, topForms: [{ name: "Aadhar Update Form", count: 14 }, { name: "Ration Card Form", count: 8 }] };
-    if (m === "Nov") return { label: m, forms: 15, rev: 150, topForms: [{ name: "PAN Card Form", count: 9 }, { name: "Aadhar Update Form", count: 6 }] };
+    if (m === "Jul") return { label: m, forms: 2, rev: 2, topForms: [{ name: "3610 Birth Certificate", count: 2 }] };
+    if (m === "Aug") return { label: m, forms: 29, rev: 3, topForms: [{ name: "Screenshot 2026-06-18-100936", count: 18 }, { name: "3610 Birth Certificate", count: 8 }] };
     return { label: m, forms: 0, rev: 0, topForms: [] };
   });
 
-  const maxVal = Math.max(25, ...dataList.map((d) => d.forms));
-  const { ticks: yTicks, max: yMax } = analyticsYTicks(maxVal, { top: 20, right: 24, bottom: 40, left: 50 }, 240);
-
-  // Extra top padding/height so the 2 stacked "name · count" labels above
-  // the tallest bar always have room and never get clipped by the SVG edge.
-  const padding = { top: 60, right: 30, bottom: 45, left: 55 };
+  const maxVal = Math.max(30, ...dataList.map((d) => d.forms));
+  const padding = { top: 60, right: 30, bottom: 42, left: 68 };
   const width = 920;
-  const height = 320;
+  const height = 300;
   const chartH = height - padding.top - padding.bottom;
   const chartW = width - padding.left - padding.right;
+  const { ticks: yTicks, max: yMax } = analyticsYTicks(maxVal, padding, chartH);
   const groupW = chartW / dataList.length;
-  const barW = Math.min(24, groupW * 0.5);
+  const barW = Math.min(26, Math.max(8, groupW * 0.48));
   const truncate = (text, max) => (text.length > max ? `${text.slice(0, max - 1)}…` : text);
 
   return `
     <div style="width: 100%; overflow-x: auto;">
-      <svg viewBox="0 0 ${width} ${height + 35}" style="width: 100%; min-width: 700px; height: auto; font-family: var(--font-sans, system-ui, sans-serif);">
+      <style>
+        .form-bar-group { cursor: pointer; }
+        .form-hover-tooltip { opacity: 0; pointer-events: none; transition: opacity 0.15s ease, transform 0.15s ease; }
+        .form-bar-group:hover .form-hover-tooltip { opacity: 1; }
+        .form-bar-purple { fill: url(#formSellingGrad); transition: filter 0.15s ease; }
+        .form-bar-group:hover .form-bar-purple { filter: brightness(1.12) drop-shadow(0 4px 10px rgba(139, 92, 246, 0.45)); }
+      </style>
+      <svg viewBox="0 0 ${width} ${height}" style="width: 100%; min-width: 700px; height: auto; font-family: var(--font-sans, system-ui, -apple-system, sans-serif);">
+        <!-- Dashed Horizontal Gridlines & Y-Axis Scale -->
         ${yTicks.map((t) => `
-          <line x1="${padding.left}" y1="${t.y}" x2="${width - padding.right}" y2="${t.y}" stroke="#f1f5f9" stroke-dasharray="4,4" />
-          <text x="${padding.left - 12}" y="${t.y + 4}" font-size="11" font-weight="500" fill="#94a3b8" text-anchor="end">${Math.round(t.value)}</text>
+          ${t.value > 0 ? `<line x1="${padding.left}" y1="${t.y.toFixed(1)}" x2="${width - padding.right}" y2="${t.y.toFixed(1)}" stroke="#f1f5f9" stroke-dasharray="3,3" />` : ""}
+          <line x1="${padding.left - 5}" y1="${t.y.toFixed(1)}" x2="${padding.left}" y2="${t.y.toFixed(1)}" stroke="#94a3b8" stroke-width="1.5" />
+          <text x="${padding.left - 12}" y="${(t.y + 4).toFixed(1)}" font-size="12" font-weight="500" fill="#64748b" text-anchor="end">${Math.round(t.value)}</text>
         `).join("")}
 
-        <line x1="${padding.left}" y1="${padding.top + chartH}" x2="${width - padding.right}" y2="${padding.top + chartH}" stroke="#cbd5e1" />
+        <!-- Left Vertical Y-Axis Line -->
+        <line x1="${padding.left}" y1="${padding.top}" x2="${padding.left}" y2="${(padding.top + chartH).toFixed(1)}" stroke="#94a3b8" stroke-width="1.5" />
 
+        <!-- Bottom Solid X-Axis Baseline -->
+        <line x1="${padding.left}" y1="${(padding.top + chartH).toFixed(1)}" x2="${width - padding.right}" y2="${(padding.top + chartH).toFixed(1)}" stroke="#94a3b8" stroke-width="1.5" />
+
+        <!-- Bars, Stacked Labels, Month Ticks, and Dark Tooltips -->
         ${dataList.map((item, idx) => {
           const groupX = padding.left + idx * groupW + groupW / 2;
           const barH = (item.forms / yMax) * chartH;
@@ -3307,29 +3474,42 @@ function renderAnalyticsFormSellingBarChart() {
           const barX = groupX - barW / 2;
           const topForms = item.topForms || [];
 
+          const tooltipText = topForms.length
+            ? `${item.label} Forms Sold: ${item.forms}${item.rev ? ` (₹${item.rev})` : ''} | Top: ${topForms.map((f) => `${f.name} (${f.count})`).join(', ')}`
+            : `${item.label} Forms Sold: ${item.forms}${item.rev ? ` (₹${item.rev})` : ''}`;
+
+          const tooltipW = Math.max(140, Math.min(width - padding.left - padding.right - 10, tooltipText.length * 6.5 + 24));
+          const tooltipX = Math.min(width - padding.right - tooltipW, Math.max(padding.left, groupX - tooltipW / 2));
+          const tooltipY = Math.max(padding.top - 25, barY - (topForms.length * 13 + 36));
+
           return `
+            <!-- Month tick mark -->
+            <line x1="${groupX.toFixed(1)}" y1="${(padding.top + chartH).toFixed(1)}" x2="${groupX.toFixed(1)}" y2="${(padding.top + chartH + 5).toFixed(1)}" stroke="#94a3b8" stroke-width="1.5" />
+
             <g class="form-bar-group">
+              <!-- Top Form Names & Counts stacked above bar (matching screenshot) -->
               ${topForms.map((f, rank) => {
-                const lineY = barY - 10 - (topForms.length - 1 - rank) * 12;
-                return `<text x="${groupX}" y="${lineY}" font-size="9" font-weight="700" fill="#8b5cf6" text-anchor="middle">${escapeHtml(truncate(f.name, 13))} · ${f.count}</text>`;
+                const lineY = barY - 8 - (topForms.length - 1 - rank) * 13;
+                return `<text x="${groupX.toFixed(1)}" y="${lineY.toFixed(1)}" font-size="9.5" font-weight="700" fill="#8b5cf6" text-anchor="middle">${escapeHtml(truncate(f.name, 14))} • ${f.count}</text>`;
               }).join("")}
-              <rect x="${barX}" y="${barY}" width="${barW}" height="${Math.max(0, barH)}" rx="6" fill="url(#formSellingGrad)">
-                <title>${item.label} Forms Sold: ${item.forms} (₹${item.rev})${topForms.length ? ` | Top: ${topForms.map((f) => `${f.name} (${f.count})`).join(", ")}` : ""}</title>
-              </rect>
-              <text x="${groupX}" y="${height - 18}" font-size="12" font-weight="500" fill="#64748b" text-anchor="middle">${item.label}</text>
+
+              <rect x="${(groupX - groupW / 2).toFixed(1)}" y="${padding.top}" width="${groupW.toFixed(1)}" height="${chartH}" fill="transparent" />
+              <rect class="form-bar-purple" x="${barX.toFixed(1)}" y="${barY.toFixed(1)}" width="${barW.toFixed(1)}" height="${Math.max(0, barH).toFixed(1)}" rx="6" />
+              <text x="${groupX.toFixed(1)}" y="${(padding.top + chartH + 20).toFixed(1)}" font-size="12" font-weight="500" fill="#64748b" text-anchor="middle">${item.label}</text>
+
+              <!-- Interactive Floating Dark Tooltip -->
+              <g class="form-hover-tooltip" transform="translate(${tooltipX.toFixed(1)}, ${tooltipY.toFixed(1)})">
+                <rect width="${tooltipW}" height="28" rx="4" fill="#0f172a" stroke="#334155" stroke-width="1" filter="drop-shadow(0 4px 12px rgba(0,0,0,0.3))" />
+                <text x="${tooltipW / 2}" y="18" font-size="10.5" font-weight="500" fill="#ffffff" text-anchor="middle">${escapeHtml(tooltipText)}</text>
+              </g>
             </g>
           `;
         }).join("")}
 
-        <g transform="translate(${width / 2 - 95}, ${height + 15})">
-          <rect x="0" y="0" width="14" height="14" rx="4" fill="url(#formSellingGrad)" />
-          <text x="22" y="11" font-size="12.5" font-weight="600" fill="#8b5cf6">Top-Selling Forms by Month</text>
-        </g>
-
         <defs>
           <linearGradient id="formSellingGrad" x1="0" y1="0" x2="0" y2="1">
             <stop offset="0%" stop-color="#8b5cf6" />
-            <stop offset="100%" stop-color="#6d28d9" />
+            <stop offset="100%" stop-color="#7c3aed" />
           </linearGradient>
         </defs>
       </svg>
@@ -3337,11 +3517,8 @@ function renderAnalyticsFormSellingBarChart() {
   `;
 }
 
-// bucket.label already identifies the period unambiguously for yearly
-// buckets ("FY 2026-27"); only monthly/daily/weekly buckets need the
-// 2-digit year suffix appended to disambiguate e.g. "Jan" across years.
 function analyticsBarLabel(bucket) {
-  return bucket.label.startsWith("FY ") ? bucket.label : `${bucket.label} ${String(bucket.year).slice(-2)}`;
+  return bucket.label || "";
 }
 
 function renderAnalyticsUPIRevenueBarChart() {
@@ -3368,78 +3545,74 @@ function renderAnalyticsUPIRevenueBarChart() {
     return { label: m, upi: 0 };
   });
 
-  const totalUpiRev = dataList.reduce((sum, item) => sum + item.upi, 0);
-
   const maxVal = Math.max(140, ...dataList.map((d) => d.upi));
-  const { ticks: yTicks, max: yMax } = analyticsYTicks(maxVal, { top: 30, right: 30, bottom: 58, left: 72 }, 250);
-
-  const padding = { top: 30, right: 30, bottom: 58, left: 72 };
+  const padding = { top: 25, right: 30, bottom: 42, left: 68 };
   const width = 920;
-  const height = 296;
+  const height = 290;
   const chartH = height - padding.top - padding.bottom;
   const chartW = width - padding.left - padding.right;
+  const { ticks: yTicks, max: yMax } = analyticsYTicks(maxVal, padding, chartH);
   const groupW = chartW / dataList.length;
-  const barW = Math.min(28, groupW * 0.45);
+  const barW = Math.min(26, groupW * 0.45);
 
   return `
     <div style="width: 100%;">
-      <!-- Top Right Header Row: Single Revenue Metric Button on RHS -->
-      <div style="display: flex; align-items: center; justify-content: flex-end; margin-bottom: 16px;">
-        <div style="background: linear-gradient(135deg, #ecfdf5 0%, #d1fae5 100%); border: 1px solid #a7f3d0; border-radius: 12px; padding: 8px 16px; display: flex; align-items: center; gap: 12px; box-shadow: 0 2px 8px rgba(16, 185, 129, 0.08);">
-          <div>
-            <span style="font-size: 9.5px; font-weight: 700; color: #047857; text-transform: uppercase; letter-spacing: 0.05em; font-family: var(--font-serif, 'Playfair Display', Georgia, serif); display: block;">Total Revenue Collection</span>
-            <div style="font-size: 15px; font-weight: 800; color: #064e3b; font-family: var(--font-serif, 'Playfair Display', Georgia, serif);">₹${totalUpiRev}</div>
-          </div>
-          <span style="width: 32px; height: 32px; border-radius: 9px; background: linear-gradient(135deg, #10b981 0%, #059669 100%); color: white; display: flex; align-items: center; justify-content: center; box-shadow: 0 2px 8px rgba(16, 185, 129, 0.25);">${uiIcon("payments", 16)}</span>
-        </div>
-      </div>
-
       <div style="width: 100%; overflow-x: auto;">
-        <svg viewBox="0 0 ${width} ${height}" style="width: 100%; min-width: 700px; height: auto; font-family: var(--font-sans, system-ui, sans-serif);">
+        <style>
+          .upi-bar-group { cursor: pointer; }
+          .upi-hover-tooltip { opacity: 0; pointer-events: none; transition: opacity 0.15s ease, transform 0.15s ease; }
+          .upi-bar-group:hover .upi-hover-tooltip { opacity: 1; }
+          .analytics-bar-emerald { fill: #10b981; transition: fill 0.15s ease, filter 0.15s ease; }
+          .upi-bar-group:hover .analytics-bar-emerald { fill: #059669; filter: drop-shadow(0 4px 8px rgba(16, 185, 129, 0.35)); }
+        </style>
+        <svg viewBox="0 0 ${width} ${height}" style="width: 100%; min-width: 700px; height: auto; font-family: var(--font-sans, system-ui, -apple-system, sans-serif);">
+          <!-- Horizontal dashed gridlines & Y-axis scale -->
           ${yTicks.map((t) => `
-            <line x1="${padding.left}" y1="${t.y.toFixed(1)}" x2="${width - padding.right}" y2="${t.y.toFixed(1)}" stroke="#f1f5f9" stroke-dasharray="4,4" />
-            <text x="${padding.left - 14}" y="${(t.y + 4).toFixed(1)}" font-size="11.5" font-weight="600" fill="#94a3b8" text-anchor="end">${Math.round(t.value)}</text>
+            ${t.value > 0 ? `<line x1="${padding.left}" y1="${t.y.toFixed(1)}" x2="${width - padding.right}" y2="${t.y.toFixed(1)}" stroke="#e2e8f0" stroke-width="1" stroke-dasharray="3,3" />` : ""}
+            <line x1="${padding.left - 5}" y1="${t.y.toFixed(1)}" x2="${padding.left}" y2="${t.y.toFixed(1)}" stroke="#94a3b8" stroke-width="1.5" />
+            <text x="${padding.left - 12}" y="${(t.y + 4).toFixed(1)}" font-size="12" font-weight="500" fill="#64748b" text-anchor="end">${Math.round(t.value)}</text>
           `).join("")}
 
-          <line x1="${padding.left}" y1="${(padding.top + chartH).toFixed(1)}" x2="${width - padding.right}" y2="${(padding.top + chartH).toFixed(1)}" stroke="#cbd5e1" stroke-width="1.5" />
+          <!-- Left Vertical Y-Axis Line -->
+          <line x1="${padding.left}" y1="${padding.top}" x2="${padding.left}" y2="${(padding.top + chartH).toFixed(1)}" stroke="#94a3b8" stroke-width="1.5" />
 
+          <!-- Bottom Solid X-Axis Baseline -->
+          <line x1="${padding.left}" y1="${(padding.top + chartH).toFixed(1)}" x2="${width - padding.right}" y2="${(padding.top + chartH).toFixed(1)}" stroke="#94a3b8" stroke-width="1.5" />
+
+          <!-- Bars & X-Axis Month Ticks -->
           ${dataList.map((item, idx) => {
             const groupX = padding.left + idx * groupW + groupW / 2;
             const barH = (item.upi / yMax) * chartH;
             const barY = padding.top + chartH - barH;
             const barX = groupX - barW / 2;
+            const tooltipW = 140;
+            const tooltipX = Math.min(width - padding.right - tooltipW, Math.max(padding.left, groupX - tooltipW / 2));
+            const tooltipY = Math.max(padding.top, barY - 58);
 
             return `
-              <g class="upi-bar-group" style="cursor: pointer;">
-                ${item.upi > 0 ? `
-                  <rect x="${(groupX - 22).toFixed(1)}" y="${(barY - 22).toFixed(1)}" width="44" height="18" rx="9" fill="#047857" />
-                  <text x="${groupX.toFixed(1)}" y="${(barY - 9).toFixed(1)}" font-size="10.5" font-weight="700" fill="#ffffff" text-anchor="middle">₹${item.upi}</text>
-                ` : ''}
-                <rect x="${barX.toFixed(1)}" y="${barY.toFixed(1)}" width="${barW.toFixed(1)}" height="${Math.max(0, barH).toFixed(1)}" rx="7" fill="url(#upiRevenueGrad)">
-                  <title>${item.label} UPI Revenue: ₹${item.upi}</title>
-                </rect>
-                <text x="${groupX.toFixed(1)}" y="${(height - 15).toFixed(1)}" font-size="12" font-weight="600" fill="#64748b" text-anchor="middle">${item.label}</text>
+              <!-- Month tick mark -->
+              <line x1="${groupX.toFixed(1)}" y1="${(padding.top + chartH).toFixed(1)}" x2="${groupX.toFixed(1)}" y2="${(padding.top + chartH + 5).toFixed(1)}" stroke="#94a3b8" stroke-width="1.5" />
+
+              <g class="upi-bar-group">
+                <rect x="${(groupX - groupW / 2).toFixed(1)}" y="${padding.top}" width="${groupW.toFixed(1)}" height="${chartH}" fill="transparent" />
+                <rect class="analytics-bar-emerald" x="${barX.toFixed(1)}" y="${barY.toFixed(1)}" width="${barW.toFixed(1)}" height="${Math.max(0, barH).toFixed(1)}" rx="5" />
+                <text x="${groupX.toFixed(1)}" y="${(padding.top + chartH + 20).toFixed(1)}" font-size="12" font-weight="500" fill="#64748b" text-anchor="middle">${item.label}</text>
+                <g class="upi-hover-tooltip" transform="translate(${tooltipX.toFixed(1)}, ${tooltipY.toFixed(1)})">
+                  <rect width="${tooltipW}" height="48" rx="8" fill="#ffffff" stroke="#e2e8f0" stroke-width="1" filter="drop-shadow(0 4px 12px rgba(15, 23, 42, 0.08))" />
+                  <text x="14" y="19" font-size="12.5" font-weight="700" fill="#0f172a">${escapeHtml(item.label)}</text>
+                  <text x="14" y="36" font-size="12" font-weight="600" fill="#059669">UPI Amount (₹) : ${item.upi}</text>
+                </g>
               </g>
             `;
           }).join("")}
-
-          <text x="${(padding.left + chartW / 2).toFixed(1)}" y="${(height - 4).toFixed(1)}" font-size="12" font-weight="700" fill="#047857" text-anchor="middle">Months</text>
-          <text x="16" y="${(padding.top + chartH / 2).toFixed(1)}" font-size="12" font-weight="700" fill="#047857" text-anchor="middle" transform="rotate(-90, 16, ${(padding.top + chartH / 2).toFixed(1)})">Amount (₹)</text>
-
-          <defs>
-            <linearGradient id="upiRevenueGrad" x1="0" y1="0" x2="0" y2="1">
-              <stop offset="0%" stop-color="#10b981" />
-              <stop offset="100%" stop-color="#059669" />
-            </linearGradient>
-          </defs>
         </svg>
       </div>
 
-      <!-- Modern HTML User Friendly Legend -->
-      <div style="display: flex; align-items: center; justify-content: center; gap: 24px; margin-top: 14px; padding: 10px 20px; background: #f8fafc; border-radius: 12px; border: 1px solid #e2e8f0;">
-        <div style="display: flex; align-items: center; gap: 8px;">
-          <span style="width: 14px; height: 14px; border-radius: 4px; background: linear-gradient(135deg, #10b981 0%, #059669 100%); display: inline-block; box-shadow: 0 2px 6px rgba(16, 185, 129, 0.3);"></span>
-          <span style="font-size: 13px; font-weight: 700; color: #047857; font-family: var(--font-serif, 'Playfair Display', Georgia, serif);">UPI Transaction Revenue (₹)</span>
+      <!-- Centered Modern Legend Matching Reference UI -->
+      <div style="display: flex; align-items: center; justify-content: center; gap: 16px; margin-top: 16px;">
+        <div style="display: inline-flex; align-items: center; gap: 8px;">
+          <span style="width: 12px; height: 12px; border-radius: 2px; background: #10b981; display: inline-block;"></span>
+          <span style="font-size: 13px; font-weight: 600; color: #059669; font-family: var(--font-sans, system-ui, sans-serif);">UPI Amount (₹)</span>
         </div>
       </div>
     </div>
@@ -3486,17 +3659,13 @@ function renderAnalyticsKioskLineChart() {
     return { label: m, rev: 0, forms: 0 };
   });
 
-  const totRev = list.reduce((s, i) => s + i.rev, 0);
-  const totForms = list.reduce((s, i) => s + i.forms, 0);
-
   const maxVal = Math.max(250, ...list.map((i) => i.rev));
-  const { ticks: yTicks, max: yMax } = analyticsYTicks(maxVal, { top: 40, right: 40, bottom: 64, left: 72 }, 280);
-
-  const padding = { top: 45, right: 40, bottom: 64, left: 72 };
+  const padding = { top: 25, right: 30, bottom: 42, left: 68 };
   const width = 920;
-  const height = 326;
+  const height = 290;
   const chartH = height - padding.top - padding.bottom;
   const chartW = width - padding.left - padding.right;
+  const { ticks: yTicks, max: yMax } = analyticsYTicks(maxVal, padding, chartH);
   const stepX = chartW / (list.length - 1);
 
   const revPoints = list.map((item, idx) => ({
@@ -3534,83 +3703,81 @@ function renderAnalyticsKioskLineChart() {
     ? `${revLine} L ${revPoints[revPoints.length - 1].x.toFixed(1)} ${(padding.top + chartH).toFixed(1)} L ${revPoints[0].x.toFixed(1)} ${(padding.top + chartH).toFixed(1)} Z`
     : "";
 
-  const getSmartLabelY = (idx) => {
-    const pt = revPoints[idx];
-    const prev = revPoints[idx - 1];
-    const next = revPoints[idx + 1];
-
-    if (prev && next && pt.y > prev.y + 15 && pt.y > next.y + 15) {
-      return pt.y + 24;
-    }
-    if (idx % 2 === 1 && prev && prev.val > 0) {
-      return pt.y - 28;
-    }
-    return pt.y - 20;
-  };
-
   return `
     <div style="width: 100%;">
-      <!-- Top Right Header Row: Single Revenue Metric Button on RHS -->
-      <div style="display: flex; align-items: center; justify-content: flex-end; margin-bottom: 16px;">
-        <div style="background: linear-gradient(135deg, #f0f5ff 0%, #e0e7ff 100%); border: 1px solid #c7d2fe; border-radius: 12px; padding: 8px 16px; display: flex; align-items: center; gap: 12px; box-shadow: 0 2px 8px rgba(99, 102, 241, 0.06);">
-          <div>
-            <span style="font-size: 9.5px; font-weight: 700; color: #4338ca; text-transform: uppercase; letter-spacing: 0.05em; font-family: var(--font-serif, 'Playfair Display', Georgia, serif); display: block;">Total Revenue Collection</span>
-            <div style="font-size: 15px; font-weight: 800; color: #312e81; font-family: var(--font-serif, 'Playfair Display', Georgia, serif);">₹${totRev}</div>
-          </div>
-          <span style="width: 32px; height: 32px; border-radius: 9px; background: linear-gradient(135deg, #6366f1 0%, #4f46e5 100%); color: white; display: flex; align-items: center; justify-content: center; box-shadow: 0 2px 8px rgba(99, 102, 241, 0.25);">${uiIcon("payments", 16)}</span>
-        </div>
-      </div>
-
       <!-- Area Spline Chart SVG (Full Width) -->
       <div style="width: 100%; overflow-x: auto;">
-        <svg viewBox="0 0 ${width} ${height}" style="width: 100%; min-width: 700px; height: auto; font-family: var(--font-sans, system-ui, sans-serif);">
-          <!-- Dashed Horizontal Grid Lines -->
+        <style>
+          .analytics-kiosk-line-point-group { cursor: pointer; }
+          .analytics-kiosk-line-guide, .analytics-kiosk-line-tooltip { opacity: 0; pointer-events: none; transition: opacity 0.15s ease; }
+          .analytics-kiosk-line-point-group:hover .analytics-kiosk-line-guide,
+          .analytics-kiosk-line-point-group:hover .analytics-kiosk-line-tooltip { opacity: 1; }
+          .analytics-kiosk-line-point-group:hover .analytics-kiosk-line-dot { r: 5.5; }
+        </style>
+        <svg viewBox="0 0 ${width} ${height}" style="width: 100%; min-width: 700px; height: auto; font-family: var(--font-sans, system-ui, -apple-system, sans-serif);">
+          <defs>
+            <linearGradient id="kioskLineGradient" x1="0" y1="0" x2="1" y2="0">
+              <stop offset="0%" stop-color="#10b981" />
+              <stop offset="100%" stop-color="#059669" />
+            </linearGradient>
+
+            <linearGradient id="kioskAreaGradient" x1="0" y1="0" x2="0" y2="1">
+              <stop offset="0%" stop-color="#10b981" stop-opacity="0.25" />
+              <stop offset="100%" stop-color="#10b981" stop-opacity="0.0" />
+            </linearGradient>
+          </defs>
+
+          <!-- Dashed Horizontal Grid Lines & Y-Axis Scale -->
           ${yTicks.map((t) => `
-            <line x1="${padding.left}" y1="${t.y.toFixed(1)}" x2="${width - padding.right}" y2="${t.y.toFixed(1)}" stroke="#f1f5f9" stroke-dasharray="4,4" />
-            <text x="${padding.left - 14}" y="${(t.y + 4).toFixed(1)}" font-size="11.5" font-weight="600" fill="#94a3b8" text-anchor="end">${Math.round(t.value)}</text>
+            ${t.value > 0 ? `<line x1="${padding.left}" y1="${t.y.toFixed(1)}" x2="${width - padding.right}" y2="${t.y.toFixed(1)}" stroke="#e2e8f0" stroke-width="1" stroke-dasharray="3,3" />` : ""}
+            <line x1="${padding.left - 5}" y1="${t.y.toFixed(1)}" x2="${padding.left}" y2="${t.y.toFixed(1)}" stroke="#94a3b8" stroke-width="1.5" />
+            <text x="${padding.left - 12}" y="${(t.y + 4).toFixed(1)}" font-size="12" font-weight="500" fill="#64748b" text-anchor="end">${Math.round(t.value)}</text>
           `).join("")}
 
-          <line x1="${padding.left}" y1="${(padding.top + chartH).toFixed(1)}" x2="${width - padding.right}" y2="${(padding.top + chartH).toFixed(1)}" stroke="#cbd5e1" stroke-width="1.5" />
+          <!-- Left Vertical Y-Axis Line -->
+          <line x1="${padding.left}" y1="${padding.top}" x2="${padding.left}" y2="${(padding.top + chartH).toFixed(1)}" stroke="#94a3b8" stroke-width="1.5" />
+
+          <!-- Bottom Solid X-Axis Baseline -->
+          <line x1="${padding.left}" y1="${(padding.top + chartH).toFixed(1)}" x2="${width - padding.right}" y2="${(padding.top + chartH).toFixed(1)}" stroke="#94a3b8" stroke-width="1.5" />
 
           <!-- Translucent Area Gradient Fill -->
-          <path d="${revArea}" fill="url(#sleekAreaGradient)" opacity="0.85" />
+          <path d="${revArea}" fill="url(#kioskAreaGradient)" />
 
           <!-- SINGLE Revenue Curve Line -->
-          <path d="${revLine}" fill="none" stroke="url(#indigoCyanLineGrad)" stroke-width="4" stroke-linecap="round" stroke-linejoin="round" />
+          <path d="${revLine}" fill="none" stroke="url(#kioskLineGradient)" stroke-width="3.5" stroke-linecap="round" stroke-linejoin="round" />
 
-          <!-- Revenue Data Points with Non-Overlapping Smart Badges -->
-          ${revPoints.map((pt, i) => {
-            const labelY = getSmartLabelY(i);
+          <!-- Revenue Data Points, Month ticks and Tooltips -->
+          ${revPoints.map((pt) => {
+            const tooltipW = 120;
+            const tooltipX = Math.min(width - padding.right - tooltipW, Math.max(padding.left, pt.x - tooltipW / 2));
+            const tooltipY = Math.max(padding.top, pt.y - 56);
             return `
-              <g class="analytics-area-point" style="cursor: pointer;">
-                ${pt.val > 0 ? `
-                  <rect x="${(pt.x - 23).toFixed(1)}" y="${(labelY - 14).toFixed(1)}" width="46" height="18" rx="9" fill="#1e1b4b" stroke="#818cf8" stroke-width="1" />
-                  <text x="${pt.x.toFixed(1)}" y="${(labelY - 1).toFixed(1)}" font-size="10.5" font-weight="700" fill="#ffffff" text-anchor="middle">₹${pt.val}</text>
-                ` : ''}
-                <circle cx="${pt.x.toFixed(1)}" cy="${pt.y.toFixed(1)}" r="6" fill="#ffffff" stroke="#6366f1" stroke-width="3" />
-                <circle cx="${pt.x.toFixed(1)}" cy="${pt.y.toFixed(1)}" r="2.5" fill="#6366f1" />
-                <text x="${pt.x.toFixed(1)}" y="${(height - 15).toFixed(1)}" font-size="12" font-weight="600" fill="#64748b" text-anchor="middle">${pt.label}</text>
+              <!-- Month tick mark -->
+              <line x1="${pt.x.toFixed(1)}" y1="${(padding.top + chartH).toFixed(1)}" x2="${pt.x.toFixed(1)}" y2="${(padding.top + chartH + 5).toFixed(1)}" stroke="#94a3b8" stroke-width="1.5" />
+
+              <g class="analytics-kiosk-line-point-group">
+                <line class="analytics-kiosk-line-guide" x1="${pt.x.toFixed(1)}" y1="${pt.y.toFixed(1)}" x2="${pt.x.toFixed(1)}" y2="${(padding.top + chartH).toFixed(1)}" stroke="#10b981" stroke-width="1.5" stroke-dasharray="3,3" />
+                <rect x="${(pt.x - 14).toFixed(1)}" y="${padding.top}" width="28" height="${chartH}" fill="transparent" />
+                <circle class="analytics-kiosk-line-dot" cx="${pt.x.toFixed(1)}" cy="${pt.y.toFixed(1)}" r="4" fill="#ffffff" stroke="#10b981" stroke-width="3" />
+                <g class="analytics-kiosk-line-tooltip" transform="translate(${tooltipX.toFixed(1)}, ${tooltipY.toFixed(1)})">
+                  <rect width="${tooltipW}" height="42" rx="8" fill="#ffffff" stroke="#e2e8f0" stroke-width="1" />
+                  <text x="${tooltipW / 2}" y="17" font-size="12" font-weight="700" fill="#0f172a" text-anchor="middle">${escapeHtml(pt.label)}</text>
+                  <text x="${tooltipW / 2}" y="32" font-size="11.5" font-weight="600" fill="#059669" text-anchor="middle">Revenue : ₹${pt.val}</text>
+                </g>
+                <text x="${pt.x.toFixed(1)}" y="${(padding.top + chartH + 20).toFixed(1)}" font-size="12" font-weight="500" fill="#64748b" text-anchor="middle">${pt.label}</text>
                 <title>${pt.label}: Revenue ₹${pt.val} | Forms Sold: ${pt.forms}</title>
               </g>
             `;
           }).join("")}
-
-          <defs>
-            <linearGradient id="indigoCyanLineGrad" x1="0" y1="0" x2="1" y2="0">
-              <stop offset="0%" stop-color="#6366f1" />
-              <stop offset="50%" stop-color="#8b5cf6" />
-              <stop offset="100%" stop-color="#a855f7" />
-            </linearGradient>
-
-            <linearGradient id="sleekAreaGradient" x1="0" y1="0" x2="0" y2="1">
-              <stop offset="0%" stop-color="#8b5cf6" stop-opacity="0.35" />
-              <stop offset="100%" stop-color="#6366f1" stop-opacity="0.0" />
-            </linearGradient>
-          </defs>
-
-          <text x="${(padding.left + chartW / 2).toFixed(1)}" y="${(height - 4).toFixed(1)}" font-size="12" font-weight="700" fill="#4338ca" text-anchor="middle">Months</text>
-          <text x="16" y="${(padding.top + chartH / 2).toFixed(1)}" font-size="12" font-weight="700" fill="#4338ca" text-anchor="middle" transform="rotate(-90, 16, ${(padding.top + chartH / 2).toFixed(1)})">Amount (₹)</text>
         </svg>
+      </div>
+
+      <!-- Centered Modern Legend Matching Reference UI -->
+      <div style="display: flex; align-items: center; justify-content: center; gap: 16px; margin-top: 16px;">
+        <div style="display: inline-flex; align-items: center; gap: 8px;">
+          <span style="width: 12px; height: 12px; border-radius: 2px; background: #10b981; display: inline-block;"></span>
+          <span style="font-size: 13px; font-weight: 600; color: #059669; font-family: var(--font-sans, system-ui, sans-serif);">UPI Revenue Trend (₹)</span>
+        </div>
       </div>
     </div>
   `;
@@ -3794,6 +3961,7 @@ function renderAnalyticsLineChart(buckets, { forPrint = false } = {}) {
 
 window.setAnalyticsTab = (tab) => {
   state.analyticsTab = tab === "form" ? "form" : "revenue";
+  try { sessionStorage.setItem("super_admin_analytics_tab", state.analyticsTab); } catch (e) {}
   render();
 };
 
@@ -4081,25 +4249,27 @@ window.downloadAnalyticsPDF = async function () {
     // matching line chart (same buckets, so both stay consistent) using the
     // print-safe renderer that already existed for this but was never wired
     // in here.
-    const lineHtml = renderAnalyticsLineChart(buckets, { forPrint: true });
-    const lineChart = await analyticsPrintSafeChartImage(lineHtml);
+    if (tab !== "form") {
+      const lineHtml = renderAnalyticsLineChart(buckets, { forPrint: true });
+      const lineChart = await analyticsPrintSafeChartImage(lineHtml);
 
-    if (lineChart) {
-      const lineChartHeight = chartDisplayWidth * (lineChart.height / lineChart.width);
-      if (cursorY + 20 + lineChartHeight > pageHeight - 14) {
-        doc.addPage();
-        cursorY = 20;
+      if (lineChart) {
+        const lineChartHeight = chartDisplayWidth * (lineChart.height / lineChart.width);
+        if (cursorY + 20 + lineChartHeight > pageHeight - 14) {
+          doc.addPage();
+          cursorY = 20;
+        }
+
+        doc.setFont(undefined, "bold");
+        doc.setFontSize(13);
+        doc.setTextColor(27, 175, 122);
+        doc.text(`${tabLabel} Trend`, marginX, cursorY);
+        doc.setTextColor(0);
+        cursorY += 6;
+
+        doc.addImage(lineChart.dataUrl, "PNG", (pageWidth - chartDisplayWidth) / 2, cursorY, chartDisplayWidth, lineChartHeight);
+        cursorY += lineChartHeight + 14;
       }
-
-      doc.setFont(undefined, "bold");
-      doc.setFontSize(13);
-      doc.setTextColor(27, 175, 122);
-      doc.text(`${tabLabel} Trend`, marginX, cursorY);
-      doc.setTextColor(0);
-      cursorY += 6;
-
-      doc.addImage(lineChart.dataUrl, "PNG", (pageWidth - chartDisplayWidth) / 2, cursorY, chartDisplayWidth, lineChartHeight);
-      cursorY += lineChartHeight + 14;
     }
   }
 
@@ -4589,9 +4759,9 @@ function renderCollectionTable(collection, rows) {
               ${columns.map((column) => `<td>${formatCell(collection, column, row)}</td>`).join("")}
               <td>
                 <div class="table-actions">
-                  ${collection === "kiosks" ? `<button class="secondary-button small-button" data-kiosk-services="${escapeHtml(row.kioskId)}">Services</button>` : ""}
-                  <button class="secondary-button small-button" data-record-edit="${collection}" data-record-id="${escapeHtml(row[meta.key])}">Edit</button>
-                  <button class="danger-button small-button" data-record-delete="${collection}" data-record-id="${escapeHtml(row[meta.key])}">Delete</button>
+                  ${collection === "kiosks" ? `<button class="action-btn-view" data-kiosk-services="${escapeHtml(row.kioskId)}" title="Services & View">${uiIcon("view", 18)}</button>` : ""}
+                  <button class="action-btn-edit" data-record-edit="${collection}" data-record-id="${escapeHtml(row[meta.key])}" title="Edit">${uiIcon("edit", 18)}</button>
+                  <button class="action-btn-delete" data-record-delete="${collection}" data-record-id="${escapeHtml(row[meta.key])}" title="Delete">${uiIcon("delete", 18)}</button>
                 </div>
               </td>
             </tr>
@@ -5076,8 +5246,8 @@ function renderPricing() {
                 <td>${overrideCount ? `${overrideCount} service${overrideCount === 1 ? "" : "s"}` : "Default"}</td>
                 <td>
                   <div class="table-actions">
-                    <button class="secondary-button small-button" data-pricing-edit-kiosk="${escapeHtml(kiosk.kioskId || "")}">Edit Prices</button>
-                    <button class="danger-button small-button" data-pricing-delete-kiosk="${escapeHtml(kiosk.kioskId || "")}" ${overrideCount ? "" : "disabled"}>Delete Prices</button>
+                    <button class="action-btn-edit" data-pricing-edit-kiosk="${escapeHtml(kiosk.kioskId || "")}" title="Edit Prices">${uiIcon("edit", 18)}</button>
+                    <button class="action-btn-delete" data-pricing-delete-kiosk="${escapeHtml(kiosk.kioskId || "")}" ${overrideCount ? "" : "disabled"} title="Delete Prices">${uiIcon("delete", 18)}</button>
                   </div>
                 </td>
               </tr>
@@ -5232,7 +5402,7 @@ function renderUpdates() {
             <td>${escapeHtml(release.targetKioskIds?.length ? release.targetKioskIds.join(", ") : `${release.rolloutPercentage}%`)}</td>
             <td>${escapeHtml(formatDateTime(release.publishedAt))}</td>
             <td><span class="status-pill ${release.active ? "" : "warning"}">${release.active ? "Active" : "Paused"}</span></td>
-            <td><div class="table-actions"><button class="secondary-button small-button" data-release-toggle="${escapeHtml(release.releaseId)}" data-release-active="${release.active}">${release.active ? "Pause" : "Resume"}</button><button class="danger-button small-button" data-release-delete="${escapeHtml(release.releaseId)}">Delete</button></div></td>
+            <td><div class="table-actions"><button class="action-btn-edit" data-release-toggle="${escapeHtml(release.releaseId)}" data-release-active="${release.active}" title="${release.active ? "Pause" : "Resume"}">${uiIcon(release.active ? "clock" : "refresh", 18)}</button><button class="action-btn-delete" data-release-delete="${escapeHtml(release.releaseId)}" title="Delete">${uiIcon("delete", 18)}</button></div></td>
           </tr>`).join("") : `<tr><td colspan="6">No kiosk releases published.</td></tr>`}</tbody>
         </table>
       </div>
@@ -6684,6 +6854,18 @@ if (state.authed) {
   startSnapshotPolling();
   startAdminSocket();
 }
+
+window.addEventListener("hashchange", () => {
+  if (state.authed) {
+    const pageFromHash = resolveInitialSuperAdminPage();
+    if (pageFromHash && pageFromHash !== state.page) {
+      state.page = pageFromHash;
+      state.editor = null;
+      state.pricingEditor = null;
+      render();
+    }
+  }
+});
 
 function getTemplateName(templateId) {
   if (!templateId) return "Unknown Form";
