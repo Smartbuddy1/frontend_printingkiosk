@@ -8846,6 +8846,13 @@ async function uploadAdminIdleImages(files) {
     });
 
     state.idleScreensaverDraft.idleImageUrls = [...existing, ...(payload.imageUrls || [])].slice(0, 10);
+    // Uploading images used to leave mode untouched - if it was "Off" (or
+    // "Video", from a previous choice) the images saved fine but never
+    // showed, because nothing switched mode to match what was just
+    // uploaded. Uploading is a clear enough signal of intent to activate
+    // image mode; Save is still required before anything actually
+    // publishes to kiosks.
+    state.idleScreensaverDraft.idleMediaMode = "image";
     state.idleScreensaverStatus = "Idle-screen images uploaded. Save to publish them.";
   } catch (error) {
     if (!error.sessionExpired) {
@@ -8888,6 +8895,10 @@ async function uploadAdminIdleVideo(file) {
     });
 
     state.idleScreensaverDraft.idleVideoUrl = payload.videoUrl || "";
+    // Same reasoning as the image upload above - always switch to video mode
+    // on a successful upload, not just from "Off", so switching from Image
+    // to Video mode by uploading a video also actually activates it.
+    state.idleScreensaverDraft.idleMediaMode = "video";
     state.idleScreensaverStatus = "Idle-screen video uploaded. Save to publish it.";
   } catch (error) {
     if (!error.sessionExpired) {

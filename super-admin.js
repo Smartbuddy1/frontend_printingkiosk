@@ -6432,6 +6432,10 @@ async function uploadSuperAdminIdleImages(files) {
     });
 
     state.editor.draft.idleImageUrls = [...existing, ...(payload.imageUrls || [])].slice(0, 10);
+    // Same fix as the Kiosk Admin panel's equivalent upload handler - without
+    // this, uploading images never switched mode off "Off" (or off "Video"),
+    // so the images saved fine but the screensaver never actually showed.
+    state.editor.draft.idleMediaMode = "image";
     state.notice = "Idle-screen images uploaded. Save Client to publish them.";
   } catch (error) {
     state.notice = "";
@@ -6472,6 +6476,7 @@ async function uploadSuperAdminIdleVideo(file) {
     });
 
     state.editor.draft.idleVideoUrl = payload.videoUrl || "";
+    state.editor.draft.idleMediaMode = "video";
     state.notice = payload.storage === "s3"
       ? "Idle-screen video uploaded to S3. Save Client to publish it."
       : "Idle-screen video uploaded. Save Client to publish it.";
