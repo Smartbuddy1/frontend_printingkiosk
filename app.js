@@ -5004,6 +5004,7 @@ async function loadAdminData({ rerender = true } = {}) {
       kiosks: Array.isArray(kiosks.kiosks) ? kiosks.kiosks : [],
       refunds: Array.isArray(refunds.refunds) ? refunds.refunds : [],
       reports: Array.isArray(reports.reports) ? reports.reports : [],
+      alertLogs: Array.isArray(system.alertLogs) ? system.alertLogs : [],
       backendOnline: system.backend === "online",
       localAgentExpectedPort: system.localAgentExpectedPort,
       lastUpdated: new Date().toISOString(),
