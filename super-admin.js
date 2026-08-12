@@ -987,17 +987,17 @@ function renderLogin() {
             <p class="login-subtitle">Please enter your credentials to access your portal</p>
             ${state.loginError ? `<div class="empty-note">${escapeHtml(state.loginError)}</div>` : ""}
             <label class="login-field">
-              <span class="login-field-label">ID</span>
+              <span class="login-field-label">Username</span>
               <span class="login-input-wrap">
                 ${uiIcon("users", 18) || uiIcon("smartphone", 18)}
-                <input value="${escapeHtml(state.loginDraft.email)}" autocomplete="username" data-login-field="email" />
+                <input value="${escapeHtml(state.loginDraft.email)}" placeholder="Enter your username" autocomplete="username" data-login-field="email" />
               </span>
             </label>
             <label class="login-field">
               <span class="login-field-label">Password</span>
               <span class="login-input-wrap">
                 ${uiIcon("lock", 18)}
-                <input type="${state.loginPasswordVisible ? "text" : "password"}" value="${escapeHtml(state.loginDraft.password)}" autocomplete="current-password" data-login-field="password" />
+                <input type="${state.loginPasswordVisible ? "text" : "password"}" value="${escapeHtml(state.loginDraft.password)}" placeholder="Enter your password" autocomplete="current-password" data-login-field="password" />
                 <button type="button" class="login-password-toggle" data-action="toggle-login-password" aria-label="${state.loginPasswordVisible ? "Hide password" : "Show password"}">
                   ${uiIcon(state.loginPasswordVisible ? "eye-off" : "eye", 18)}
                 </button>

@@ -7791,17 +7791,17 @@ function renderLogin() {
         <p class="login-subtitle">Please enter your credentials to access your portal</p>
         ${state.adminLoginError ? `<div class="empty-note">${escapeHtml(state.adminLoginError)}</div>` : ""}
         <label class="login-field">
-          <span class="login-field-label">Mobile Number</span>
+          <span class="login-field-label">Username</span>
           <span class="login-input-wrap">
             ${uiIcon("phone", 18)}
-            <input name="username" value="${escapeHtml(state.adminLoginDraft.email)}" autocomplete="username" data-admin-login-field="email" />
+            <input name="username" value="${escapeHtml(state.adminLoginDraft.email)}" placeholder="Enter your username" autocomplete="username" data-admin-login-field="email" />
           </span>
         </label>
         <label class="login-field">
           <span class="login-field-label">Password</span>
           <span class="login-input-wrap">
             ${uiIcon("lock", 18)}
-            <input type="${state.adminLoginPasswordVisible ? "text" : "password"}" name="password" value="${escapeHtml(state.adminLoginDraft.password)}" autocomplete="current-password" data-admin-login-field="password" />
+            <input type="${state.adminLoginPasswordVisible ? "text" : "password"}" name="password" value="${escapeHtml(state.adminLoginDraft.password)}" placeholder="Enter your password" autocomplete="current-password" data-admin-login-field="password" />
             <button type="button" class="login-password-toggle" data-action="toggle-admin-login-password" aria-label="${state.adminLoginPasswordVisible ? "Hide password" : "Show password"}">
               ${uiIcon(state.adminLoginPasswordVisible ? "eye-off" : "eye", 18)}
             </button>
