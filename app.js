@@ -6618,10 +6618,6 @@ function renderAdminTopbar() {
                   <span>${escapeHtml(adminLabel)}</span>
                 </div>
                 <div class="profile-dropdown-divider"></div>
-                <button class="profile-dropdown-item" data-action="admin-open-settings">
-                  ${uiIcon("settings", 16)} <span>Account Settings</span>
-                </button>
-                <div class="profile-dropdown-divider"></div>
                 <button class="profile-dropdown-item danger" data-action="admin-logout">
                   ${uiIcon("logout", 16)} <span>Logout</span>
                 </button>
@@ -6635,45 +6631,7 @@ function renderAdminTopbar() {
 }
 
 function renderAdminSettingsModal() {
-  if (!state.adminSettingsModalOpen) return "";
-
-  return `
-    <div class="settings-modal-overlay" onclick="if (event.target === this) window.closeAdminSettingsModal();" data-action="admin-close-settings">
-      <div class="settings-modal-card">
-        <div class="settings-modal-header">
-          <h3 style="font-size: 19px; font-weight: 700; color: #0f172a; margin: 0; font-family: var(--font-sans, 'Inter', system-ui, sans-serif);">Account & Screen Settings</h3>
-          <button type="button" class="ghost-button" onclick="window.closeAdminSettingsModal();" data-action="admin-close-settings" style="padding: 6px 12px; min-height: 32px; border-radius: 8px; font-size: 16px; cursor: pointer;">✕</button>
-        </div>
-        <div class="settings-modal-body">
-          ${state.adminSettingsStatus ? `<div class="save-note" style="margin-bottom: 12px;">${escapeHtml(state.adminSettingsStatus)}</div>` : ""}
-          <div class="settings-grid" style="display: grid; grid-template-columns: repeat(2, 1fr); gap: 16px;">
-            <label>
-              Admin ID / Email
-              <input type="text" data-admin-settings-field="username" value="${escapeHtml(state.adminSettingsDraft.username || state.adminAccount?.email || "admin@printingkiosk.local")}" placeholder="Enter admin email or ID" />
-            </label>
-            <label>
-              Current Password
-              <input type="password" data-admin-settings-field="currentPassword" value="${escapeHtml(state.adminSettingsDraft.currentPassword || "")}" placeholder="Enter current password" />
-            </label>
-            <label>
-              New Password
-              <input type="password" data-admin-settings-field="newPassword" value="${escapeHtml(state.adminSettingsDraft.newPassword || "")}" placeholder="Enter new password" />
-            </label>
-            <label>
-              Confirm New Password
-              <input type="password" data-admin-settings-field="confirmPassword" value="${escapeHtml(state.adminSettingsDraft.confirmPassword || "")}" placeholder="Confirm new password" />
-            </label>
-          </div>
-          <div class="settings-modal-divider" style="border-top: 1px solid #e2e8f0; margin: 24px 0 20px;"></div>
-          ${renderAdminIdleScreensaverSection()}
-        </div>
-        <div class="settings-modal-footer">
-          <button type="button" class="secondary-button" onclick="window.closeAdminSettingsModal();" data-action="admin-close-settings">Cancel</button>
-          <button type="button" class="primary-button" onclick="window.saveAdminSettingsModal();" data-action="admin-save-settings">Save Changes</button>
-        </div>
-      </div>
-    </div>
-  `;
+  return "";
 }
 
 window.closeAdminSettingsModal = function () {
@@ -8696,7 +8654,6 @@ function renderAdmin() {
         ${renderAdminPage()}
       </section>
     </div>
-    ${renderAdminSettingsModal()}
   `;
 }
 
@@ -8976,7 +8933,7 @@ function serviceTitle(serviceId) {
 }
 
 function kioskAdminCanManageSetup() {
-  return true;
+  return false;
 }
 
 function blockKioskAdminSetupAction() {
@@ -10535,10 +10492,10 @@ window.downloadFormPrintReportPDF = async function () {
   const doc = new jsPDF();
   const pageWidth = doc.internal.pageSize.getWidth();
   const tableData = calculateFormSellingReport().map(row => [
-    row.kioskId,
-    row.templateName,
-    row.printCount,
-    money(row.revenue)
+    row.kioskId || "Unknown",
+    row.templateName || "Unknown Form",
+    row.printCount || 0,
+    money(row.revenue || 0)
   ]);
 
   const logoMaxWidth = 32;
@@ -10570,7 +10527,7 @@ window.downloadFormPrintReportPDF = async function () {
   doc.setFont(undefined, "bold");
   doc.setFontSize(20);
   doc.setTextColor(27, 175, 122);
-  doc.text("Form Print Report", pageWidth / 2, logoY + 10, { align: "center" });
+  doc.text("Form Selling Report", pageWidth / 2, logoY + 10, { align: "center" });
 
   doc.setFontSize(15);
   doc.setTextColor(42, 120, 214);
@@ -10590,13 +10547,19 @@ window.downloadFormPrintReportPDF = async function () {
 
   doc.autoTable({
     startY: dividerY + 8,
-    head: [['Kiosk ID', 'Form', 'Prints', 'Revenue']],
+    head: [['KIOSK ID', 'FORM / TEMPLATE', 'PRINTS', 'REVENUE']],
     body: tableData,
     theme: 'grid',
+    columnStyles: {
+      0: { halign: 'center', fontStyle: 'bold' },
+      1: { halign: 'left' },
+      2: { halign: 'center' },
+      3: { halign: 'right' }
+    },
     ...PDF_TABLE_STYLE
   });
 
-  doc.save(`Form_Print_Report_${filter.start}_to_${filter.end}.pdf`);
+  doc.save(`Form_Selling_Report_${filter.start}_to_${filter.end}.pdf`);
 };
 
 // ── Graphical Analytics (Admin / Client) ─────────────────────────────
@@ -10903,7 +10866,7 @@ function renderAdminAnalytics() {
   `;
 }
 
-function renderAdminAnalyticsFormSellingBarChart() {
+function renderAdminAnalyticsFormSellingBarChart({ forPrint = false } = {}) {
   const defaultMonths = ["Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec", "Jan", "Feb", "Mar"];
   const jobs = state.adminData.jobs || [];
   const bounds = adminAnalyticsFilterBounds();
@@ -10963,7 +10926,8 @@ function renderAdminAnalyticsFormSellingBarChart() {
   const truncate = (text, max) => (text.length > max ? `${text.slice(0, max - 1)}…` : text);
 
   return `
-    <div style="width: 100%; overflow-x: auto;">
+    ${forPrint ? "" : `<div style="width: 100%; overflow-x: auto;">`}
+      ${forPrint ? "" : `
       <style>
         .form-bar-group { cursor: pointer; }
         .form-hover-tooltip { opacity: 0; pointer-events: none; transition: opacity 0.15s ease, transform 0.15s ease; }
@@ -10971,7 +10935,8 @@ function renderAdminAnalyticsFormSellingBarChart() {
         .form-bar-purple { fill: url(#formSellingGradAdmin); transition: filter 0.15s ease; }
         .form-bar-group:hover .form-bar-purple { filter: brightness(1.12) drop-shadow(0 4px 10px rgba(139, 92, 246, 0.45)); }
       </style>
-      <svg viewBox="0 0 ${width} ${height}" style="width: 100%; min-width: 700px; height: auto; font-family: var(--font-sans, system-ui, -apple-system, sans-serif);">
+      `}
+      <svg viewBox="0 0 ${width} ${height}" style="width: 100%; ${forPrint ? "" : "min-width: 700px;"} height: auto; font-family: var(--font-sans, system-ui, -apple-system, sans-serif);">
         <!-- Dashed Horizontal Gridlines & Y-Axis Scale -->
         ${yTicks.map((t) => `
           ${t.value > 0 ? `<line x1="${padding.left}" y1="${t.y.toFixed(1)}" x2="${width - padding.right}" y2="${t.y.toFixed(1)}" stroke="#f1f5f9" stroke-dasharray="3,3" />` : ""}
@@ -11013,14 +10978,16 @@ function renderAdminAnalyticsFormSellingBarChart() {
               }).join("")}
 
               <rect x="${(groupX - groupW / 2).toFixed(1)}" y="${padding.top}" width="${groupW.toFixed(1)}" height="${chartH}" fill="transparent" />
-              <rect class="form-bar-purple" x="${barX.toFixed(1)}" y="${barY.toFixed(1)}" width="${barW.toFixed(1)}" height="${Math.max(0, barH).toFixed(1)}" rx="6" />
+              <rect class="form-bar-purple" x="${barX.toFixed(1)}" y="${barY.toFixed(1)}" width="${barW.toFixed(1)}" height="${Math.max(0, barH).toFixed(1)}" rx="6" fill="#8b5cf6" />
               <text x="${groupX.toFixed(1)}" y="${(padding.top + chartH + 20).toFixed(1)}" font-size="12" font-weight="500" fill="#64748b" text-anchor="middle">${item.label}</text>
 
+              ${forPrint ? "" : `
               <!-- Interactive Floating Dark Tooltip -->
               <g class="form-hover-tooltip" transform="translate(${tooltipX.toFixed(1)}, ${tooltipY.toFixed(1)})">
                 <rect width="${tooltipW}" height="28" rx="4" fill="#0f172a" stroke="#334155" stroke-width="1" filter="drop-shadow(0 4px 12px rgba(0,0,0,0.3))" />
                 <text x="${tooltipW / 2}" y="18" font-size="10.5" font-weight="500" fill="#ffffff" text-anchor="middle">${escapeHtml(tooltipText)}</text>
               </g>
+              `}
             </g>
           `;
         }).join("")}
@@ -11032,7 +10999,7 @@ function renderAdminAnalyticsFormSellingBarChart() {
           </linearGradient>
         </defs>
       </svg>
-    </div>
+    ${forPrint ? "" : `</div>`}
   `;
 }
 
@@ -11556,43 +11523,59 @@ window.downloadAdminAnalyticsPDF = async function () {
   const marginX = 14;
   const chartDisplayWidth = Math.min(pageWidth - marginX * 2, 180);
 
-  const monthlyBuckets = seriesFn("monthly");
-  // Same pairing as the on-screen page (bar chart + trend line chart, same
-  // buckets so both stay consistent) - the PDF used to only ever export the
-  // bar chart, leaving the trend chart and every bar's actual amount label
-  // (normally a hover-only tooltip, which doesn't exist in a static PDF) out
-  // of the download entirely.
-  const sections = [
-    { title: `Monthly ${tabLabel}`, buckets: monthlyBuckets, type: "bar" }
-  ];
-  if (tab !== "form") {
-    sections.push({ title: `${tabLabel} Trend`, buckets: monthlyBuckets, type: "line" });
-  }
-
-  for (const section of sections) {
-    if (!section.buckets.length) continue;
-
-    const html = section.type === "bar"
-      ? renderAdminAnalyticsBarChart(section.buckets, { forPrint: true })
-      : renderAdminAnalyticsLineChart(section.buckets, { forPrint: true });
+  if (tab === "form") {
+    const html = renderAdminAnalyticsFormSellingBarChart({ forPrint: true });
     const chart = await adminAnalyticsPrintSafeChartImage(html);
-    if (!chart) continue;
 
-    const chartHeight = chartDisplayWidth * (chart.height / chart.width);
-    if (cursorY + 20 + chartHeight > pageHeight - 14) {
-      doc.addPage();
-      cursorY = 20;
+    if (chart) {
+      const chartHeight = chartDisplayWidth * (chart.height / chart.width);
+      if (cursorY + 20 + chartHeight > pageHeight - 14) {
+        doc.addPage();
+        cursorY = 20;
+      }
+
+      doc.setFont(undefined, "bold");
+      doc.setFontSize(13);
+      doc.setTextColor(124, 58, 237);
+      doc.text("Yearly Form Selling Sales Volume (Forms Count)", marginX, cursorY);
+      doc.setTextColor(0);
+      cursorY += 6;
+
+      doc.addImage(chart.dataUrl, "PNG", (pageWidth - chartDisplayWidth) / 2, cursorY, chartDisplayWidth, chartHeight);
+      cursorY += chartHeight + 14;
     }
+  } else {
+    const monthlyBuckets = seriesFn("monthly");
+    const sections = [
+      { title: `Monthly ${tabLabel}`, buckets: monthlyBuckets, type: "bar" },
+      { title: `${tabLabel} Trend`, buckets: monthlyBuckets, type: "line" }
+    ];
 
-    doc.setFont(undefined, "bold");
-    doc.setFontSize(13);
-    doc.setTextColor(27, 175, 122);
-    doc.text(section.title, marginX, cursorY);
-    doc.setTextColor(0);
-    cursorY += 6;
+    for (const section of sections) {
+      if (!section.buckets.length) continue;
 
-    doc.addImage(chart.dataUrl, "PNG", (pageWidth - chartDisplayWidth) / 2, cursorY, chartDisplayWidth, chartHeight);
-    cursorY += chartHeight + 14;
+      const html = section.type === "bar"
+        ? renderAdminAnalyticsBarChart(section.buckets, { forPrint: true })
+        : renderAdminAnalyticsLineChart(section.buckets, { forPrint: true });
+      const chart = await adminAnalyticsPrintSafeChartImage(html);
+      if (!chart) continue;
+
+      const chartHeight = chartDisplayWidth * (chart.height / chart.width);
+      if (cursorY + 20 + chartHeight > pageHeight - 14) {
+        doc.addPage();
+        cursorY = 20;
+      }
+
+      doc.setFont(undefined, "bold");
+      doc.setFontSize(13);
+      doc.setTextColor(27, 175, 122);
+      doc.text(section.title, marginX, cursorY);
+      doc.setTextColor(0);
+      cursorY += 6;
+
+      doc.addImage(chart.dataUrl, "PNG", (pageWidth - chartDisplayWidth) / 2, cursorY, chartDisplayWidth, chartHeight);
+      cursorY += chartHeight + 14;
+    }
   }
 
   doc.save(`Graphical_Analytics_${tabLabel.replace(/[^a-z0-9]+/gi, "_")}_${clientName.replace(/[^a-z0-9]+/gi, "_")}_${rangeLabel.replace(/[^a-z0-9]+/gi, "_")}.pdf`);
@@ -11629,6 +11612,8 @@ function calculateFormSellingReport() {
     if (!templateId || templateId === "Unknown") return;
 
     const kioskId = job.kioskId || "UNASSIGNED";
+    if (state.revenueFilter.kioskId && kioskId.toUpperCase() !== state.revenueFilter.kioskId.toUpperCase()) return;
+
     const key = `${kioskId}_${templateId}`;
     if (!report[key]) {
       report[key] = {

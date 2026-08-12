@@ -27836,49 +27836,148 @@ body.admin-mode #app {
   max-width: min(1080px, calc(100vw - 64px)) !important;
 }
 
-/* Same leftover responsive.css .editor-panel rule (see .modal-popup-card
-   comment below) also hits this card via its .editor-panel class, adding
-   an unbudgeted 20px gap + ~22-30px padding around its 3 rows (head/scroll/
-   flow-actions). That pushes total content past the card's own max-height,
-   so the whole card scrolls internally and the Save/Cancel row sits below
-   the fold on open instead of being visible right away. Zero the
-   gap/padding back out so head/scroll/flow-actions manage their own
-   spacing exactly as designed. */
-#app .super-admin-layout .editor-modal-shell:not(.service-editor-modal-shell) .editor-panel.service-editor-popup,
-.editor-panel.service-editor-popup {
+#app .super-admin-layout .editor-modal-shell .editor-modal-content.pricing-editor-modal-content,
+#app .super-admin-layout .editor-modal-shell:not(.service-editor-modal-shell) .editor-modal-content.pricing-editor-modal-content,
+.editor-modal-content.pricing-editor-modal-content {
+  max-width: min(880px, calc(100vw - 48px)) !important;
+}
+
+#app .super-admin-layout .editor-modal-shell .editor-panel.pricing-editor-card,
+#app .super-admin-layout .editor-modal-shell:not(.service-editor-modal-shell) .editor-panel.pricing-editor-card,
+.editor-panel.pricing-editor-card,
+.pricing-editor-card {
+  display: flex !important;
+  flex-direction: column !important;
+  max-height: min(88vh, 850px) !important;
+  height: auto !important;
+  overflow: hidden !important;
   padding: 0 !important;
   gap: 0 !important;
+  border-radius: 24px !important;
+  background: #ffffff !important;
+  box-shadow: 0 25px 60px -15px rgba(0, 0, 0, 0.3) !important;
+  border: 1px solid rgba(226, 232, 240, 0.8) !important;
+  width: 100% !important;
+  box-sizing: border-box !important;
 }
 
-/* modern-theme.css (loaded last) also carries generic ".editor-panel
-   .editor-head" / ".editor-panel .flow-actions" rules for the other modal
-   design, adding a stray 24px margin-bottom / margin-top that isn't part
-   of this popup's own spacing (each section already pads itself). That
-   pushed the grid's row tracks ~50px past the card's max-height, forcing
-   the Save/Cancel row below the fold on open. The 3-class selector here
-   outranks modern-theme's 2-class one regardless of load order. */
-.editor-panel.service-editor-popup .editor-head {
-  margin-bottom: 0 !important;
+.pricing-editor-table {
+  background: #ffffff !important;
+  border: 1px solid #e2e8f0 !important;
+  border-radius: 14px !important;
+  overflow: hidden !important;
+  box-shadow: none !important;
 }
 
-.editor-panel.service-editor-popup .flow-actions {
-  margin-top: 0 !important;
+.pricing-editor-table table {
+  width: 100% !important;
+  border-collapse: collapse !important;
 }
 
-/* responsive.css still targets the older generic .editor-panel modal shape
-   (.editor-head / .settings-grid / .flow-actions) with a very high-specificity
-   "display: grid !important" + extra padding/gap rule. That rule also matches
-   this card (it carries .editor-panel too), which silently replaces the
-   intended flex column layout and adds unbudgeted padding — pushing the
-   Cancel/Create footer past the card's max-height/overflow:hidden so the
-   buttons get clipped and are no longer clickable. Re-assert the flex
-   column with the same selector specificity so this card always wins. */
+/* Service editor popup card - Clean flex column modal with fixed header,
+   scrollable body, and fixed footer actions (eliminates double scrollbars and button clipping) */
+#app .super-admin-layout .editor-modal-shell .editor-panel.service-editor-popup,
+#app .super-admin-layout .editor-modal-shell:not(.service-editor-modal-shell) .editor-panel.service-editor-popup,
+.editor-panel.service-editor-popup,
+.service-editor-popup {
+  display: flex !important;
+  flex-direction: column !important;
+  max-height: min(88vh, 850px) !important;
+  height: auto !important;
+  overflow: hidden !important;
+  padding: 0 !important;
+  gap: 0 !important;
+  border-radius: 20px !important;
+  background: #ffffff !important;
+  box-shadow: 0 25px 60px -15px rgba(0, 0, 0, 0.3) !important;
+  border: 1px solid rgba(226, 232, 240, 0.8) !important;
+  width: 100% !important;
+  box-sizing: border-box !important;
+}
+
+#app .super-admin-layout .editor-modal-shell .service-editor-popup .editor-head,
+.editor-panel.service-editor-popup .editor-head,
+.service-editor-popup .editor-head {
+  flex-shrink: 0 !important;
+  display: flex !important;
+  align-items: center !important;
+  justify-content: space-between !important;
+  padding: 20px 28px !important;
+  background: linear-gradient(135deg, #f8fafc 0%, #f1f5f9 100%) !important;
+  border-bottom: 1px solid #e2e8f0 !important;
+  margin: 0 !important;
+  border-radius: 20px 20px 0 0 !important;
+}
+
+.service-editor-popup .editor-head h2 {
+  font-family: var(--font-serif, 'Playfair Display', Georgia, serif) !important;
+  font-size: 20px !important;
+  font-weight: 800 !important;
+  color: #0f172a !important;
+  margin: 0 0 4px !important;
+}
+
+.service-editor-popup .editor-head .helper-text {
+  font-size: 12.5px !important;
+  color: #64748b !important;
+  margin: 0 !important;
+  font-weight: 500 !important;
+}
+
+#app .super-admin-layout .editor-modal-shell .service-editor-scroll,
+.service-editor-scroll {
+  flex: 1 1 auto !important;
+  min-height: 0 !important;
+  max-height: none !important;
+  overflow-y: auto !important;
+  overflow-x: hidden !important;
+  padding: 24px 28px !important;
+  display: flex !important;
+  flex-direction: column !important;
+  gap: 22px !important;
+  -webkit-overflow-scrolling: touch !important;
+}
+
+#app .super-admin-layout .editor-modal-shell .service-editor-popup .flow-actions,
+.editor-panel.service-editor-popup .flow-actions,
+.service-editor-popup .flow-actions {
+  flex-shrink: 0 !important;
+  display: flex !important;
+  align-items: center !important;
+  justify-content: flex-end !important;
+  gap: 12px !important;
+  padding: 16px 28px !important;
+  background: #f8fafc !important;
+  border-top: 1px solid #e2e8f0 !important;
+  margin: 0 !important;
+  border-radius: 0 0 20px 20px !important;
+}
+
 #app .super-admin-layout .editor-modal-shell:not(.service-editor-modal-shell) .editor-panel.modal-popup-card,
 .editor-panel.modal-popup-card {
   display: flex !important;
   flex-direction: column !important;
   padding: 0 !important;
   gap: 0 !important;
+}
+
+/* Modal scrollbars */
+.service-editor-scroll::-webkit-scrollbar,
+.modal-popup-body::-webkit-scrollbar {
+  width: 6px !important;
+}
+.service-editor-scroll::-webkit-scrollbar-track,
+.modal-popup-body::-webkit-scrollbar-track {
+  background: transparent !important;
+}
+.service-editor-scroll::-webkit-scrollbar-thumb,
+.modal-popup-body::-webkit-scrollbar-thumb {
+  background: #cbd5e1 !important;
+  border-radius: 4px !important;
+}
+.service-editor-scroll::-webkit-scrollbar-thumb:hover,
+.modal-popup-body::-webkit-scrollbar-thumb:hover {
+  background: #94a3b8 !important;
 }
 
 @keyframes fadeInModal {

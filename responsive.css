@@ -7812,7 +7812,11 @@ td {
   box-shadow: 0 10px 22px rgba(8, 36, 90, 0.07);
   display: grid;
   gap: 8px;
-  grid-template-rows: auto minmax(170px, 1fr) auto;
+  /* Current markup only ever renders one child (.multi-preview-paper) - no
+     header/footer - so a single stretch row lets the paper's own centering
+     use the full cell instead of losing space to two empty header/footer
+     row tracks reserved by the old 3-row layout. */
+  grid-template-rows: 1fr;
   min-height: 276px;
   overflow: hidden;
   padding: 10px;
@@ -7857,18 +7861,20 @@ td {
 
 .customer-shell:has(.preview-stage) .multi-preview-paper {
   align-items: center;
-  aspect-ratio: 210 / 297;
+  align-self: center !important;
+  aspect-ratio: 210 / 297 !important;
   background: #ffffff;
   border: 1px solid #aeb8c8;
   box-shadow: 0 10px 20px rgba(8, 36, 90, 0.10);
   display: flex;
   justify-content: center;
-  justify-self: center;
-  max-height: 260px;
-  max-width: 100%;
+  justify-self: center !important;
+  height: auto !important;
+  max-height: 260px !important;
+  max-width: 100% !important;
   min-height: 170px;
   overflow: hidden;
-  width: auto;
+  width: auto !important;
 }
 
 .customer-shell:has(.preview-stage) .multi-preview-paper.orientation-landscape {
@@ -7896,6 +7902,16 @@ td {
   display: flex !important;
   justify-content: center !important;
   position: relative;
+}
+
+/* .pdf-preview-page stretches to 100%/100% of the shell (styles.css), so
+   without its own centering the canvas/img inside it (shrunk by object-fit
+   to a different aspect ratio than the grid cell) sits flush top-left
+   instead of centered - looking like the document is cropped/half visible. */
+.customer-shell:has(.preview-stage) .multi-preview-paper .pdf-preview-page {
+  align-items: center !important;
+  display: flex !important;
+  justify-content: center !important;
 }
 
 .customer-shell:has(.preview-stage) .multi-preview-paper .pdf-preview-canvas {
@@ -8008,13 +8024,13 @@ td {
 
   .customer-shell:has(.preview-stage) .multi-preview-item {
     gap: 6px;
-    grid-template-rows: auto minmax(138px, 1fr) auto;
+    grid-template-rows: 1fr;
     min-height: 232px;
     padding: 8px;
   }
 
   .customer-shell:has(.preview-stage) .multi-preview-paper {
-    max-height: 210px;
+    max-height: 210px !important;
     min-height: 138px;
   }
 }

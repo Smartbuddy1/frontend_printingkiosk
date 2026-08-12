@@ -987,17 +987,17 @@ function renderLogin() {
             <p class="login-subtitle">Please enter your credentials to access your portal</p>
             ${state.loginError ? `<div class="empty-note">${escapeHtml(state.loginError)}</div>` : ""}
             <label class="login-field">
-              <span class="login-field-label">Email / Username / Mobile</span>
+              <span class="login-field-label">ID</span>
               <span class="login-input-wrap">
                 ${uiIcon("users", 18) || uiIcon("smartphone", 18)}
-                <input value="${escapeHtml(state.loginDraft.email)}" autocomplete="username" data-login-field="email" placeholder="superadmin or superadmin@printingkiosk.local" />
+                <input value="${escapeHtml(state.loginDraft.email)}" autocomplete="username" data-login-field="email" />
               </span>
             </label>
             <label class="login-field">
               <span class="login-field-label">Password</span>
               <span class="login-input-wrap">
                 ${uiIcon("lock", 18)}
-                <input type="${state.loginPasswordVisible ? "text" : "password"}" value="${escapeHtml(state.loginDraft.password)}" autocomplete="current-password" data-login-field="password" placeholder="Password" />
+                <input type="${state.loginPasswordVisible ? "text" : "password"}" value="${escapeHtml(state.loginDraft.password)}" autocomplete="current-password" data-login-field="password" />
                 <button type="button" class="login-password-toggle" data-action="toggle-login-password" aria-label="${state.loginPasswordVisible ? "Hide password" : "Show password"}">
                   ${uiIcon(state.loginPasswordVisible ? "eye-off" : "eye", 18)}
                 </button>
@@ -2894,38 +2894,12 @@ window.downloadFormPrintReportPDF = async function () {
   const endObj = new Date(filter.end);
   endObj.setHours(23, 59, 59, 999);
 
-  // Real per-day-per-kiosk print/revenue stats derived from db.jobs (the
-  // "dailyStats" collection this used to read from is never populated
-  // anywhere in the backend, so this report always rendered an empty
-  // table regardless of real activity). Only Payment Success jobs count
-  // as revenue, matching superAdminSummary()'s rule elsewhere.
-  const statsByKey = new Map();
-  data("jobs").forEach((job) => {
-    if (!job.createdAt) return;
-    const jobDate = new Date(job.createdAt);
-    if (Number.isNaN(jobDate.getTime()) || jobDate < startObj || jobDate > endObj) return;
-
-    const kioskId = job.kioskId || "Unassigned";
-    if (filter.kioskId && kioskId.toUpperCase() !== filter.kioskId.toUpperCase()) return;
-    if (filter.clientId) {
-      const project = transactionProjectForKiosk(kioskId);
-      const client = transactionClientForProject(project);
-      if (client?.adminId !== filter.clientId) return;
-    }
-
-    const dateKey = revenueDateKey(job.createdAt);
-    const key = `${dateKey}_${kioskId}`;
-    if (!statsByKey.has(key)) {
-      statsByKey.set(key, { date: dateKey, kioskId, successPrints: 0, failedPrints: 0, revenue: 0 });
-    }
-    const entry = statsByKey.get(key);
-    const printStatus = String(job.printStatus || "").toLowerCase();
-    if (printStatus === "completed") entry.successPrints += 1;
-    else if (printStatus.includes("failed")) entry.failedPrints += 1;
-    if (job.paymentStatus === "Payment Success") entry.revenue += Number(job.amount || 0);
-  });
-
-  const filteredStats = [...statsByKey.values()].sort((a, b) => a.date.localeCompare(b.date) || a.kioskId.localeCompare(b.kioskId));
+  const tableData = calculateFormSellingReport().map(row => [
+    row.kioskId || "Unknown",
+    row.templateName || "Unknown Form",
+    row.printCount || 0,
+    money(row.revenue || 0)
+  ]);
 
   const logoMaxWidth = 32;
   const logoMaxHeight = 24;
@@ -2956,7 +2930,7 @@ window.downloadFormPrintReportPDF = async function () {
   doc.setFont(undefined, "bold");
   doc.setFontSize(20);
   doc.setTextColor(27, 175, 122);
-  doc.text("Form Print Report", pageWidth / 2, logoY + 10, { align: "center" });
+  doc.text("Form Selling Report", pageWidth / 2, logoY + 10, { align: "center" });
 
   let headerY = logoY + 19;
   if (selectedClient) {
@@ -2978,23 +2952,21 @@ window.downloadFormPrintReportPDF = async function () {
   doc.setLineWidth(0.6);
   doc.line(14, dividerY, pageWidth - 14, dividerY);
 
-  const tableData = filteredStats.map(stat => [
-    stat.date || "",
-    stat.kioskId || "Unknown",
-    stat.successPrints || 0,
-    stat.failedPrints || 0,
-    stat.revenue ? money(stat.revenue) : "0"
-  ]);
-
   doc.autoTable({
     startY: dividerY + 8,
-    head: [['Date', 'Kiosk ID', 'Successful Prints', 'Failed Prints', 'Revenue']],
+    head: [['KIOSK ID', 'FORM / TEMPLATE', 'PRINTS', 'REVENUE']],
     body: tableData,
     theme: 'grid',
+    columnStyles: {
+      0: { halign: 'center', fontStyle: 'bold' },
+      1: { halign: 'left' },
+      2: { halign: 'center' },
+      3: { halign: 'right' }
+    },
     ...PDF_TABLE_STYLE
   });
 
-  doc.save(`Form_Print_Report_${filter.start}_to_${filter.end}.pdf`);
+  doc.save(`Form_Selling_Report_${filter.start}_to_${filter.end}.pdf`);
 };
 
 function financialYearDateStrings(offset = 0) {
@@ -3389,7 +3361,7 @@ function jobMatchesAnalyticsFilter(job, { start, end } = analyticsFilterBounds()
   return true;
 }
 
-function renderAnalyticsFormSellingBarChart() {
+function renderAnalyticsFormSellingBarChart({ forPrint = false } = {}) {
   const defaultMonths = ["Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec", "Jan", "Feb", "Mar"];
   const jobs = data("jobs") || [];
   const bounds = analyticsFilterBounds();
@@ -3444,7 +3416,8 @@ function renderAnalyticsFormSellingBarChart() {
   const truncate = (text, max) => (text.length > max ? `${text.slice(0, max - 1)}…` : text);
 
   return `
-    <div style="width: 100%; overflow-x: auto;">
+    ${forPrint ? "" : `<div style="width: 100%; overflow-x: auto;">`}
+      ${forPrint ? "" : `
       <style>
         .form-bar-group { cursor: pointer; }
         .form-hover-tooltip { opacity: 0; pointer-events: none; transition: opacity 0.15s ease, transform 0.15s ease; }
@@ -3452,7 +3425,8 @@ function renderAnalyticsFormSellingBarChart() {
         .form-bar-purple { fill: url(#formSellingGrad); transition: filter 0.15s ease; }
         .form-bar-group:hover .form-bar-purple { filter: brightness(1.12) drop-shadow(0 4px 10px rgba(139, 92, 246, 0.45)); }
       </style>
-      <svg viewBox="0 0 ${width} ${height}" style="width: 100%; min-width: 700px; height: auto; font-family: var(--font-sans, system-ui, -apple-system, sans-serif);">
+      `}
+      <svg viewBox="0 0 ${width} ${height}" style="width: 100%; ${forPrint ? "" : "min-width: 700px;"} height: auto; font-family: var(--font-sans, system-ui, -apple-system, sans-serif);">
         <!-- Dashed Horizontal Gridlines & Y-Axis Scale -->
         ${yTicks.map((t) => `
           ${t.value > 0 ? `<line x1="${padding.left}" y1="${t.y.toFixed(1)}" x2="${width - padding.right}" y2="${t.y.toFixed(1)}" stroke="#f1f5f9" stroke-dasharray="3,3" />` : ""}
@@ -3494,14 +3468,16 @@ function renderAnalyticsFormSellingBarChart() {
               }).join("")}
 
               <rect x="${(groupX - groupW / 2).toFixed(1)}" y="${padding.top}" width="${groupW.toFixed(1)}" height="${chartH}" fill="transparent" />
-              <rect class="form-bar-purple" x="${barX.toFixed(1)}" y="${barY.toFixed(1)}" width="${barW.toFixed(1)}" height="${Math.max(0, barH).toFixed(1)}" rx="6" />
+              <rect class="form-bar-purple" x="${barX.toFixed(1)}" y="${barY.toFixed(1)}" width="${barW.toFixed(1)}" height="${Math.max(0, barH).toFixed(1)}" rx="6" fill="#8b5cf6" />
               <text x="${groupX.toFixed(1)}" y="${(padding.top + chartH + 20).toFixed(1)}" font-size="12" font-weight="500" fill="#64748b" text-anchor="middle">${item.label}</text>
 
+              ${forPrint ? "" : `
               <!-- Interactive Floating Dark Tooltip -->
               <g class="form-hover-tooltip" transform="translate(${tooltipX.toFixed(1)}, ${tooltipY.toFixed(1)})">
                 <rect width="${tooltipW}" height="28" rx="4" fill="#0f172a" stroke="#334155" stroke-width="1" filter="drop-shadow(0 4px 12px rgba(0,0,0,0.3))" />
                 <text x="${tooltipW / 2}" y="18" font-size="10.5" font-weight="500" fill="#ffffff" text-anchor="middle">${escapeHtml(tooltipText)}</text>
               </g>
+              `}
             </g>
           `;
         }).join("")}
@@ -3513,7 +3489,7 @@ function renderAnalyticsFormSellingBarChart() {
           </linearGradient>
         </defs>
       </svg>
-    </div>
+    ${forPrint ? "" : `</div>`}
   `;
 }
 
@@ -4220,10 +4196,8 @@ window.downloadAnalyticsPDF = async function () {
   const marginX = 14;
   const chartDisplayWidth = Math.min(pageWidth - marginX * 2, 180);
 
-  const buckets = seriesFn(analyticsAutoBasis());
-
-  if (buckets.length) {
-    const html = renderAnalyticsBarChart(buckets, { forPrint: true });
+  if (tab === "form") {
+    const html = renderAnalyticsFormSellingBarChart({ forPrint: true });
     const chart = await analyticsPrintSafeChartImage(html);
 
     if (chart) {
@@ -4235,21 +4209,39 @@ window.downloadAnalyticsPDF = async function () {
 
       doc.setFont(undefined, "bold");
       doc.setFontSize(13);
-      doc.setTextColor(27, 175, 122);
-      doc.text(tabLabel, marginX, cursorY);
+      doc.setTextColor(124, 58, 237);
+      doc.text("Yearly Form Selling Sales Volume (Forms Count)", marginX, cursorY);
       doc.setTextColor(0);
       cursorY += 6;
 
       doc.addImage(chart.dataUrl, "PNG", (pageWidth - chartDisplayWidth) / 2, cursorY, chartDisplayWidth, chartHeight);
       cursorY += chartHeight + 14;
     }
+  } else {
+    const buckets = seriesFn(analyticsAutoBasis());
 
-    // The on-screen page always pairs the bar chart with a trend line chart
-    // right below it - the PDF only ever exported the bar chart. Add the
-    // matching line chart (same buckets, so both stay consistent) using the
-    // print-safe renderer that already existed for this but was never wired
-    // in here.
-    if (tab !== "form") {
+    if (buckets.length) {
+      const html = renderAnalyticsBarChart(buckets, { forPrint: true });
+      const chart = await analyticsPrintSafeChartImage(html);
+
+      if (chart) {
+        const chartHeight = chartDisplayWidth * (chart.height / chart.width);
+        if (cursorY + 20 + chartHeight > pageHeight - 14) {
+          doc.addPage();
+          cursorY = 20;
+        }
+
+        doc.setFont(undefined, "bold");
+        doc.setFontSize(13);
+        doc.setTextColor(27, 175, 122);
+        doc.text(tabLabel, marginX, cursorY);
+        doc.setTextColor(0);
+        cursorY += 6;
+
+        doc.addImage(chart.dataUrl, "PNG", (pageWidth - chartDisplayWidth) / 2, cursorY, chartDisplayWidth, chartHeight);
+        cursorY += chartHeight + 14;
+      }
+
       const lineHtml = renderAnalyticsLineChart(buckets, { forPrint: true });
       const lineChart = await analyticsPrintSafeChartImage(lineHtml);
 
@@ -5293,44 +5285,55 @@ function renderPricingEditorModal() {
     <div class="editor-modal-shell pricing-editor-modal-shell" role="dialog" aria-modal="true" aria-label="Edit kiosk pricing">
       <button class="editor-modal-backdrop" data-pricing-editor-cancel aria-label="Close pricing editor"></button>
       <div class="editor-modal-content pricing-editor-modal-content">
-        <div style="display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 24px; padding-bottom: 16px; border-bottom: 1px solid var(--line); flex-wrap: wrap; gap: 16px;">
-          <div>
-            <h2 style="font-size: 1.5rem; margin: 0 0 4px;">Set Prices - ${escapeHtml(kiosk.kioskId)}</h2>
-            <p class="helper-text" style="margin: 0;">${escapeHtml([kiosk.name, kiosk.branch, projectName(kiosk.projectId)].filter(Boolean).join(" | "))}</p>
+        <div class="module-card editor-panel pricing-editor-card modal-popup-card" style="background: #ffffff; border: 1px solid #e2e8f0; border-radius: 24px; padding: 0; box-shadow: 0 25px 60px -15px rgba(0, 0, 0, 0.3); overflow: hidden; width: 100%; max-height: calc(90vh - 40px); display: flex; flex-direction: column;">
+          <!-- Modal Header -->
+          <div style="padding: 20px 28px; background: linear-gradient(135deg, #f8fafc 0%, #f1f5f9 100%); border-bottom: 1px solid #e2e8f0; display: flex; align-items: center; justify-content: space-between; flex-shrink: 0; flex-wrap: wrap; gap: 16px;">
+            <div>
+              <h2 style="font-family: var(--font-serif, 'Playfair Display', Georgia, serif); font-size: 20px; font-weight: 800; color: #0f172a; margin: 0 0 4px;">Set Prices - ${escapeHtml(kiosk.kioskId)}</h2>
+              <p style="font-size: 12.5px; color: #64748b; margin: 0; font-weight: 500;">${escapeHtml([kiosk.name, kiosk.branch, projectName(kiosk.projectId)].filter(Boolean).join(" | "))}</p>
+            </div>
+            <div class="flow-actions" style="display: flex; align-items: center; gap: 10px; margin: 0;">
+              <button type="button" class="ghost-button" style="background: #ffffff; color: #475569; border: 1px solid #cbd5e1; border-radius: 10px; padding: 8px 18px; font-weight: 700; font-size: 13px; cursor: pointer; transition: all 0.2s ease;" data-pricing-editor-cancel>Cancel</button>
+              <button type="button" class="danger-button" style="background: #fef2f2; color: #dc2626; border: 1px solid #fca5a5; border-radius: 10px; padding: 8px 18px; font-weight: 700; font-size: 13px; cursor: pointer; transition: all 0.2s ease;" data-pricing-editor-delete="${escapeHtml(kiosk.kioskId)}" ${kioskPricingOverrideCount(kiosk) ? "" : "disabled"}>Delete Prices</button>
+              <button type="button" class="primary-button" style="background: linear-gradient(135deg, #4f46e5 0%, #7c3aed 100%); color: #ffffff; border: none; border-radius: 10px; padding: 8px 22px; font-weight: 700; font-size: 13px; cursor: pointer; box-shadow: 0 4px 14px rgba(79, 70, 229, 0.35); transition: all 0.2s ease;" data-pricing-editor-save>Save Prices</button>
+            </div>
           </div>
-          <div class="flow-actions">
-            <button class="ghost-button" data-pricing-editor-cancel>Cancel</button>
-            <button class="danger-button" data-pricing-editor-delete="${escapeHtml(kiosk.kioskId)}" ${kioskPricingOverrideCount(kiosk) ? "" : "disabled"}>Delete Prices</button>
-            <button class="primary-button" data-pricing-editor-save>Save Prices</button>
-          </div>
-        </div>
-        <div class="table-wrap pricing-editor-table">
-          <table>
-            <thead>
-              <tr>
-                <th>Service</th>
-                <th>Mode</th>
-                <th>B/W per page</th>
-                <th>Color per page</th>
-              </tr>
-            </thead>
-            <tbody>
-              ${services.length ? services.map((service) => {
+
+          <!-- Modal Body with Pricing Table -->
+          <div class="modal-popup-body pricing-editor-modal-body" style="padding: 24px 28px; overflow-y: auto; overflow-x: hidden; flex: 1 1 auto; min-height: 0;">
+            <div class="table-wrap pricing-editor-table" style="background: #ffffff; border: 1px solid #e2e8f0; border-radius: 14px; overflow: hidden; box-shadow: none; width: 100%;">
+              <table style="width: 100%; border-collapse: collapse;">
+                <thead>
+                  <tr style="background: #f8fafc; border-bottom: 1px solid #e2e8f0;">
+                    <th style="padding: 14px 18px; text-align: left; font-size: 12px; font-weight: 700; color: #475569; text-transform: uppercase; letter-spacing: 0.05em;">Service</th>
+                    <th style="padding: 14px 18px; text-align: left; font-size: 12px; font-weight: 700; color: #475569; text-transform: uppercase; letter-spacing: 0.05em;">Mode</th>
+                    <th style="padding: 14px 18px; text-align: center; font-size: 12px; font-weight: 700; color: #475569; text-transform: uppercase; letter-spacing: 0.05em;">B/W per page</th>
+                    <th style="padding: 14px 18px; text-align: center; font-size: 12px; font-weight: 700; color: #475569; text-transform: uppercase; letter-spacing: 0.05em;">Color per page</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  ${services.length ? services.map((service) => {
     const rates = editor.draft?.[service.id] || pricingFor(service.id, kiosk.kioskId);
     return `
-                  <tr>
-                    <td>
-                      <strong>${escapeHtml(service.title || service.id)}</strong>
-                      <small>${escapeHtml(service.id)}</small>
-                    </td>
-                    <td>${escapeHtml(service.mode || "upload")}</td>
-                    <td><input type="number" min="0" value="${rates.bw || 0}" data-kiosk-pricing-service="${escapeHtml(service.id)}" data-kiosk-pricing-key="bw" /></td>
-                    <td><input type="number" min="0" value="${rates.color || 0}" data-kiosk-pricing-service="${escapeHtml(service.id)}" data-kiosk-pricing-key="color" /></td>
-                  </tr>
-                `;
-  }).join("") : `<tr><td colspan="4">No services assigned to this kiosk.</td></tr>`}
-            </tbody>
-          </table>
+                      <tr style="border-bottom: 1px solid #f1f5f9;">
+                        <td style="padding: 14px 18px;">
+                          <strong style="color: #0f172a; font-size: 14px; display: block;">${escapeHtml(service.title || service.id)}</strong>
+                          <small style="color: #64748b; font-size: 12px; display: block; margin-top: 2px;">${escapeHtml(service.id)}</small>
+                        </td>
+                        <td style="padding: 14px 18px; color: #334155; font-size: 13.5px; font-weight: 500;">${escapeHtml(service.mode || "upload")}</td>
+                        <td style="padding: 14px 18px; text-align: center;">
+                          <input type="number" min="0" value="${rates.bw || 0}" data-kiosk-pricing-service="${escapeHtml(service.id)}" data-kiosk-pricing-key="bw" style="width: 100px; padding: 8px 12px; border-radius: 10px; border: 1px solid #cbd5e1; font-size: 14px; font-weight: 600; text-align: center; color: #0f172a; background: #ffffff; outline: none; transition: border-color 0.2s;" />
+                        </td>
+                        <td style="padding: 14px 18px; text-align: center;">
+                          <input type="number" min="0" value="${rates.color || 0}" data-kiosk-pricing-service="${escapeHtml(service.id)}" data-kiosk-pricing-key="color" style="width: 100px; padding: 8px 12px; border-radius: 10px; border: 1px solid #cbd5e1; font-size: 14px; font-weight: 600; text-align: center; color: #0f172a; background: #ffffff; outline: none; transition: border-color 0.2s;" />
+                        </td>
+                      </tr>
+                    `;
+  }).join("") : `<tr><td colspan="4" style="text-align: center; padding: 28px; color: #64748b;">No services assigned to this kiosk.</td></tr>`}
+                </tbody>
+              </table>
+            </div>
+          </div>
         </div>
       </div>
     </div>
