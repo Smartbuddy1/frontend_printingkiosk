@@ -10252,30 +10252,6 @@ function renderDashboard() {
         ${renderPaperTonerAlertsCard(alerts)}
       </div>
     </div>
-
-    <div class="quick-actions-section">
-      <h2 class="quick-actions-title">Quick Actions</h2>
-      <div class="quick-actions-grid">
-        ${canManage ? `
-        <button type="button" class="quick-action-card" data-action="create-project">
-          <span class="quick-action-icon-box tone-blue">${uiIcon("hierarchy", 22)}</span>
-          <span class="quick-action-info">
-            <h3>New Project</h3>
-            <p>Create a project and assign kiosks</p>
-          </span>
-          <span class="quick-action-arrow">${uiIcon("arrow-right", 18)}</span>
-        </button>
-        ` : ""}
-        <button type="button" class="quick-action-card" data-admin-page="analytics">
-          <span class="quick-action-icon-box tone-green">${uiIcon("activity", 22)}</span>
-          <span class="quick-action-info">
-            <h3>View Analytics</h3>
-            <p>See revenue and usage trends</p>
-          </span>
-          <span class="quick-action-arrow">${uiIcon("arrow-right", 18)}</span>
-        </button>
-      </div>
-    </div>
   `;
 }
 
