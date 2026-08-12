@@ -8135,17 +8135,22 @@ function syncPrinterHealthToBackend(health) {
   if (printerHealthSyncInFlight) return;
 
   const now = Date.now();
-  if (signature === lastPrinterHealthSyncSignature && now - lastPrinterHealthSyncAt < 30000) return;
+  // Kept below the backend's 5s offline threshold (checkKioskTimeouts) - an
+  // "unchanged status" throttle any looser than that would mean the normal,
+  // nothing-changed case never actually heartbeats often enough to keep the
+  // kiosk marked online.
+  if (signature === lastPrinterHealthSyncSignature && now - lastPrinterHealthSyncAt < 2000) return;
 
   printerHealthSyncInFlight = true;
 
   // Without an explicit timeout, a request made right as the network drops
   // can sit unresolved for tens of seconds (default OS/TCP timeout) before
   // fetch() ever rejects — during which printerHealthSyncInFlight blocks
-  // every retry. An 8s AbortController cap keeps failed attempts cheap so
-  // the ~2s IPC cadence can actually retry that often while offline.
+  // every retry. A 3s AbortController cap (under the 5s offline threshold)
+  // keeps failed attempts cheap so the ~2s IPC cadence can actually retry
+  // that often while offline.
   const abortController = new AbortController();
-  const abortTimer = setTimeout(() => abortController.abort(), 8000);
+  const abortTimer = setTimeout(() => abortController.abort(), 3000);
 
   fetch(`${BACKEND_URL}/api/kiosk/health`, {
     method: "POST",
