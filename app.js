@@ -6279,7 +6279,7 @@ function renderMobilePaymentShell() {
   return `
     <main class="mobile-payment-page">
       <section class="mobile-payment-card">
-        <img src="./assets/aarya-innovtech-logo-transparent.png" alt="Aarya Innovtech" style="max-height: 70px; margin: 0 auto 15px; display: block;" draggable="false" data-no-visual-search />
+        <img src="./assets/aarya-innovtech-logo-full.png" alt="Aarya Innovtech Pvt. Ltd." style="max-height: 100px; margin: 0 auto 15px; display: block;" draggable="false" data-no-visual-search />
         <h1>${payment.completed ? "Payment successful" : "Print Kiosk Payment"}</h1>
         ${amountText ? `<strong class="mobile-payment-amount">${escapeHtml(amountText)}</strong>` : ""}
         ${payment.job?.fileName ? `<p class="mobile-payment-job">${escapeHtml(payment.job.fileName)}</p>` : ""}
