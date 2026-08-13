@@ -26941,6 +26941,37 @@ body.admin-mode #app {
   overflow: hidden !important;
 }
 
+/* The unscoped rule above locks .admin-nav to a static, in-flow 280px column,
+   which fights the off-canvas mobile drawer (position: fixed, slide-in via
+   .is-open) defined earlier in this file and made the sidebar collapse/disappear
+   on phone-width screens. Restore the drawer behavior here since this section
+   comes later in the cascade and wins. */
+@media (max-width: 900px) {
+  .admin-nav,
+  .admin-layout .admin-nav,
+  .super-admin-layout .admin-nav {
+    position: fixed !important;
+    inset: 0 auto 0 0 !important;
+    top: 0 !important;
+    width: 336px !important;
+    min-width: 0 !important;
+    max-width: 88vw !important;
+    height: 100dvh !important;
+    max-height: 100dvh !important;
+    transform: translateX(-105%) !important;
+    visibility: hidden !important;
+    transition: transform 200ms ease, visibility 200ms ease !important;
+    z-index: 100 !important;
+  }
+
+  .admin-nav.is-open,
+  .admin-layout .admin-nav.is-open,
+  .super-admin-layout .admin-nav.is-open {
+    transform: translateX(0) !important;
+    visibility: visible !important;
+  }
+}
+
 .admin-nav-group {
   margin: 0 !important;
   padding: 8px 10px 8px 10px !important;
