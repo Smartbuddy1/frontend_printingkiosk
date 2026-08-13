@@ -1648,12 +1648,12 @@ function renderDashboard() {
     
     <div class="metrics-grid dashboard-metrics">
       ${[
-      ["Total Clients", summary.kioskAdmins || data("kioskAdmins").length || 0, `↗ ${data("kioskAdmins").length} registered`, "profile", "blue"],
-      ["Total Projects", summary.projects || data("projects").length, `↗ ${summary.kioskAdmins || data("kioskAdmins").length} clients`, "hierarchy", "amber"],
-      ["Total Kiosks", summary.kiosks || 0, `↗ ${summary.activeKiosks || 0} online`, "kiosks", "purple"],
-      ["Total Payments", summary.payments || 0, `↗ ${money(summary.gross || 0)} successful`, "payments", "green"],
-      ["Net Revenue", money(summary.net || 0), "↗ After refunds", "revenue", "emerald"]
-    ].map(([label, value, detail, icon, tone]) => {
+      ["Total Clients", summary.kioskAdmins || data("kioskAdmins").length || 0, `↗ ${data("kioskAdmins").length} registered`, "profile", "blue", "kioskAdmins"],
+      ["Total Projects", summary.projects || data("projects").length, `↗ ${summary.kioskAdmins || data("kioskAdmins").length} clients`, "hierarchy", "amber", "projects"],
+      ["Total Kiosks", summary.kiosks || 0, `↗ ${summary.activeKiosks || 0} online`, "kiosks", "purple", "kiosks"],
+      ["Total Payments", summary.payments || 0, `↗ ${money(summary.gross || 0)} successful`, "payments", "green", "revenue"],
+      ["Net Revenue", money(summary.net || 0), "↗ After refunds", "revenue", "emerald", "revenue"]
+    ].map(([label, value, detail, icon, tone, pageId]) => {
       const toneMap = {
         purple: 'linear-gradient(135deg, #8b5cf6, #7c3aed)',
         amber: 'linear-gradient(135deg, #f59e0b, #ea580c)',
@@ -1666,7 +1666,7 @@ function renderDashboard() {
       const bg = toneMap[tone] || toneMap.blue;
       const isNegative = tone === 'red';
       return `
-        <div class="metric-card">
+        <div class="metric-card" data-page="${pageId}" style="cursor: pointer;">
           <span class="metric-title">${escapeHtml(label)}</span>
           <strong class="metric-value">${escapeHtml(value)}</strong>
           <span class="trend-pill ${isNegative ? 'negative' : ''}">${escapeHtml(detail)}</span>
@@ -4978,8 +4978,14 @@ function renderKioskAdminIdleScreensaverEditor(draft) {
       </div>
 
       <div class="idle-media-section ${mode === "video" ? "" : "is-dimmed"}" style="margin-top: 14px;">
-        <h3 style="font-size: 14px; font-weight: 700; color: #334155; margin-bottom: 8px;">Video URL</h3>
-        <input type="url" value="${escapeHtml(videoUrl)}" data-editor-field="idleVideoUrl" placeholder="Direct MP4 or video URL..." style="width: 100%; padding: 10px 14px; border-radius: 12px; border: 1px solid #cbd5e1; font-size: 13px; background: #ffffff; color: #0f172a;" />
+        <h3 style="font-size: 14px; font-weight: 700; color: #334155; margin-bottom: 8px;">Idle video</h3>
+        <label class="template-upload-row compact-template-upload" style="margin-bottom: 10px; display: inline-block;">
+          <span style="background: linear-gradient(135deg, #6366f1 0%, #8b5cf6 100%); color: white; border-radius: 10px; padding: 8px 16px; font-size: 12.5px; font-weight: 700; cursor: pointer; display: inline-flex; align-items: center; gap: 6px;">${videoUrl ? "Replace video" : "Upload video"}</span>
+          <input type="file" accept="video/mp4,video/webm" data-idle-video-upload style="display: none;" />
+        </label>
+        <p style="font-size: 12px; color: #64748b; margin: 0 0 8px;">Upload an MP4/WebM file (max 50 MB), or paste a direct video URL below.</p>
+        <input type="url" value="${escapeHtml(videoUrl)}" data-editor-field="idleVideoUrl" placeholder="Direct MP4 or video URL..." style="width: 100%; padding: 10px 14px; border-radius: 12px; border: 1px solid #cbd5e1; font-size: 13px; background: #ffffff; color: #0f172a; margin-bottom: 10px;" />
+        ${videoUrl ? `<video src="${escapeHtml(videoUrl)}" muted loop controls class="idle-video-preview"></video>` : ""}
       </div>
     </section>
   `;
@@ -6466,7 +6472,7 @@ function validateIdleVideoFile(file) {
   if (!file) return "Choose an idle-screen video.";
   const isVideo = file.type.startsWith("video/") || /\.(mp4|webm)$/i.test(file.name);
   if (!isVideo) return "Choose an MP4 or WebM video.";
-  if (file.size > 40 * 1024 * 1024) return "Idle-screen video must be 40 MB or smaller.";
+  if (file.size > 50 * 1024 * 1024) return "Idle-screen video must be 50 MB or smaller.";
   return "";
 }
 

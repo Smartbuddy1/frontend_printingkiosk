@@ -13350,8 +13350,7 @@ tbody tr:hover {
   left: 0;
   width: 100%;
   height: 100%;
-  background: rgba(0, 0, 0, 0.4);
-  backdrop-filter: blur(2px);
+  background: #0f172a;
 }
 
 .template-keyboard-popup-content {
@@ -13425,6 +13424,52 @@ tbody tr:hover {
   flex: 3;
   background: white;
   color: #0f172a;
+}
+
+.template-keyboard-popup-content .template-keyboard-controls {
+  align-items: flex-start;
+}
+
+.customer-shell .template-keyboard-popup-content .template-keyboard-controls-stack {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  flex: 1;
+  max-width: none;
+}
+
+.customer-shell .template-keyboard-popup-content .template-keyboard-controls-stack .template-key {
+  max-width: none;
+  width: 100%;
+  height: 48px;
+}
+
+.customer-shell .template-keyboard-popup-content .template-key-close {
+  width: 48px;
+  height: 48px;
+  min-width: 48px;
+  max-width: 48px;
+  flex: 0 0 auto;
+  background: #dc2626;
+  border: none;
+  color: #ffffff;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  box-shadow: 0 2px 0 rgba(0, 0, 0, 0.15);
+}
+
+.customer-shell .template-keyboard-popup-content .template-key-close:hover,
+.customer-shell .template-keyboard-popup-content .template-key-close:active {
+  background: #b91c1c;
+  border-color: transparent;
+}
+
+.customer-shell .template-keyboard-popup-content .template-key-backspace {
+  display: flex;
+  align-items: center;
+  justify-content: center;
 }
 
 

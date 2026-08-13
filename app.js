@@ -3272,7 +3272,7 @@ function renderTemplateSearchKeyboard() {
   return `
     <div class="template-search-keyboard" aria-label="Virtual keyboard">
       <div class="template-keyboard-header">
-        <button type="button" class="template-key template-key-close" data-template-search-action="close">Close</button>
+        <button type="button" class="template-key template-key-close" data-template-search-action="close" aria-label="Close keyboard">${uiIcon("close", 20)}</button>
       </div>
       ${rows.map((row, index) => `
         <div class="template-keyboard-row template-keyboard-row-${index + 1}">
@@ -3281,8 +3281,10 @@ function renderTemplateSearchKeyboard() {
       `).join("")}
       <div class="template-keyboard-row template-keyboard-controls">
         <button type="button" class="template-key" data-template-search-action="space">Space</button>
-        <button type="button" class="template-key" data-template-search-action="backspace">Back</button>
-        <button type="button" class="template-key template-key-go" data-template-search-action="go">Go</button>
+        <div class="template-keyboard-controls-stack">
+          <button type="button" class="template-key template-key-backspace" data-template-search-action="backspace" aria-label="Backspace">${uiIcon("backspace", 20)}</button>
+          <button type="button" class="template-key template-key-go" data-template-search-action="go">Go</button>
+        </div>
       </div>
     </div>
   `;
@@ -8874,7 +8876,7 @@ function validateAdminIdleVideoFile(file) {
   if (!file) return "Choose an idle-screen video.";
   const isVideo = file.type.startsWith("video/") || /\.(mp4|webm)$/i.test(file.name);
   if (!isVideo) return "Choose an MP4 or WebM video.";
-  if (file.size > 40 * 1024 * 1024) return "Idle-screen video must be 40 MB or smaller.";
+  if (file.size > 50 * 1024 * 1024) return "Idle-screen video must be 50 MB or smaller.";
   return "";
 }
 
