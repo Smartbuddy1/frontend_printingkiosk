@@ -1109,7 +1109,7 @@ function renderNav() {
     <button class="admin-nav-backdrop ${state.navOpen ? "is-open" : ""}" data-action="close-nav" aria-label="Close navigation"></button>
     <nav id="super-admin-navigation" class="admin-nav ${state.navOpen ? "is-open" : ""}" aria-label="Super Admin navigation">
       <div class="admin-nav-drawer-head">
-        <strong>Navigation</strong>
+        <div class="brand-logo-full-card admin-nav-drawer-brand"><img class="brand-logo-full" src="./assets/aarya-innovtech-logo-full.png" alt="Aarya Innovtech Pvt. Ltd." draggable="false" data-no-visual-search /></div>
         <button data-action="close-nav" aria-label="Close navigation">${uiIcon("close", 22)}</button>
       </div>
       <div class="admin-nav-group">

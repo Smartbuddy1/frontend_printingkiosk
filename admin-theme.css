@@ -8537,6 +8537,30 @@ tbody tr:hover {
     font-size: 21px;
   }
 
+  .admin-nav-drawer-head .brand-logo-full-card {
+    align-items: center;
+    background: #ffffff;
+    border-radius: 10px;
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.12);
+    box-sizing: border-box;
+    display: inline-flex;
+    height: 52px;
+    justify-content: center;
+    margin: 0;
+    max-width: 180px;
+    padding: 4px 10px;
+    width: auto;
+  }
+
+  .admin-nav-drawer-head .brand-logo-full {
+    display: block;
+    height: 44px;
+    max-height: 44px;
+    max-width: 160px;
+    object-fit: contain;
+    width: auto;
+  }
+
   .admin-nav-drawer-head button {
     align-items: center;
     background: transparent;

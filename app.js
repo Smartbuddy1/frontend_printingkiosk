@@ -8646,7 +8646,7 @@ function renderAdmin() {
       <button class="admin-nav-backdrop ${state.adminNavOpen ? "is-open" : ""}" data-action="admin-close-nav" aria-label="Close navigation"></button>
       <nav id="kiosk-admin-navigation" class="admin-nav ${state.adminNavOpen ? "is-open" : ""}" aria-label="Client navigation">
         <div class="admin-nav-drawer-head">
-          <strong>Navigation</strong>
+          <div class="brand-logo-full-card admin-nav-drawer-brand"><img class="brand-logo-full" src="./assets/aarya-innovtech-logo-full.png" alt="Aarya Innovtech Pvt. Ltd." draggable="false" data-no-visual-search /></div>
           <button data-action="admin-close-nav" aria-label="Close navigation">${uiIcon("close", 22)}</button>
         </div>
         ${adminNavGroups().map((group) => `
