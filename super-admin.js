@@ -4768,7 +4768,7 @@ function renderCollectionTable(collection, rows) {
               ${columns.map((column) => `<td>${formatCell(collection, column, row)}</td>`).join("")}
               <td>
                 <div class="table-actions">
-                  ${collection === "kiosks" ? `<button class="action-btn-view" data-kiosk-services="${escapeHtml(row.kioskId)}" title="Services & View">${uiIcon("view", 18)}</button>` : ""}
+                  ${collection === "kiosks" ? `<button class="action-btn-view" data-kiosk-services="${escapeHtml(row.kioskId)}" title="Services & View">${uiIcon("view", 18)}<span>Service</span></button>` : ""}
                   <button class="action-btn-edit" data-record-edit="${collection}" data-record-id="${escapeHtml(row[meta.key])}" title="Edit">${uiIcon("edit", 18)}</button>
                   <button class="action-btn-delete" data-record-delete="${collection}" data-record-id="${escapeHtml(row[meta.key])}" title="Delete">${uiIcon("delete", 18)}</button>
                 </div>

@@ -3263,6 +3263,7 @@ function filteredFormTemplates(serviceId = state.selectedService) {
 }
 
 function renderTemplateSearchKeyboard() {
+  const numberRow = ["1", "2", "3", "4", "5", "6", "7", "8", "9", "0"];
   const rows = [
     ["Q", "W", "E", "R", "T", "Y", "U", "I", "O", "P"],
     ["A", "S", "D", "F", "G", "H", "J", "K", "L"],
@@ -3274,17 +3275,18 @@ function renderTemplateSearchKeyboard() {
       <div class="template-keyboard-header">
         <button type="button" class="template-key template-key-close" data-template-search-action="close" aria-label="Close keyboard">${uiIcon("close", 20)}</button>
       </div>
+      <div class="template-keyboard-row template-keyboard-row-numbers">
+        ${numberRow.map((key) => `<button type="button" class="template-key" data-template-search-key="${key}">${key}</button>`).join("")}
+      </div>
       ${rows.map((row, index) => `
         <div class="template-keyboard-row template-keyboard-row-${index + 1}">
           ${row.map((key) => `<button type="button" class="template-key" data-template-search-key="${key}">${key}</button>`).join("")}
+          ${index === rows.length - 1 ? `<button type="button" class="template-key template-key-backspace" data-template-search-action="backspace" aria-label="Backspace">${uiIcon("backspace", 20)}</button>` : ""}
         </div>
       `).join("")}
       <div class="template-keyboard-row template-keyboard-controls">
         <button type="button" class="template-key" data-template-search-action="space">Space</button>
-        <div class="template-keyboard-controls-stack">
-          <button type="button" class="template-key template-key-backspace" data-template-search-action="backspace" aria-label="Backspace">${uiIcon("backspace", 20)}</button>
-          <button type="button" class="template-key template-key-go" data-template-search-action="go">Go</button>
-        </div>
+        <button type="button" class="template-key template-key-go" data-template-search-action="go">Go</button>
       </div>
     </div>
   `;
@@ -5046,23 +5048,43 @@ async function loadAdminData({ rerender = true } = {}) {
   }
 }
 
-async function syncBackendPrintStatus(printStatus, failureReason = "") {
+async function syncBackendPrintStatus(printStatus, failureReason = "", completionConfirmed) {
   if (!state.activeJobId) return;
 
-  try {
-    await fetchJson(`${BACKEND_URL}/api/print/status`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        ...paymentRequestBody(),
-        jobId: currentJobId(),
-        printStatus,
-        paymentStatus: "Payment Success",
-        failureReason
-      })
-    });
-  } catch {
-    // Admin will show the saved backend record once the backend is reachable again.
+  // Capture the job/payment context once up front so a retry (below) always
+  // reports status for THIS job, even if the customer has moved on to a new
+  // one by the time a delayed retry fires.
+  const body = JSON.stringify({
+    ...paymentRequestBody(),
+    jobId: currentJobId(),
+    printStatus,
+    paymentStatus: "Payment Success",
+    failureReason,
+    // Only present for a completed job: whether the local print agent actually
+    // observed this job in the printer queue/status and watched it clear
+    // (true), or gave up waiting after never seeing it at all (false) - see
+    // waitForWindowsPrintCompletion() in local-agent/printerAgent.js.
+    ...(typeof completionConfirmed === "boolean" ? { completionConfirmed } : {})
+  });
+
+  // This is fire-and-forget from every caller (never awaited), so retrying
+  // here on transient failures doesn't add any delay to the customer-facing
+  // flow - it just makes the backend's job record (what admins see) more
+  // reliably reflect what actually happened, instead of silently getting
+  // stuck on one dropped request.
+  const maxAttempts = 3;
+  for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
+    try {
+      await fetchJson(`${BACKEND_URL}/api/print/status`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body
+      });
+      return;
+    } catch {
+      if (attempt === maxAttempts) return;
+      await new Promise((resolve) => setTimeout(resolve, 1500 * attempt));
+    }
   }
 }
 
@@ -9408,6 +9430,14 @@ function renderAlerts() {
 }
 
 function jobRow(job) {
+  const printLabel = job.printStatus || job.print || "Draft";
+  // Completed jobs where the local print agent never actually observed the
+  // job reach the printer queue (it gave up waiting rather than confirming
+  // completion) are still reported "Completed", but flagged here so staff
+  // can tell a genuinely-confirmed print apart from one that just timed out
+  // silently - see waitForWindowsPrintCompletion() in printerAgent.js.
+  const unconfirmed = /completed/i.test(printLabel) && job.completionConfirmed === false;
+
   return {
     id: job.jobId || job.id || "",
     date: formatDateTime(job.completedAt || job.createdAt || job.date),
@@ -9419,7 +9449,7 @@ function jobRow(job) {
     copies: Number(job.copies || 1),
     amount: Number(job.amount || 0),
     payment: job.paymentStatus || job.payment || "Draft",
-    print: job.printStatus || job.print || "Draft"
+    print: unconfirmed ? `${printLabel} (unconfirmed)` : printLabel
   };
 }
 
@@ -14206,7 +14236,8 @@ function addJob(printStatus, failureReason = state.printError) {
 
   state.jobs.unshift(job);
   if (!DEMO_KIOSK_MODE) {
-    syncBackendPrintStatus(printStatus, failureReason);
+    const completionConfirmed = printStatus === "Completed" ? state.printJob?.completionConfirmed : undefined;
+    syncBackendPrintStatus(printStatus, failureReason, completionConfirmed);
   }
 
   if (printStatus === "Completed") {

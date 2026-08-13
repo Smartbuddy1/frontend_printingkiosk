@@ -28553,6 +28553,19 @@ body.admin-mode #app {
   box-shadow: 0 6px 18px rgba(59, 130, 246, 0.45) !important;
 }
 
+/* This one shows a "Service" label alongside its icon (unlike the plain
+   square edit/delete icon buttons beside it), so it needs to grow to fit
+   the text instead of staying clipped to the fixed 38px icon-only size. */
+.table-actions button[data-kiosk-services] {
+  width: auto !important;
+  min-width: 38px !important;
+  padding: 0 14px !important;
+  gap: 6px !important;
+  font-size: 13px !important;
+  font-weight: 700 !important;
+  white-space: nowrap !important;
+}
+
 /* 2. QR Code Button (Blue-Indigo Gradient) */
 .table-actions button.action-btn-qr,
 .table-actions button.btn-qr,
