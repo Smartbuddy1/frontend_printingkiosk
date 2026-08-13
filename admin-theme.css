@@ -30043,3 +30043,18 @@ button.ghost-button:hover {
 
 
 
+
+/* Mobile Fixes added */
+@media (max-width: 1023px) {
+  .admin-layout,
+  .super-admin-layout {
+    grid-template-columns: minmax(0, 1fr) !important;
+  }
+  .mobile-nav-toggle {
+    display: inline-flex !important;
+    flex: 0 0 48px !important;
+  }
+  .admin-topbar .brand {
+    background: transparent !important;
+  }
+}
