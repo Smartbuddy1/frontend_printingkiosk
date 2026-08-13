@@ -6,6 +6,12 @@ const HOSTED_PROXY_BACKEND_URL = /^https?:$/.test(window.location.protocol) &&
   ? window.location.origin
   : "";
 const BACKEND_URL = (runtimeConfig.get("backendUrl") || HOSTED_PROXY_BACKEND_URL || frontendConfig.backendUrl || DEFAULT_BACKEND_URL).replace(/\/+$/, "");
+// WebSocket-specific: HOSTED_PROXY_BACKEND_URL (same-origin, used so plain
+// fetch() calls go through Vercel's /api/* rewrite proxy) does NOT work for
+// WebSocket upgrades - Vercel's rewrites don't proxy the ws:// protocol, so
+// a socket built from BACKEND_URL there 404s. Connect straight to the real
+// backend origin instead; CORS doesn't restrict WebSocket connections.
+const REAL_BACKEND_URL = (runtimeConfig.get("backendUrl") || frontendConfig.backendUrl || DEFAULT_BACKEND_URL).replace(/\/+$/, "");
 const ADMIN_SESSION_KEY = "printingKioskAdminSession";
 const UNASSIGNED_KIOSK_ID = "UNASSIGNED-KIOSK";
 const DEFAULT_KIOSK_CUSTOMER_SETTINGS = Object.freeze({
@@ -451,7 +457,7 @@ let adminSocketReconnectTimer = null;
 let adminSocketReconnectDelay = 2000;
 
 function adminSocketUrl() {
-  const url = new URL(`${BACKEND_URL}/ws`);
+  const url = new URL(`${REAL_BACKEND_URL}/ws`);
   url.protocol = url.protocol === "https:" ? "wss:" : "ws:";
   return url.toString();
 }
@@ -843,8 +849,13 @@ function serviceClients() {
 function selectedServiceClientId() {
   const clients = serviceClients();
 
-  if (!state.selectedClientId || !clients.some((client) => client.adminId === state.selectedClientId)) {
+  if (!state.selectedClientId) {
     state.selectedClientId = clients[0]?.adminId || "";
+  } else if (!clients.some((client) => client.adminId === state.selectedClientId)) {
+    // The previously selected client no longer exists (e.g. was just deleted).
+    // Fall back to "All Clients" instead of silently jumping to clients[0],
+    // which made deleted clients' services look like they moved to the first client.
+    state.selectedClientId = "";
   }
 
   return state.selectedClientId;
@@ -4479,8 +4490,14 @@ function renderSmallTable(headers, rows, emptyMessage, paginationKey = "small-ta
 function selectedServiceProjectId() {
   const projects = serviceProjectsForSelectedClient();
 
-  if (!state.selectedProjectId || !projects.some((project) => project.projectId === state.selectedProjectId)) {
+  if (!state.selectedProjectId) {
     state.selectedProjectId = projects[0]?.projectId || "";
+  } else if (!projects.some((project) => project.projectId === state.selectedProjectId)) {
+    // The previously selected project no longer exists (e.g. its kiosk/client was
+    // just deleted). Fall back to "All Projects" instead of silently jumping to
+    // projects[0], which made deleted kiosks' services look like they moved to the
+    // first kiosk.
+    state.selectedProjectId = "";
   }
 
   return state.selectedProjectId;

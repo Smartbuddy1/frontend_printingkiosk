@@ -15,6 +15,12 @@ const HOSTED_PROXY_BACKEND_URL = /^https?:$/.test(window.location.protocol) &&
   : "";
 const LOCAL_AGENT_URL = runtimeConfig.get("localAgentUrl") || frontendConfig.localAgentUrl || "http://localhost:5077";
 const BACKEND_URL = (runtimeConfig.get("backendUrl") || HOSTED_PROXY_BACKEND_URL || frontendConfig.backendUrl || DEFAULT_BACKEND_URL).replace(/\/+$/, "");
+// WebSocket-specific: HOSTED_PROXY_BACKEND_URL (same-origin, used so plain
+// fetch() calls go through Vercel's /api/* rewrite proxy) does NOT work for
+// WebSocket upgrades - Vercel's rewrites don't proxy the ws:// protocol, so
+// a socket built from BACKEND_URL there 404s. Connect straight to the real
+// backend origin instead; CORS doesn't restrict WebSocket connections.
+const REAL_BACKEND_URL = (runtimeConfig.get("backendUrl") || frontendConfig.backendUrl || DEFAULT_BACKEND_URL).replace(/\/+$/, "");
 const PUBLIC_FRONTEND_URL = (
   runtimeConfig.get("publicFrontendUrl") ||
   runtimeConfig.get("frontendUrl") ||
@@ -4908,7 +4914,7 @@ let adminSocketReconnectTimer = null;
 let adminSocketReconnectDelay = 2000;
 
 function adminSocketUrl() {
-  const url = new URL(`${BACKEND_URL}/ws`);
+  const url = new URL(`${REAL_BACKEND_URL}/ws`);
   url.protocol = url.protocol === "https:" ? "wss:" : "ws:";
   return url.toString();
 }
@@ -13133,7 +13139,7 @@ function renderAlerts() {
       </div>
 
       ${alerts.length ? `
-        <div style="display: grid; grid-template-columns: repeat(auto-fill, minmax(360px, 1fr)); gap: 20px;">
+        <div style="display: grid; grid-template-columns: repeat(auto-fill, minmax(min(100%, 360px), 1fr)); gap: 20px;">
           ${alerts.map(alert => {
             const isBad = alert.tone === 'bad' || alert.tone === 'red';
             const statusBg = isBad ? '#fef2f2' : '#fffbeb';

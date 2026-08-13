@@ -3947,12 +3947,19 @@ th {
   grid-template-columns: 34px minmax(0, 1fr) auto;
 }
 
-.admin-layout {
-  grid-template-columns: minmax(230px, 268px) minmax(0, 1fr);
-}
+/* Scoped to match the mobile single-column collapse for .admin-layout /
+   .super-admin-layout at max-width:1180px above - unscoped, this
+   unconditionally re-applied a 2-column grid at every viewport width,
+   including mobile, undoing that collapse and squeezing the whole admin
+   page into a narrow sliver next to blank space. */
+@media (min-width: 1181px) {
+  .admin-layout {
+    grid-template-columns: minmax(230px, 268px) minmax(0, 1fr);
+  }
 
-.super-admin-layout {
-  grid-template-columns: minmax(240px, 286px) minmax(0, 1fr);
+  .super-admin-layout {
+    grid-template-columns: minmax(240px, 286px) minmax(0, 1fr);
+  }
 }
 
 .admin-header > div:first-child {
@@ -5605,9 +5612,11 @@ textarea {
   color: #c92d3b;
 }
 
-.admin-layout,
-.super-admin-layout {
-  grid-template-columns: 280px minmax(0, 1fr);
+@media (min-width: 1181px) {
+  .admin-layout,
+  .super-admin-layout {
+    grid-template-columns: 280px minmax(0, 1fr);
+  }
 }
 
 .admin-nav {
@@ -6884,9 +6893,11 @@ body {
   color: #d52f45;
 }
 
-.admin-layout,
-.super-admin-layout {
-  grid-template-columns: 280px minmax(0, 1fr);
+@media (min-width: 1181px) {
+  .admin-layout,
+  .super-admin-layout {
+    grid-template-columns: 280px minmax(0, 1fr);
+  }
 }
 
 .admin-nav {
@@ -17595,9 +17606,11 @@ td {
 }
 
 /* Admin and super-admin */
-.admin-layout,
-.super-admin-layout {
-  grid-template-columns: minmax(220px, 286px) minmax(0, 1fr);
+@media (min-width: 1181px) {
+  .admin-layout,
+  .super-admin-layout {
+    grid-template-columns: minmax(220px, 286px) minmax(0, 1fr);
+  }
 }
 
 .admin-nav,
@@ -28722,6 +28735,19 @@ h1, h2, h3, .admin-header h1, .stage-header h1, .section-heading h2, .module-car
   display: grid !important;
   grid-template-columns: 280px minmax(0, 1fr) !important;
   grid-template-rows: 100% !important;
+}
+
+/* This !important 2-column grid (and the equivalent duplicate earlier in
+   this file) had no mobile-width guard at all, so the sidebar column was
+   reserved at every viewport size - on a phone that squeezed the whole
+   admin page into a ~90px sliver next to blank space. Same specificity and
+   !important as the rule above, but scoped and placed last so it wins only
+   on narrow screens. */
+@media (max-width: 1180px) {
+  .admin-layout,
+  .super-admin-layout {
+    grid-template-columns: minmax(0, 1fr) !important;
+  }
 }
 
 .admin-main {

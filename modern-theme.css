@@ -121,6 +121,13 @@ h1, h2, h3, .admin-header h1, .stage-header h1, .section-heading h2, .module-car
   grid-template-rows: 100% !important;
 }
 
+@media (max-width: 1023px) {
+  .admin-layout,
+  .super-admin-layout {
+    grid-template-columns: minmax(0, 1fr) !important;
+  }
+}
+
 .admin-main {
   height: 100% !important;
   max-height: 100% !important;
@@ -129,6 +136,12 @@ h1, h2, h3, .admin-header h1, .stage-header h1, .section-heading h2, .module-car
   overflow-x: hidden !important;
   background: var(--bg) !important;
   padding: 32px 40px !important;
+}
+
+@media (max-width: 1023px) {
+  .admin-main {
+    padding: 16px !important;
+  }
 }
 
 .admin-main > * {

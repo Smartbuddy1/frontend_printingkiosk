@@ -8429,7 +8429,7 @@ tbody tr:hover {
   width: 48px;
 }
 
-@media (max-width: 900px) {
+@media (max-width: 1023px) {
   .mobile-nav-toggle {
     display: inline-flex;
     flex: 0 0 48px;
