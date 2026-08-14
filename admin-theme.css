@@ -417,8 +417,8 @@
 }
 
 .mobile-payment-card img {
-  height: 56px;
-  width: 56px;
+  height: auto;
+  width: auto;
 }
 
 .mobile-payment-amount {
@@ -1896,13 +1896,11 @@ button:disabled:hover {
 
 .idle-image-item-actions {
   display: flex;
-  flex-wrap: wrap;
   gap: 4px;
 }
 
 .idle-image-item-actions .small-button {
   flex: 1;
-  min-width: 0;
   padding: 4px 6px;
 }
 
@@ -3949,19 +3947,12 @@ th {
   grid-template-columns: 34px minmax(0, 1fr) auto;
 }
 
-/* Scoped to match the mobile single-column collapse for .admin-layout /
-   .super-admin-layout at max-width:1180px above - unscoped, this
-   unconditionally re-applied a 2-column grid at every viewport width,
-   including mobile, undoing that collapse and squeezing the whole admin
-   page into a narrow sliver next to blank space. */
-@media (min-width: 1181px) {
-  .admin-layout {
-    grid-template-columns: minmax(230px, 268px) minmax(0, 1fr);
-  }
+.admin-layout {
+  grid-template-columns: minmax(230px, 268px) minmax(0, 1fr);
+}
 
-  .super-admin-layout {
-    grid-template-columns: minmax(240px, 286px) minmax(0, 1fr);
-  }
+.super-admin-layout {
+  grid-template-columns: minmax(240px, 286px) minmax(0, 1fr);
 }
 
 .admin-header > div:first-child {
@@ -5614,11 +5605,9 @@ textarea {
   color: #c92d3b;
 }
 
-@media (min-width: 1181px) {
-  .admin-layout,
-  .super-admin-layout {
-    grid-template-columns: 280px minmax(0, 1fr);
-  }
+.admin-layout,
+.super-admin-layout {
+  grid-template-columns: 280px minmax(0, 1fr);
 }
 
 .admin-nav {
@@ -6895,11 +6884,9 @@ body {
   color: #d52f45;
 }
 
-@media (min-width: 1181px) {
-  .admin-layout,
-  .super-admin-layout {
-    grid-template-columns: 280px minmax(0, 1fr);
-  }
+.admin-layout,
+.super-admin-layout {
+  grid-template-columns: 280px minmax(0, 1fr);
 }
 
 .admin-nav {
@@ -8464,7 +8451,7 @@ tbody tr:hover {
   width: 48px;
 }
 
-@media (max-width: 900px) {
+@media (max-width: 1023px) {
   .mobile-nav-toggle {
     display: inline-flex;
     flex: 0 0 48px;
@@ -8537,30 +8524,6 @@ tbody tr:hover {
   .admin-nav-drawer-head strong {
     color: #ffffff;
     font-size: 21px;
-  }
-
-  .admin-nav-drawer-head .brand-logo-full-card {
-    align-items: center;
-    background: #ffffff;
-    border-radius: 10px;
-    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.12);
-    box-sizing: border-box;
-    display: inline-flex;
-    height: 52px;
-    justify-content: center;
-    margin: 0;
-    max-width: 180px;
-    padding: 4px 10px;
-    width: auto;
-  }
-
-  .admin-nav-drawer-head .brand-logo-full {
-    display: block;
-    height: 44px;
-    max-height: 44px;
-    max-width: 160px;
-    object-fit: contain;
-    width: auto;
   }
 
   .admin-nav-drawer-head button {
@@ -13401,26 +13364,24 @@ tbody tr:hover {
   display: flex;
   align-items: flex-end;
   justify-content: center;
+  /* Keyboard is non-modal: the page behind it (search bar, form grid,
+     Preview buttons, etc.) must stay fully visible and tappable while
+     the keyboard is open, not just the keys themselves. */
+  pointer-events: none;
 }
 
 .template-keyboard-popup-backdrop {
-  position: absolute;
-  top: 0;
-  left: 0;
-  width: 100%;
-  height: 100%;
-  background: rgba(0, 0, 0, 0.4);
-  backdrop-filter: blur(2px);
+  display: none;
 }
 
 .template-keyboard-popup-content {
   position: relative;
   width: 100%;
   max-width: 900px;
-  background: #cbd5e1;
+  background: #0f172a;
   border-radius: 20px 20px 0 0;
   padding: 16px 12px 24px 12px;
-  box-shadow: 0 -10px 40px rgba(0, 0, 0, 0.2);
+  pointer-events: auto;
   /* animation removed */
   display: flex;
   flex-direction: column;
@@ -13446,14 +13407,14 @@ tbody tr:hover {
   color: #334155;
 }
 
-.template-keyboard-popup-content .template-keyboard-row {
+.customer-shell .template-keyboard-popup-content .template-keyboard-row {
   display: flex;
   justify-content: center;
   gap: 8px;
 }
 
-.template-keyboard-popup-content .template-key {
-  background: white;
+.customer-shell .template-keyboard-popup-content .template-key {
+  background: #1e293b;
   border: none;
   border-radius: 8px;
   height: 56px;
@@ -13462,28 +13423,62 @@ tbody tr:hover {
   max-width: 70px;
   font-size: 20px;
   font-weight: 600;
-  color: #0f172a;
-  box-shadow: 0 2px 0 rgba(0,0,0,0.1);
+  color: #f1f5f9;
+  box-shadow: 0 2px 0 rgba(0,0,0,0.3);
   cursor: pointer;
   transition: background 0.1s;
 }
 
-.template-keyboard-popup-content .template-key:active {
-  background: #e2e8f0;
+.customer-shell .template-keyboard-popup-content .template-key:active {
+  background: #334155;
   transform: translateY(2px);
   box-shadow: none;
 }
 
 .template-keyboard-popup-content .template-keyboard-controls .template-key {
   max-width: none;
-  background: #94a3b8;
+  background: #475569;
   color: white;
 }
 
 .template-keyboard-popup-content .template-keyboard-controls .template-key[data-template-search-action="space"] {
   flex: 3;
-  background: white;
-  color: #0f172a;
+  background: #1e293b;
+  color: #f1f5f9;
+}
+
+.template-keyboard-popup-content .template-keyboard-controls {
+  align-items: flex-start;
+}
+
+.customer-shell .template-keyboard-popup-content .template-key-close {
+  width: 48px;
+  height: 48px;
+  min-width: 48px;
+  max-width: 48px;
+  flex: 0 0 auto;
+  background: #dc2626;
+  border: none;
+  color: #ffffff;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  box-shadow: 0 2px 0 rgba(0, 0, 0, 0.15);
+}
+
+.customer-shell .template-keyboard-popup-content .template-key-close:hover,
+.customer-shell .template-keyboard-popup-content .template-key-close:active {
+  background: #b91c1c;
+  border-color: transparent;
+}
+
+.customer-shell .template-keyboard-popup-content .template-key-backspace {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: #475569;
+  color: #ffffff;
 }
 
 
@@ -17632,11 +17627,9 @@ td {
 }
 
 /* Admin and super-admin */
-@media (min-width: 1181px) {
-  .admin-layout,
-  .super-admin-layout {
-    grid-template-columns: minmax(220px, 286px) minmax(0, 1fr);
-  }
+.admin-layout,
+.super-admin-layout {
+  grid-template-columns: minmax(220px, 286px) minmax(0, 1fr);
 }
 
 .admin-nav,
@@ -24460,7 +24453,11 @@ td {
   box-shadow: 0 10px 22px rgba(8, 36, 90, 0.07);
   display: grid;
   gap: 8px;
-  grid-template-rows: auto minmax(170px, 1fr) auto;
+  /* Current markup only ever renders one child (.multi-preview-paper) - no
+     header/footer - so a single stretch row lets the paper's own centering
+     use the full cell instead of losing space to two empty header/footer
+     row tracks reserved by the old 3-row layout. */
+  grid-template-rows: 1fr;
   min-height: 276px;
   overflow: hidden;
   padding: 10px;
@@ -24505,18 +24502,20 @@ td {
 
 .customer-shell:has(.preview-stage) .multi-preview-paper {
   align-items: center;
-  aspect-ratio: 210 / 297;
+  align-self: center !important;
+  aspect-ratio: 210 / 297 !important;
   background: #ffffff;
   border: 1px solid #aeb8c8;
   box-shadow: 0 10px 20px rgba(8, 36, 90, 0.10);
   display: flex;
   justify-content: center;
-  justify-self: center;
-  max-height: 260px;
-  max-width: 100%;
+  justify-self: center !important;
+  height: auto !important;
+  max-height: 260px !important;
+  max-width: 100% !important;
   min-height: 170px;
   overflow: hidden;
-  width: auto;
+  width: auto !important;
 }
 
 .customer-shell:has(.preview-stage) .multi-preview-paper.orientation-landscape {
@@ -24544,6 +24543,16 @@ td {
   display: flex !important;
   justify-content: center !important;
   position: relative;
+}
+
+/* .pdf-preview-page stretches to 100%/100% of the shell (styles.css), so
+   without its own centering the canvas/img inside it (shrunk by object-fit
+   to a different aspect ratio than the grid cell) sits flush top-left
+   instead of centered - looking like the document is cropped/half visible. */
+.customer-shell:has(.preview-stage) .multi-preview-paper .pdf-preview-page {
+  align-items: center !important;
+  display: flex !important;
+  justify-content: center !important;
 }
 
 .customer-shell:has(.preview-stage) .multi-preview-paper .pdf-preview-canvas {
@@ -24656,13 +24665,13 @@ td {
 
   .customer-shell:has(.preview-stage) .multi-preview-item {
     gap: 6px;
-    grid-template-rows: auto minmax(138px, 1fr) auto;
+    grid-template-rows: 1fr;
     min-height: 232px;
     padding: 8px;
   }
 
   .customer-shell:has(.preview-stage) .multi-preview-paper {
-    max-height: 210px;
+    max-height: 210px !important;
     min-height: 138px;
   }
 }
@@ -26636,6 +26645,18 @@ body.admin-mode #app {
   line-height: 1.2 !important;
 }
 
+/* The idle-screensaver panel embedded in the kioskAdmins editor modal
+   reuses the .section-heading class for its own small inline-styled h2
+   ("Idle Screen (Screensaver)") - the page-title rule above is !important,
+   so it was overriding that inline font-size and blowing the heading up
+   to full page-title size. More specific selector needed to win it back. */
+.idle-screensaver-panel .section-heading h2 {
+  font-size: 16px !important;
+  font-weight: 700 !important;
+  margin-bottom: 0 !important;
+  line-height: 1.3 !important;
+}
+
 .admin-header p,
 .stage-header p {
   font-size: 16.5px !important;
@@ -26965,37 +26986,6 @@ body.admin-mode #app {
   position: relative !important;
   top: auto !important;
   overflow: hidden !important;
-}
-
-/* The unscoped rule above locks .admin-nav to a static, in-flow 280px column,
-   which fights the off-canvas mobile drawer (position: fixed, slide-in via
-   .is-open) defined earlier in this file and made the sidebar collapse/disappear
-   on phone-width screens. Restore the drawer behavior here since this section
-   comes later in the cascade and wins. */
-@media (max-width: 900px) {
-  .admin-nav,
-  .admin-layout .admin-nav,
-  .super-admin-layout .admin-nav {
-    position: fixed !important;
-    inset: 0 auto 0 0 !important;
-    top: 0 !important;
-    width: 336px !important;
-    min-width: 0 !important;
-    max-width: 88vw !important;
-    height: 100dvh !important;
-    max-height: 100dvh !important;
-    transform: translateX(-105%) !important;
-    visibility: hidden !important;
-    transition: transform 200ms ease, visibility 200ms ease !important;
-    z-index: 100 !important;
-  }
-
-  .admin-nav.is-open,
-  .admin-layout .admin-nav.is-open,
-  .super-admin-layout .admin-nav.is-open {
-    transform: translateX(0) !important;
-    visibility: visible !important;
-  }
 }
 
 .admin-nav-group {
@@ -27885,6 +27875,69 @@ body.admin-mode #app {
   animation: popInModal 0.25s cubic-bezier(0.16, 1, 0.3, 1) !important;
 }
 
+/* ================= Custom Confirm Modal (replaces native window.confirm) =================
+   Reuses .editor-modal-shell/.editor-modal-backdrop for the same dark
+   blurred backdrop + fade-in every other modal already uses - only the
+   inner card is new, so this matches the app's look instead of the
+   browser's native "127.0.0.1 says..." dialog. Shared by both panels. */
+.editor-modal-content.confirm-modal-content {
+  max-width: min(420px, calc(100vw - 48px)) !important;
+}
+
+.confirm-modal-card {
+  background: #ffffff;
+  border-radius: 20px;
+  padding: 32px 28px 24px;
+  box-shadow: 0 25px 60px -15px rgba(0, 0, 0, 0.3);
+  text-align: center;
+}
+
+.confirm-modal-icon {
+  width: 52px;
+  height: 52px;
+  border-radius: 16px;
+  margin: 0 auto 18px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: linear-gradient(135deg, #60a5fa, #6366f1);
+  color: #ffffff;
+}
+
+.confirm-modal-icon.is-danger {
+  background: linear-gradient(135deg, #f87171, #dc2626);
+}
+
+.confirm-modal-title {
+  font-family: var(--font-serif, var(--font-admin, 'Playfair Display', Georgia, serif));
+  font-size: 19px;
+  font-weight: 800;
+  color: #0f172a;
+  margin: 0 0 8px;
+}
+
+.confirm-modal-message {
+  font-size: 14px;
+  color: #475569;
+  line-height: 1.5;
+  margin: 0 0 24px;
+}
+
+.confirm-modal-actions {
+  display: flex;
+  justify-content: center;
+  gap: 12px;
+}
+
+.confirm-modal-actions button {
+  min-width: 110px;
+  border-radius: 12px;
+  padding: 10px 20px;
+  font-weight: 700;
+  font-size: 13.5px;
+  cursor: pointer;
+}
+
 .modal-popup-body {
   overflow-y: auto !important;
   max-height: calc(85vh - 150px) !important;
@@ -27910,6 +27963,15 @@ body.admin-mode #app {
 #app .super-admin-layout .editor-modal-shell:not(.service-editor-modal-shell) .editor-modal-content.pricing-editor-modal-content,
 .editor-modal-content.pricing-editor-modal-content {
   max-width: min(880px, calc(100vw - 48px)) !important;
+}
+
+/* The kioskAdmins (Create/Edit Account) editor also carries the idle-
+   screensaver panel below its normal fields, so the shared 760px modal
+   width leaves it cramped - widen just this one, same pattern as the
+   services editor above. */
+#app .super-admin-layout .editor-modal-shell:not(.service-editor-modal-shell) .editor-modal-content.editor-modal-content-kioskAdmins,
+.editor-modal-content.editor-modal-content-kioskAdmins {
+  max-width: min(980px, calc(100vw - 64px)) !important;
 }
 
 #app .super-admin-layout .editor-modal-shell .editor-panel.pricing-editor-card,
@@ -28481,7 +28543,8 @@ body.admin-mode #app {
   gap: 16px !important;
 }
 
-.settings-modal-body .idle-image-grid {
+.settings-modal-body .idle-image-grid,
+.modal-popup-body .idle-image-grid {
   display: grid !important;
   grid-template-columns: repeat(auto-fill, minmax(130px, 1fr)) !important;
   gap: 14px !important;
@@ -28544,6 +28607,14 @@ body.admin-mode #app {
   color: #ffffff !important;
   box-shadow: 0 4px 12px rgba(59, 130, 246, 0.28) !important;
   border: none !important;
+  /* Unlike the icon-only Edit/Delete buttons beside it, this one also has a
+     text label ("Service") - the shared 38px square from .table-actions
+     button above was clipping that label down to "Servi". Auto width with
+     side padding instead of the fixed square, so the full label fits. */
+  width: auto !important;
+  min-width: 38px !important;
+  padding: 0 14px !important;
+  gap: 6px !important;
 }
 .table-actions button.action-btn-view:hover,
 .table-actions button.btn-view:hover,
@@ -28551,19 +28622,6 @@ body.admin-mode #app {
 .table-actions button[data-action="view"]:hover {
   transform: translateY(-2px) scale(1.04) !important;
   box-shadow: 0 6px 18px rgba(59, 130, 246, 0.45) !important;
-}
-
-/* This one shows a "Service" label alongside its icon (unlike the plain
-   square edit/delete icon buttons beside it), so it needs to grow to fit
-   the text instead of staying clipped to the fixed 38px icon-only size. */
-.table-actions button[data-kiosk-services] {
-  width: auto !important;
-  min-width: 38px !important;
-  padding: 0 14px !important;
-  gap: 6px !important;
-  font-size: 13px !important;
-  font-weight: 700 !important;
-  white-space: nowrap !important;
 }
 
 /* 2. QR Code Button (Blue-Indigo Gradient) */
@@ -28807,13 +28865,7 @@ h1, h2, h3, .admin-header h1, .stage-header h1, .section-heading h2, .module-car
   grid-template-rows: 100% !important;
 }
 
-/* This !important 2-column grid (and the equivalent duplicate earlier in
-   this file) had no mobile-width guard at all, so the sidebar column was
-   reserved at every viewport size - on a phone that squeezed the whole
-   admin page into a ~90px sliver next to blank space. Same specificity and
-   !important as the rule above, but scoped and placed last so it wins only
-   on narrow screens. */
-@media (max-width: 1180px) {
+@media (max-width: 1023px) {
   .admin-layout,
   .super-admin-layout {
     grid-template-columns: minmax(0, 1fr) !important;
@@ -28828,6 +28880,12 @@ h1, h2, h3, .admin-header h1, .stage-header h1, .section-heading h2, .module-car
   overflow-x: hidden !important;
   background: var(--bg) !important;
   padding: 32px 40px !important;
+}
+
+@media (max-width: 1023px) {
+  .admin-main {
+    padding: 16px !important;
+  }
 }
 
 .admin-main > * {
@@ -30110,89 +30168,139 @@ button.ghost-button:hover {
   transform: translateY(-1px) !important;
 }
 
-
-
-
-
-/* Mobile Fixes added */
-@media (max-width: 1023px) {
-  .admin-layout,
-  .super-admin-layout {
-    grid-template-columns: minmax(0, 1fr) !important;
-  }
-  .mobile-nav-toggle {
-    display: inline-flex !important;
-    flex: 0 0 48px !important;
-  }
-  .admin-topbar .brand {
-    background: transparent !important;
-  }
+/* Service Editor Modal Popup - Clean layout without double scrollbars */
+#app .super-admin-layout .editor-modal-shell .editor-panel.service-editor-popup,
+#app .super-admin-layout .editor-modal-shell:not(.service-editor-modal-shell) .editor-panel.service-editor-popup,
+.editor-panel.service-editor-popup,
+.service-editor-popup {
+  display: flex !important;
+  flex-direction: column !important;
+  max-height: min(88vh, 850px) !important;
+  height: auto !important;
+  overflow: hidden !important;
+  padding: 0 !important;
+  gap: 0 !important;
+  border-radius: 20px !important;
+  background: #ffffff !important;
+  box-shadow: 0 25px 60px -15px rgba(0, 0, 0, 0.3) !important;
+  border: 1px solid rgba(226, 232, 240, 0.8) !important;
+  width: 100% !important;
+  box-sizing: border-box !important;
 }
 
-/* The grid collapses to a single column as low as 1180px (see the
-   .admin-layout/.super-admin-layout rules above), but the off-canvas drawer
-   toggle above only activates at 1023px and below. Between 1024-1180px the
-   sidebar was still an in-flow, ~740px-tall block stacked above the main
-   content in that single column, pushing the page content hundreds of
-   pixels below the fold (looked like a blank page). Widen the drawer
-   behavior to the same 1180px breakpoint so there is no gap. */
-@media (max-width: 1180px) {
-  .mobile-nav-toggle {
-    display: inline-flex !important;
-    flex: 0 0 48px !important;
-  }
-
-  .admin-nav-backdrop {
-    background: rgba(5, 15, 31, 0.58) !important;
-    border: 0 !important;
-    display: block !important;
-    height: 100dvh !important;
-    inset: 0 !important;
-    min-height: 100dvh !important;
-    opacity: 0 !important;
-    padding: 0 !important;
-    pointer-events: none !important;
-    position: fixed !important;
-    transition: opacity 180ms ease !important;
-    width: 100vw !important;
-    z-index: 90 !important;
-  }
-
-  .admin-nav-backdrop.is-open {
-    opacity: 1 !important;
-    pointer-events: auto !important;
-  }
-
-  .admin-nav,
-  .admin-layout .admin-nav,
-  .super-admin-layout .admin-nav {
-    position: fixed !important;
-    inset: 0 auto 0 0 !important;
-    top: 0 !important;
-    width: 336px !important;
-    min-width: 0 !important;
-    max-width: 88vw !important;
-    height: 100dvh !important;
-    max-height: 100dvh !important;
-    transform: translateX(-105%) !important;
-    visibility: hidden !important;
-    transition: transform 200ms ease, visibility 200ms ease !important;
-    z-index: 100 !important;
-  }
-
-  .admin-nav.is-open,
-  .admin-layout .admin-nav.is-open,
-  .super-admin-layout .admin-nav.is-open {
-    transform: translateX(0) !important;
-    visibility: visible !important;
-  }
-
-  .admin-nav-drawer-head {
-    display: flex !important;
-  }
-
-  .admin-main {
-    grid-column: 1 !important;
-    grid-row: 1 !important;
-  }
+#app .super-admin-layout .editor-modal-shell .service-editor-popup .editor-head,
+.editor-panel.service-editor-popup .editor-head,
+.service-editor-popup .editor-head {
+  flex-shrink: 0 !important;
+  display: flex !important;
+  align-items: center !important;
+  justify-content: space-between !important;
+  padding: 20px 28px !important;
+  background: linear-gradient(135deg, #f8fafc 0%, #f1f5f9 100%) !important;
+  border-bottom: 1px solid #e2e8f0 !important;
+  margin: 0 !important;
+  border-radius: 20px 20px 0 0 !important;
 }
+
+.service-editor-popup .editor-head h2 {
+  font-family: var(--font-serif, 'Playfair Display', Georgia, serif) !important;
+  font-size: 20px !important;
+  font-weight: 800 !important;
+  color: #0f172a !important;
+  margin: 0 0 4px !important;
+}
+
+.service-editor-popup .editor-head .helper-text {
+  font-size: 12.5px !important;
+  color: #64748b !important;
+  margin: 0 !important;
+  font-weight: 500 !important;
+}
+
+#app .super-admin-layout .editor-modal-shell .service-editor-scroll,
+.service-editor-scroll {
+  flex: 1 1 auto !important;
+  min-height: 0 !important;
+  max-height: none !important;
+  overflow-y: auto !important;
+  overflow-x: hidden !important;
+  padding: 24px 28px !important;
+  display: flex !important;
+  flex-direction: column !important;
+  gap: 22px !important;
+  -webkit-overflow-scrolling: touch !important;
+}
+
+#app .super-admin-layout .editor-modal-shell .service-editor-popup .flow-actions,
+.editor-panel.service-editor-popup .flow-actions,
+.service-editor-popup .flow-actions {
+  flex-shrink: 0 !important;
+  display: flex !important;
+  align-items: center !important;
+  justify-content: flex-end !important;
+  gap: 12px !important;
+  padding: 16px 28px !important;
+  background: #f8fafc !important;
+  border-top: 1px solid #e2e8f0 !important;
+  margin: 0 !important;
+  border-radius: 0 0 20px 20px !important;
+}
+
+.service-editor-scroll::-webkit-scrollbar {
+  width: 6px !important;
+}
+.service-editor-scroll::-webkit-scrollbar-track {
+  background: transparent !important;
+}
+.service-editor-scroll::-webkit-scrollbar-thumb {
+  background: #cbd5e1 !important;
+  border-radius: 4px !important;
+}
+.service-editor-scroll::-webkit-scrollbar-thumb:hover {
+  background: #94a3b8 !important;
+}
+
+/* Pricing Editor Modal Popup */
+#app .super-admin-layout .editor-modal-shell .editor-modal-content.pricing-editor-modal-content,
+#app .super-admin-layout .editor-modal-shell:not(.service-editor-modal-shell) .editor-modal-content.pricing-editor-modal-content,
+.editor-modal-content.pricing-editor-modal-content {
+  max-width: min(880px, calc(100vw - 48px)) !important;
+}
+
+#app .super-admin-layout .editor-modal-shell .editor-panel.pricing-editor-card,
+#app .super-admin-layout .editor-modal-shell:not(.service-editor-modal-shell) .editor-panel.pricing-editor-card,
+.editor-panel.pricing-editor-card,
+.pricing-editor-card {
+  display: flex !important;
+  flex-direction: column !important;
+  max-height: min(88vh, 850px) !important;
+  height: auto !important;
+  overflow: hidden !important;
+  padding: 0 !important;
+  gap: 0 !important;
+  border-radius: 24px !important;
+  background: #ffffff !important;
+  box-shadow: 0 25px 60px -15px rgba(0, 0, 0, 0.3) !important;
+  border: 1px solid rgba(226, 232, 240, 0.8) !important;
+  width: 100% !important;
+  box-sizing: border-box !important;
+}
+
+.pricing-editor-table {
+  background: #ffffff !important;
+  border: 1px solid #e2e8f0 !important;
+  border-radius: 14px !important;
+  overflow: hidden !important;
+  box-shadow: none !important;
+}
+
+.pricing-editor-table table {
+  width: 100% !important;
+  border-collapse: collapse !important;
+}
+
+
+
+
+
+

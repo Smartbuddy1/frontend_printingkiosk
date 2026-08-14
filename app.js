@@ -1699,6 +1699,7 @@ const state = {
   adminNavOpen: false,
   adminProfileMenuOpen: false,
   adminSettingsModalOpen: false,
+  confirmModal: null,
   adminSettingsDraft: { username: "", currentPassword: "", newPassword: "", confirmPassword: "" },
   adminSettingsStatus: "",
   idleScreensaverDraft: null,
@@ -6367,6 +6368,60 @@ function renderAdminShell() {
       <main class="main admin-screen">
         ${mainHtml}
       </main>
+      ${renderConfirmModal()}
+    </div>
+  `;
+}
+
+// Custom-styled stand-in for window.confirm() - the native "127.0.0.1 says..."
+// browser dialog doesn't match the app's UI. window.confirm() is synchronous
+// (blocks JS until the user answers); a DOM modal can't block like that, so
+// this is Promise-based instead - every call site was already inside an
+// async function, so `if (!(await window.customConfirm(...))) return;` is a
+// drop-in replacement with identical control flow.
+let confirmModalResolve = null;
+
+window.customConfirm = function (message, options = {}) {
+  return new Promise((resolve) => {
+    confirmModalResolve = resolve;
+    state.confirmModal = {
+      message,
+      title: options.title || "Please confirm",
+      confirmLabel: options.confirmLabel || "OK",
+      cancelLabel: options.cancelLabel || "Cancel",
+      tone: options.tone || "danger"
+    };
+    render();
+  });
+};
+
+window.resolveConfirmModal = function (result) {
+  const resolve = confirmModalResolve;
+  confirmModalResolve = null;
+  state.confirmModal = null;
+  render();
+  if (resolve) resolve(result);
+};
+
+function renderConfirmModal() {
+  if (!state.confirmModal) return "";
+  const { title, message, confirmLabel, cancelLabel, tone } = state.confirmModal;
+  const isDanger = tone !== "neutral";
+
+  return `
+    <div class="editor-modal-shell confirm-modal-shell" role="alertdialog" aria-modal="true" aria-label="${escapeHtml(title)}">
+      <button type="button" class="editor-modal-backdrop" onclick="window.resolveConfirmModal(false)" aria-label="${escapeHtml(cancelLabel)}"></button>
+      <div class="editor-modal-content confirm-modal-content">
+        <div class="confirm-modal-card">
+          <div class="confirm-modal-icon ${isDanger ? "is-danger" : ""}">${uiIcon(isDanger ? "alert" : "support", 26)}</div>
+          <h2 class="confirm-modal-title">${escapeHtml(title)}</h2>
+          <p class="confirm-modal-message">${escapeHtml(message)}</p>
+          <div class="confirm-modal-actions">
+            <button type="button" class="secondary-button" onclick="window.resolveConfirmModal(false)">${escapeHtml(cancelLabel)}</button>
+            <button type="button" class="${isDanger ? "danger-button" : "primary-button"}" onclick="window.resolveConfirmModal(true)">${escapeHtml(confirmLabel)}</button>
+          </div>
+        </div>
+      </div>
     </div>
   `;
 }
@@ -10384,7 +10439,7 @@ function renderRevenue() {
   const currentTab = state.reportTab || "revenue";
 
   const headerActions = currentTab === "form"
-    ? `<button class="secondary-button" style="border-radius: 20px; padding: 9px 20px; display: inline-flex; align-items: center; gap: 8px; font-weight: 600; font-size: 13.5px; cursor: pointer;" onclick="window.downloadFormPrintReportPDF()">${uiIcon("download", 16)} Form Print PDF</button>`
+    ? `<button class="primary-button" style="border-radius: 20px; padding: 9px 20px; display: inline-flex; align-items: center; gap: 8px; font-weight: 600; background: linear-gradient(135deg, #6366f1 0%, #8b5cf6 100%); border: none; color: white; font-size: 13.5px; cursor: pointer; box-shadow: 0 4px 14px rgba(99, 102, 241, 0.35);" onclick="window.downloadFormPrintReportPDF()">${uiIcon("download", 16)} Download Form Print PDF</button>`
     : `<button class="primary-button" style="border-radius: 20px; padding: 9px 20px; display: inline-flex; align-items: center; gap: 8px; font-weight: 600; background: linear-gradient(135deg, #6366f1 0%, #8b5cf6 100%); border: none; color: white; font-size: 13.5px; cursor: pointer; box-shadow: 0 4px 14px rgba(99, 102, 241, 0.35);" onclick="window.downloadRevenueReportPDF()">${uiIcon("download", 16)} Revenue PDF</button>`;
 
   return `
@@ -12780,7 +12835,7 @@ async function deleteProject(projectId) {
   }
 
   if (!projectId) return;
-  if (!window.confirm(`Delete project ${projectId}? Kiosks under this project will also be removed.`)) return;
+  if (!(await window.customConfirm(`Delete project ${projectId}? Kiosks under this project will also be removed.`))) return;
 
   state.projectCreateStatus = "Deleting project...";
   render();
@@ -13068,7 +13123,7 @@ async function deleteKiosk(kioskId) {
   }
 
   if (!kioskId) return;
-  if (!window.confirm(`Delete kiosk ${kioskId}?`)) return;
+  if (!(await window.customConfirm(`Delete kiosk ${kioskId}?`))) return;
 
   state.kioskCreateStatus = "Deleting kiosk...";
   render();

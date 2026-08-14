@@ -155,6 +155,18 @@ body.admin-mode #app {
   line-height: 1.2 !important;
 }
 
+/* The idle-screensaver panel embedded in the kioskAdmins editor modal
+   reuses the .section-heading class for its own small inline-styled h2
+   ("Idle Screen (Screensaver)") - the page-title rule above is !important,
+   so it was overriding that inline font-size and blowing the heading up
+   to full page-title size. More specific selector needed to win it back. */
+.idle-screensaver-panel .section-heading h2 {
+  font-size: 16px !important;
+  font-weight: 700 !important;
+  margin-bottom: 0 !important;
+  line-height: 1.3 !important;
+}
+
 .admin-header p,
 .stage-header p {
   font-size: 16.5px !important;
@@ -1373,6 +1385,69 @@ body.admin-mode #app {
   animation: popInModal 0.25s cubic-bezier(0.16, 1, 0.3, 1) !important;
 }
 
+/* ================= Custom Confirm Modal (replaces native window.confirm) =================
+   Reuses .editor-modal-shell/.editor-modal-backdrop for the same dark
+   blurred backdrop + fade-in every other modal already uses - only the
+   inner card is new, so this matches the app's look instead of the
+   browser's native "127.0.0.1 says..." dialog. Shared by both panels. */
+.editor-modal-content.confirm-modal-content {
+  max-width: min(420px, calc(100vw - 48px)) !important;
+}
+
+.confirm-modal-card {
+  background: #ffffff;
+  border-radius: 20px;
+  padding: 32px 28px 24px;
+  box-shadow: 0 25px 60px -15px rgba(0, 0, 0, 0.3);
+  text-align: center;
+}
+
+.confirm-modal-icon {
+  width: 52px;
+  height: 52px;
+  border-radius: 16px;
+  margin: 0 auto 18px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: linear-gradient(135deg, #60a5fa, #6366f1);
+  color: #ffffff;
+}
+
+.confirm-modal-icon.is-danger {
+  background: linear-gradient(135deg, #f87171, #dc2626);
+}
+
+.confirm-modal-title {
+  font-family: var(--font-serif, var(--font-admin, 'Playfair Display', Georgia, serif));
+  font-size: 19px;
+  font-weight: 800;
+  color: #0f172a;
+  margin: 0 0 8px;
+}
+
+.confirm-modal-message {
+  font-size: 14px;
+  color: #475569;
+  line-height: 1.5;
+  margin: 0 0 24px;
+}
+
+.confirm-modal-actions {
+  display: flex;
+  justify-content: center;
+  gap: 12px;
+}
+
+.confirm-modal-actions button {
+  min-width: 110px;
+  border-radius: 12px;
+  padding: 10px 20px;
+  font-weight: 700;
+  font-size: 13.5px;
+  cursor: pointer;
+}
+
 .modal-popup-body {
   overflow-y: auto !important;
   max-height: calc(85vh - 150px) !important;
@@ -1398,6 +1473,15 @@ body.admin-mode #app {
 #app .super-admin-layout .editor-modal-shell:not(.service-editor-modal-shell) .editor-modal-content.pricing-editor-modal-content,
 .editor-modal-content.pricing-editor-modal-content {
   max-width: min(880px, calc(100vw - 48px)) !important;
+}
+
+/* The kioskAdmins (Create/Edit Account) editor also carries the idle-
+   screensaver panel below its normal fields, so the shared 760px modal
+   width leaves it cramped - widen just this one, same pattern as the
+   services editor above. */
+#app .super-admin-layout .editor-modal-shell:not(.service-editor-modal-shell) .editor-modal-content.editor-modal-content-kioskAdmins,
+.editor-modal-content.editor-modal-content-kioskAdmins {
+  max-width: min(980px, calc(100vw - 64px)) !important;
 }
 
 #app .super-admin-layout .editor-modal-shell .editor-panel.pricing-editor-card,
@@ -1969,7 +2053,8 @@ body.admin-mode #app {
   gap: 16px !important;
 }
 
-.settings-modal-body .idle-image-grid {
+.settings-modal-body .idle-image-grid,
+.modal-popup-body .idle-image-grid {
   display: grid !important;
   grid-template-columns: repeat(auto-fill, minmax(130px, 1fr)) !important;
   gap: 14px !important;
@@ -2032,6 +2117,14 @@ body.admin-mode #app {
   color: #ffffff !important;
   box-shadow: 0 4px 12px rgba(59, 130, 246, 0.28) !important;
   border: none !important;
+  /* Unlike the icon-only Edit/Delete buttons beside it, this one also has a
+     text label ("Service") - the shared 38px square from .table-actions
+     button above was clipping that label down to "Servi". Auto width with
+     side padding instead of the fixed square, so the full label fits. */
+  width: auto !important;
+  min-width: 38px !important;
+  padding: 0 14px !important;
+  gap: 6px !important;
 }
 .table-actions button.action-btn-view:hover,
 .table-actions button.btn-view:hover,

@@ -139,6 +139,7 @@ const state = {
   settingsDraft: { username: "superadmin@printingkiosk.local", currentPassword: "", newPassword: "", confirmPassword: "" },
   settingsStatus: "",
   editor: null,
+  confirmModal: null,
   pricingDraft: {},
   pricingEditor: null,
   releaseDraft: {
@@ -1052,6 +1053,60 @@ function renderShell() {
         </div>
       </main>
       ${renderSettingsModal()}
+      ${renderConfirmModal()}
+    </div>
+  `;
+}
+
+// Custom-styled stand-in for window.confirm() - the native "127.0.0.1 says..."
+// browser dialog doesn't match the app's UI. window.confirm() is synchronous
+// (blocks JS until the user answers); a DOM modal can't block like that, so
+// this is Promise-based instead - every call site was already inside an
+// async function, so `if (!(await window.customConfirm(...))) return;` is a
+// drop-in replacement with identical control flow.
+let confirmModalResolve = null;
+
+window.customConfirm = function (message, options = {}) {
+  return new Promise((resolve) => {
+    confirmModalResolve = resolve;
+    state.confirmModal = {
+      message,
+      title: options.title || "Please confirm",
+      confirmLabel: options.confirmLabel || "OK",
+      cancelLabel: options.cancelLabel || "Cancel",
+      tone: options.tone || "danger"
+    };
+    render();
+  });
+};
+
+window.resolveConfirmModal = function (result) {
+  const resolve = confirmModalResolve;
+  confirmModalResolve = null;
+  state.confirmModal = null;
+  render();
+  if (resolve) resolve(result);
+};
+
+function renderConfirmModal() {
+  if (!state.confirmModal) return "";
+  const { title, message, confirmLabel, cancelLabel, tone } = state.confirmModal;
+  const isDanger = tone !== "neutral";
+
+  return `
+    <div class="editor-modal-shell confirm-modal-shell" role="alertdialog" aria-modal="true" aria-label="${escapeHtml(title)}">
+      <button type="button" class="editor-modal-backdrop" onclick="window.resolveConfirmModal(false)" aria-label="${escapeHtml(cancelLabel)}"></button>
+      <div class="editor-modal-content confirm-modal-content">
+        <div class="confirm-modal-card">
+          <div class="confirm-modal-icon ${isDanger ? "is-danger" : ""}">${uiIcon(isDanger ? "alert" : "support", 26)}</div>
+          <h2 class="confirm-modal-title">${escapeHtml(title)}</h2>
+          <p class="confirm-modal-message">${escapeHtml(message)}</p>
+          <div class="confirm-modal-actions">
+            <button type="button" class="secondary-button" onclick="window.resolveConfirmModal(false)">${escapeHtml(cancelLabel)}</button>
+            <button type="button" class="${isDanger ? "danger-button" : "primary-button"}" onclick="window.resolveConfirmModal(true)">${escapeHtml(confirmLabel)}</button>
+          </div>
+        </div>
+      </div>
     </div>
   `;
 }
@@ -2656,7 +2711,7 @@ function renderRevenue() {
   const currentTab = state.reportTab || "revenue";
 
   const headerActions = currentTab === "form"
-    ? `<button class="secondary-button" style="border-radius: 20px; padding: 9px 20px; display: inline-flex; align-items: center; gap: 8px; font-weight: 600; font-size: 13.5px; cursor: pointer;" onclick="window.downloadFormPrintReportPDF()">${uiIcon("download", 16)} Form Print PDF</button>`
+    ? `<button class="primary-button" style="border-radius: 20px; padding: 9px 20px; display: inline-flex; align-items: center; gap: 8px; font-weight: 600; background: linear-gradient(135deg, #6366f1 0%, #8b5cf6 100%); border: none; color: white; font-size: 13.5px; cursor: pointer; box-shadow: 0 4px 14px rgba(99, 102, 241, 0.35);" onclick="window.downloadFormPrintReportPDF()">${uiIcon("download", 16)} Download Form Print PDF</button>`
     : `<button class="primary-button" style="border-radius: 20px; padding: 9px 20px; display: inline-flex; align-items: center; gap: 8px; font-weight: 600; background: linear-gradient(135deg, #6366f1 0%, #8b5cf6 100%); border: none; color: white; font-size: 13.5px; cursor: pointer; box-shadow: 0 4px 14px rgba(99, 102, 241, 0.35);" onclick="window.downloadRevenueReportPDF()">${uiIcon("download", 16)} Revenue PDF</button>`;
 
   return `
@@ -4768,7 +4823,7 @@ function renderCollectionTable(collection, rows) {
               ${columns.map((column) => `<td>${formatCell(collection, column, row)}</td>`).join("")}
               <td>
                 <div class="table-actions">
-                  ${collection === "kiosks" ? `<button class="action-btn-view" data-kiosk-services="${escapeHtml(row.kioskId)}" title="Services & View">${uiIcon("view", 18)}<span>Service</span></button>` : ""}
+                  ${collection === "kiosks" ? `<button class="action-btn-view" data-kiosk-services="${escapeHtml(row.kioskId)}" title="Services & View"><span>Service</span></button>` : ""}
                   <button class="action-btn-edit" data-record-edit="${collection}" data-record-id="${escapeHtml(row[meta.key])}" title="Edit">${uiIcon("edit", 18)}</button>
                   <button class="action-btn-delete" data-record-delete="${collection}" data-record-id="${escapeHtml(row[meta.key])}" title="Delete">${uiIcon("delete", 18)}</button>
                 </div>
@@ -4945,7 +5000,7 @@ function renderKioskAdminIdleScreensaverEditor(draft) {
       <div class="settings-grid" style="display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-bottom: 16px;">
         <div>
           <label style="display: block; font-size: 13px; font-weight: 700; color: #334155; margin-bottom: 6px; font-family: var(--font-serif, 'Playfair Display', Georgia, serif);">Mode</label>
-          <select data-editor-field="idleMediaMode" style="width: 100%; padding: 10px 14px; border-radius: 12px; border: 1px solid #cbd5e1; font-size: 13px; background: #ffffff; color: #0f172a;">
+          <select data-editor-field="idleMediaMode" onchange="window.updateIdleMediaModePreview(this.value)" style="width: 100%; padding: 10px 14px; border-radius: 12px; border: 1px solid #cbd5e1; font-size: 13px; background: #ffffff; color: #0f172a;">
             <option value="none" ${mode === "none" ? "selected" : ""}>Off</option>
             <option value="image" ${mode === "image" ? "selected" : ""}>Image Slideshow</option>
             <option value="video" ${mode === "video" ? "selected" : ""}>Video</option>
@@ -4957,7 +5012,7 @@ function renderKioskAdminIdleScreensaverEditor(draft) {
         </div>
       </div>
 
-      <div class="idle-media-section ${mode === "image" ? "" : "is-dimmed"}">
+      <div class="idle-media-section ${mode === "image" ? "" : "is-dimmed"}" data-idle-media-section="image">
         <h3 style="font-size: 14px; font-weight: 700; color: #334155; margin-bottom: 10px;">Slideshow images ${images.length ? `(${images.length}/10)` : ""}</h3>
         <label class="template-upload-row compact-template-upload" style="margin-bottom: 14px; display: inline-block;">
           <span style="background: linear-gradient(135deg, #6366f1 0%, #8b5cf6 100%); color: white; border-radius: 10px; padding: 8px 16px; font-size: 12.5px; font-weight: 700; cursor: pointer; display: inline-flex; align-items: center; gap: 6px;">Add images</span>
@@ -4977,7 +5032,7 @@ function renderKioskAdminIdleScreensaverEditor(draft) {
         </div>
       </div>
 
-      <div class="idle-media-section ${mode === "video" ? "" : "is-dimmed"}" style="margin-top: 14px;">
+      <div class="idle-media-section ${mode === "video" ? "" : "is-dimmed"}" data-idle-media-section="video" style="margin-top: 14px;">
         <h3 style="font-size: 14px; font-weight: 700; color: #334155; margin-bottom: 8px;">Idle video</h3>
         <label class="template-upload-row compact-template-upload" style="margin-bottom: 10px; display: inline-block;">
           <span style="background: linear-gradient(135deg, #6366f1 0%, #8b5cf6 100%); color: white; border-radius: 10px; padding: 8px 16px; font-size: 12.5px; font-weight: 700; cursor: pointer; display: inline-flex; align-items: center; gap: 6px;">${videoUrl ? "Replace video" : "Upload video"}</span>
@@ -4990,6 +5045,20 @@ function renderKioskAdminIdleScreensaverEditor(draft) {
     </section>
   `;
 }
+
+// The Mode dropdown above only feeds state.editor.draft, which every other
+// field in this form (name, email, timeout, ...) only syncs from the DOM at
+// Save time - a real render() here to update the dimming would rebuild the
+// whole modal from that draft and could stomp anything typed elsewhere but
+// not yet saved. Toggle just the two section classes directly instead, so
+// picking Image/Video immediately un-dims the right panel without touching
+// the render/save pipeline at all.
+window.updateIdleMediaModePreview = function (mode) {
+  document.querySelectorAll("[data-idle-media-section]").forEach((section) => {
+    const isActive = section.dataset.idleMediaSection === mode;
+    section.classList.toggle("is-dimmed", !isActive);
+  });
+};
 
 function renderKioskCustomerSettingsEditor(draft) {
   const settings = normalizeKioskCustomerSettings(draft.customerSettings);
@@ -5262,7 +5331,6 @@ function renderPricing() {
                 <td>
                   <div class="table-actions">
                     <button class="action-btn-edit" data-pricing-edit-kiosk="${escapeHtml(kiosk.kioskId || "")}" title="Edit Prices">${uiIcon("edit", 18)}</button>
-                    <button class="action-btn-delete" data-pricing-delete-kiosk="${escapeHtml(kiosk.kioskId || "")}" ${overrideCount ? "" : "disabled"} title="Delete Prices">${uiIcon("delete", 18)}</button>
                   </div>
                 </td>
               </tr>
@@ -6028,7 +6096,7 @@ async function setReleaseActive(releaseId, active) {
 }
 
 async function deleteRelease(releaseId) {
-  if (!window.confirm(`Delete release ${releaseId}?`)) return;
+  if (!(await window.customConfirm(`Delete release ${releaseId}?`))) return;
   state.notice = "Deleting release...";
   state.error = "";
   render();
@@ -6174,7 +6242,7 @@ async function deleteProjectService(serviceId) {
     ? `Delete service ${service.title || service.id}? This is its only assigned project.`
     : `Remove service ${service.title || service.id} from ${project?.name || projectId}? All ${kioskCount} kiosk${kioskCount === 1 ? "" : "s"} in this project will stop receiving it.`;
 
-  if (!window.confirm(message)) return;
+  if (!(await window.customConfirm(message))) return;
 
   state.notice = shouldDeleteRecord ? "Deleting service..." : "Removing service from project...";
   state.error = "";
@@ -6741,7 +6809,7 @@ async function saveEditor() {
 
 async function deleteRecord(collection, id) {
   const meta = collections[collection];
-  const confirmed = window.confirm(`Delete ${collection.slice(0, -1)} ${id}?`);
+  const confirmed = await window.customConfirm(`Delete ${collection.slice(0, -1)} ${id}?`);
   if (!confirmed) return;
 
   state.notice = "Deleting...";
@@ -6837,7 +6905,7 @@ async function saveKioskPricing() {
 
 async function deleteKioskPricing(kioskId) {
   if (!kioskId) return;
-  if (!window.confirm(`Delete custom pricing for ${kioskId}? This kiosk will use default service prices.`)) return;
+  if (!(await window.customConfirm(`Delete custom pricing for ${kioskId}? This kiosk will use default service prices.`))) return;
 
   state.pricingDraft = pricingDraftWithoutKiosk(kioskId);
   if (state.pricingEditor?.kioskId === kioskId) {
