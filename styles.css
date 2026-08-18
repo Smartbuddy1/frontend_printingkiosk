@@ -1821,7 +1821,10 @@ button:disabled:hover {
 .kiosk-settings-checks {
   display: grid;
   gap: 10px;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
+  /* auto-fit collapses unused tracks instead of reserving a fixed 3
+     columns, so a single checkbox stretches to fill the row instead of
+     sitting in a 1/3-width box with empty space beside it. */
+  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
 }
 
 .kiosk-setting-check {
@@ -8039,6 +8042,7 @@ tbody tr:hover {
 }
 
 .kiosk-service-modal-list {
+  align-items: start;
   display: grid;
   gap: 12px;
 }
@@ -8262,6 +8266,19 @@ tbody tr:hover {
   overflow-wrap: anywhere;
 }
 
+.template-title-input {
+  width: 100%;
+  font-size: 14px;
+  font-weight: 600;
+  margin: 0;
+  padding: 6px 10px;
+  border: 1px solid #cbd5e1;
+  border-radius: 8px;
+  background: #ffffff;
+  color: #0f172a;
+  box-sizing: border-box;
+}
+
 .template-row-copy .helper-text {
   font-size: 12px;
   margin: 2px 0 0;
@@ -8435,6 +8452,13 @@ tbody tr:hover {
     flex: 0 0 48px;
   }
 
+  /* Kiosk Admin only (not Super Admin, which also needs Account Settings
+     from this menu) — logout is already reachable from the nav drawer
+     footer, so the topbar avatar is redundant on mobile. */
+  .admin-layout:not(.super-admin-layout) .profile-menu-container {
+    display: none;
+  }
+
   .admin-nav-backdrop {
     background: rgba(5, 15, 31, 0.58);
     border: 0;
@@ -8502,6 +8526,24 @@ tbody tr:hover {
   .admin-nav-drawer-head strong {
     color: #ffffff;
     font-size: 21px;
+  }
+
+  .admin-nav-drawer-brand {
+    align-items: center;
+    background: #ffffff;
+    border-radius: 10px;
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.12);
+    display: inline-flex;
+    justify-content: center;
+    padding: 4px 10px;
+  }
+
+  .admin-nav-drawer-brand .brand-logo-full {
+    display: block;
+    height: 44px;
+    max-width: 170px;
+    object-fit: contain;
+    width: auto;
   }
 
   .admin-nav-drawer-head button {
@@ -16357,7 +16399,7 @@ tbody tr:hover {
 
 /* Form Selling Report Specifics */
 .form-selling-header, .form-selling-row {
-  grid-template-columns: 1.5fr 2fr 1fr 1fr 1fr !important;
+  grid-template-columns: 1.5fr 2fr 1fr 1fr !important;
 }
 .form-selling-row:hover {
   background-color: #f8fafc;

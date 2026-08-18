@@ -474,28 +474,34 @@ body.admin-mode #app {
   background: var(--erp-line) !important;
 }
 
-/* ================= EXACT REFERENCE NAVBAR DESIGN ================= */
-
-.admin-nav,
-.admin-layout .admin-nav,
-.super-admin-layout .admin-nav {
-  background: #0b1329 !important;
-  border-right: 1px solid rgba(255, 255, 255, 0.08) !important;
-  color: #ffffff !important;
-  display: flex !important;
-  flex-direction: column !important;
-  justify-content: space-between !important;
-  padding: 0 !important;
-  width: 280px !important;
-  min-width: 280px !important;
-  max-width: 280px !important;
-  height: 100% !important;
-  min-height: 0 !important;
-  max-height: 100% !important;
-  flex: 1 1 0px !important;
-  position: relative !important;
-  top: auto !important;
-  overflow: hidden !important;
+/* ================= EXACT REFERENCE NAVBAR DESIGN =================
+   Desktop-only: below 1024px .admin-nav becomes the off-canvas mobile
+   drawer (position:fixed + translateX slide, see styles.css). These
+   !important rules used to apply unconditionally and clobbered that
+   fixed positioning/transform at every width, leaving the drawer
+   stuck out of view behind its own backdrop on mobile. */
+@media (min-width: 1024px) {
+  .admin-nav,
+  .admin-layout .admin-nav,
+  .super-admin-layout .admin-nav {
+    background: #0b1329 !important;
+    border-right: 1px solid rgba(255, 255, 255, 0.08) !important;
+    color: #ffffff !important;
+    display: flex !important;
+    flex-direction: column !important;
+    justify-content: space-between !important;
+    padding: 0 !important;
+    width: 280px !important;
+    min-width: 280px !important;
+    max-width: 280px !important;
+    height: 100% !important;
+    min-height: 0 !important;
+    max-height: 100% !important;
+    flex: 1 1 0px !important;
+    position: relative !important;
+    top: auto !important;
+    overflow: hidden !important;
+  }
 }
 
 .admin-nav-group {
@@ -595,15 +601,19 @@ body.admin-mode #app {
   box-sizing: border-box !important;
 }
 
-#app .admin-layout .admin-nav,
-#app .super-admin-layout .admin-nav,
-.admin-layout .admin-nav,
-.super-admin-layout .admin-nav,
-.admin-nav {
-  padding-bottom: 0 !important;
-  display: flex !important;
-  flex-direction: column !important;
-  justify-content: space-between !important;
+/* Desktop-only, same reason as the block above: zeroing padding-bottom
+   here would eat the mobile drawer's safe-area bottom padding. */
+@media (min-width: 1024px) {
+  #app .admin-layout .admin-nav,
+  #app .super-admin-layout .admin-nav,
+  .admin-layout .admin-nav,
+  .super-admin-layout .admin-nav,
+  .admin-nav {
+    padding-bottom: 0 !important;
+    display: flex !important;
+    flex-direction: column !important;
+    justify-content: space-between !important;
+  }
 }
 
 .sidebar-user-card,
@@ -1376,7 +1386,9 @@ body.admin-mode #app {
   position: relative !important;
   z-index: 10 !important;
   width: 100% !important;
-  max-width: 760px !important;
+  /* 980px matches the "Edit Client Account" (kioskAdmins) modal below,
+     which is the reference size every Create/Edit popup should share. */
+  max-width: min(980px, calc(100vw - 64px)) !important;
   max-height: none !important;
   overflow: visible !important;
   margin: 0 auto !important;
@@ -1457,22 +1469,18 @@ body.admin-mode #app {
   -webkit-overflow-scrolling: touch !important;
 }
 
-/* Service editor's two-column fields (Service Name/Description,
-   Mode/Enabled) get cramped at the shared 760px modal width, forcing
-   a tall, scrolly column instead of a proportional card. Widen just
-   this editor; height stays capped by .service-editor-popup's own
-   max-height, so it doesn't grow taller. Matches the ID-anchored
-   selector above (not just plain .editor-modal-content) so it actually
-   outranks it instead of losing on specificity. */
+/* Same 980px reference width as the base .editor-modal-content rule and
+   the kioskAdmins editor below - every Create/Edit popup (Services,
+   Pricing, Projects, Kiosks, Clients) shares one consistent size. */
 #app .super-admin-layout .editor-modal-shell:not(.service-editor-modal-shell) .editor-modal-content.editor-modal-content-services,
 .editor-modal-content.editor-modal-content-services {
-  max-width: min(1080px, calc(100vw - 64px)) !important;
+  max-width: min(980px, calc(100vw - 64px)) !important;
 }
 
 #app .super-admin-layout .editor-modal-shell .editor-modal-content.pricing-editor-modal-content,
 #app .super-admin-layout .editor-modal-shell:not(.service-editor-modal-shell) .editor-modal-content.pricing-editor-modal-content,
 .editor-modal-content.pricing-editor-modal-content {
-  max-width: min(880px, calc(100vw - 48px)) !important;
+  max-width: min(980px, calc(100vw - 64px)) !important;
 }
 
 /* The kioskAdmins (Create/Edit Account) editor also carries the idle-
@@ -1820,6 +1828,7 @@ body.admin-mode #app {
     flex: 0 1 auto !important;
     padding: 4px !important;
     border-right: none !important;
+    background: transparent !important;
   }
 
   .admin-topbar .brand-logo-full-card {

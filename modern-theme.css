@@ -149,16 +149,20 @@ h1, h2, h3, .admin-header h1, .stage-header h1, .section-heading h2, .module-car
   margin-inline: 0 !important;
 }
 
-.admin-layout .admin-nav,
-.super-admin-layout .admin-nav {
-  height: 100% !important;
-  min-height: 0 !important;
-  max-height: 100% !important;
-  display: flex !important;
-  flex-direction: column !important;
-  justify-content: space-between !important;
-  overflow: hidden !important;
-  background-color: var(--sidebar-bg) !important;
+/* Desktop-only: below 1024px this fights the off-canvas mobile drawer's
+   fixed positioning/height (see styles.css .admin-nav mobile rules). */
+@media (min-width: 1024px) {
+  .admin-layout .admin-nav,
+  .super-admin-layout .admin-nav {
+    height: 100% !important;
+    min-height: 0 !important;
+    max-height: 100% !important;
+    display: flex !important;
+    flex-direction: column !important;
+    justify-content: space-between !important;
+    overflow: hidden !important;
+    background-color: var(--sidebar-bg) !important;
+  }
 }
 
 /* ==========================================================
@@ -361,11 +365,15 @@ h1, h2, h3, .admin-header h1, .stage-header h1, .section-heading h2, .module-car
   user-select: none !important;
 }
 
-.admin-layout .admin-nav,
-.super-admin-layout .admin-nav {
-  border-right: none !important;
-  padding: 24px 16px !important;
-  color: var(--sidebar-text) !important;
+/* Desktop-only, same reason as the block above: unscoped padding/border
+   here overrode the mobile drawer's own padding and safe-area inset. */
+@media (min-width: 1024px) {
+  .admin-layout .admin-nav,
+  .super-admin-layout .admin-nav {
+    border-right: none !important;
+    padding: 24px 16px !important;
+    color: var(--sidebar-text) !important;
+  }
 }
 
 .admin-nav-group {
@@ -1262,9 +1270,11 @@ button.ghost-button:hover {
 }
 
 .editor-modal-content {
+  /* width/max-width intentionally not set here - erp-overrides.css's
+     #app-scoped rules own sizing for every editor modal so there's one
+     source of truth instead of this file and that one fighting over it. */
   position: relative !important;
   z-index: 10 !important;
-  width: min(840px, 94vw) !important;
   max-height: min(90vh, 850px) !important;
   overflow-y: auto !important;
   border-radius: 24px !important;
@@ -1516,11 +1526,13 @@ button.ghost-button:hover {
   background: #94a3b8 !important;
 }
 
-/* Pricing Editor Modal Popup */
+/* Pricing Editor Modal Popup - kept in sync with the same 980px reference
+   width as erp-overrides.css's copy of this rule (loaded earlier); this
+   file loads last, so a mismatched value here would silently win. */
 #app .super-admin-layout .editor-modal-shell .editor-modal-content.pricing-editor-modal-content,
 #app .super-admin-layout .editor-modal-shell:not(.service-editor-modal-shell) .editor-modal-content.pricing-editor-modal-content,
 .editor-modal-content.pricing-editor-modal-content {
-  max-width: min(880px, calc(100vw - 48px)) !important;
+  max-width: min(980px, calc(100vw - 64px)) !important;
 }
 
 #app .super-admin-layout .editor-modal-shell .editor-panel.pricing-editor-card,

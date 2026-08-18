@@ -1826,6 +1826,11 @@ const state = {
     lastUpdated: null,
     errorLog: []
   },
+  // ── Real internet connectivity (populated by Electron IPC background
+  // monitor; see initInternetStatusIpc). Starts `true` (non-blocking) so the
+  // customer flow isn't blocked before the first check has a chance to run.
+  internetOnline: true,
+  internetCheckedAt: null,
   // ── Printer-offline watchdog (see tickPrinterOfflineWatchdog) ──────────────
   printerHealthIssueSince: null,
   printFailureAutoHomeSecondsLeft: null,
@@ -1922,7 +1927,11 @@ const state = {
   },
   transactionFilters: {
     search: "",
-    status: "all",
+    // Default to success only - pending/incomplete payment attempts
+    // (initiated but never confirmed by the gateway) cluttered the
+    // Transaction Logs report. Still fully selectable via the status
+    // dropdown, this only changes what shows before anyone touches it.
+    status: "success",
     kiosk: "all",
     from: "",
     to: ""
@@ -3812,6 +3821,17 @@ function customerKioskBlockStatus() {
   if (h.tonerEmpty) return printerIssueStatus("toner-empty", "Offline", "Printer is offline. Please contact staff.");
   if (h.outputBinFull) return printerIssueStatus("output-full", "Offline", "Printer is offline. Please contact staff.");
   return null;
+}
+
+// Real internet connectivity (state.internetOnline, from the Electron main
+// process — see initInternetStatusIpc). Kept separate from the printer
+// checks above: a kiosk with no internet is still reachable on its own
+// screen, so this needs its own status distinct from "printer offline",
+// and it's checked first everywhere printer status is checked so the two
+// can never show contradictory Online/Offline at the same time.
+function customerInternetBlockStatus() {
+  if (state.internetOnline !== false) return null;
+  return printerIssueStatus("no-internet", "No Internet", "This kiosk has lost its internet connection. Please contact staff.", "error");
 }
 
 function userFacingConnectionMessage(message, fallback) {
@@ -6427,7 +6447,7 @@ function renderConfirmModal() {
 }
 
 function renderNmcKioskStatus(additionalClass = "") {
-  const issue = customerPrinterBlockIssue() || state.customerPrinterNotice;
+  const issue = customerInternetBlockStatus() || customerPrinterBlockIssue() || state.customerPrinterNotice;
   const isBlocked = Boolean(issue);
   const hasError = isBlocked || Boolean(state.printerHealth?.errorMessage);
   const statusClass = hasError ? "is-offline" : "is-online";
@@ -6442,7 +6462,7 @@ function renderNmcKioskStatus(additionalClass = "") {
 }
 
 function renderCustomerPrinterStatusBadge() {
-  const issue = customerPrinterBlockIssue() || state.customerPrinterNotice;
+  const issue = customerInternetBlockStatus() || customerPrinterBlockIssue() || state.customerPrinterNotice;
   const isBlocked = Boolean(issue);
   // Never surface raw hardware detail (paper jam, door open, toner empty, ...) to the
   // customer — keep the public badge generic and send staff to the admin panel for detail.
@@ -6989,8 +7009,9 @@ function renderServicesStep() {
     `;
   }
 
-  const printerReady = printerReadyForCustomerFlow();
-  const serviceBlockStatus = customerKioskBlockStatus();
+  const internetIssue = customerInternetBlockStatus();
+  const printerReady = internetIssue ? false : printerReadyForCustomerFlow();
+  const serviceBlockStatus = internetIssue || customerKioskBlockStatus();
   const availableServices = customerServices();
   const totalServiceCards = availableServices.length;
   const serviceGridClass = totalServiceCards > 2 ? "services-count-many" : "services-count-2";
@@ -7119,7 +7140,7 @@ function renderFormTemplateStepLegacy() {
   const templates = formTemplatesForService(service.id);
   const filteredTemplates = templates;
   const rates = serviceRates(service.id);
-  const classicBwRate = rates.bw || 3;
+  const classicBwRate = rates.bw;
   const classicPrintModeLabel = customerSettingEnabled("bw", service) ? "B/W" : "Color";
 
   state.templatePage = 1;
@@ -7230,7 +7251,7 @@ function renderFormTemplateStepLegacy() {
                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M12 1v22M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"></path></svg>
             </div>
             <div class="stat-text">
-              <strong>₹${rates.bw || 3}</strong>
+              <strong>₹${rates.bw}</strong>
               <span>Per Page (B/W)</span>
             </div>
           </div>
@@ -8190,6 +8211,29 @@ function initPrinterHealthIpc() {
   });
 }
 
+// ── Internet Status IPC bridge (Electron-only, non-breaking) ────────────────
+// No-op when window.kioskInternetStatus is not exposed (non-Electron / demo
+// mode) — state.internetOnline stays at its default `true`, so nothing here
+// ever blocks the flow in a browser/dev context where a real check isn't
+// possible anyway.
+function initInternetStatusIpc() {
+  if (!window.kioskInternetStatus || typeof window.kioskInternetStatus.onUpdate !== "function") {
+    return; // Not running in Electron — skip gracefully
+  }
+
+  window.kioskInternetStatus.onUpdate(function (status) {
+    if (!status || typeof status !== "object") return;
+    const wasOnline = state.internetOnline;
+    state.internetOnline = Boolean(status.online);
+    state.internetCheckedAt = status.checkedAt || new Date().toISOString();
+
+    if (wasOnline === state.internetOnline) return; // No visible change — skip the rerender.
+    if (state.mode === "customer" && (state.step === 2 || state.step >= 4)) return;
+
+    render();
+  });
+}
+
 function syncPrinterHealthToBackend(health) {
   if (!health?.available || isMobilePaymentEntry || KIOSK_ID === UNASSIGNED_KIOSK_ID) return;
 
@@ -8208,7 +8252,8 @@ function syncPrinterHealthToBackend(health) {
     printerName: health.printerName,
     errorMessage: health.errorMessage,
     queueLength: health.queueLength,
-    detectedErrorState: health.detectedErrorState
+    detectedErrorState: health.detectedErrorState,
+    internetOnline: state.internetOnline
   });
   // In-flight guard is separate from the "recently synced" throttle below —
   // a request already in flight is skipped regardless of signature/age, but
@@ -8243,7 +8288,8 @@ function syncPrinterHealthToBackend(health) {
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({
       kioskId: KIOSK_ID,
-      printerHealth: health
+      printerHealth: health,
+      internetOnline: state.internetOnline
     }),
     signal: abortController.signal
   }).then((response) => {
@@ -9165,9 +9211,14 @@ function adminAllAlertRecords() {
     createdAt: alert.lastUpdated || new Date().toISOString()
   }));
 
+  // Only skip a persisted log when it duplicates a currently-live alert -
+  // checking against liveAlerts (not the growing `combined`) so multiple
+  // distinct historical incidents with the same kioskId+title+status
+  // (e.g. two separate resolved paper jams on the same kiosk) don't get
+  // collapsed into a single record.
   const combined = [...liveAlerts];
   for (const log of persistedLogs) {
-    if (!combined.some(c => c.kioskId === log.kioskId && c.title === log.title && c.status === log.status)) {
+    if (!liveAlerts.some(c => c.kioskId === log.kioskId && c.title === log.title && c.status === log.status)) {
       combined.push(log);
     }
   }
@@ -9259,6 +9310,13 @@ window.downloadAlertsReportPDF = async function () {
   doc.text(clientName, pageWidth / 2, headerY, { align: "center" });
   headerY += 8;
 
+  // Long filter-description text ("Kiosk: All | Category: All | Status:
+  // All...") is centered across the full page width, so its right half
+  // can run into the company logo pinned top-right if it starts too high.
+  // Clamp to below the logo's actual rendered bottom edge regardless of
+  // text length.
+  headerY = Math.max(headerY, logoY + logoMaxHeight + 2);
+
   doc.setFont(undefined, "normal");
   doc.setFontSize(10.5);
   doc.setTextColor(100);
@@ -9281,14 +9339,13 @@ window.downloadAlertsReportPDF = async function () {
     log.kioskId || "Unknown",
     (log.category || "-").toUpperCase(),
     log.title || "-",
-    log.detail || "-",
     log.status === "resolved" ? "Resolved" : "Active"
   ]);
 
   doc.autoTable({
     startY: dividerY + 8,
-    head: [["Date & Time", "Kiosk", "Category", "Alert Title", "Details", "Status"]],
-    body: tableData.length ? tableData : [["-", "-", "-", "No alert records match the selected filters", "-", "-"]],
+    head: [["Date & Time", "Kiosk", "Category", "Alert Title", "Status"]],
+    body: tableData.length ? tableData : [["-", "-", "-", "No alert records match the selected filters", "-"]],
     theme: "grid",
     styles: {
       fontSize: 8.5,
@@ -9312,9 +9369,8 @@ window.downloadAlertsReportPDF = async function () {
       0: { cellWidth: 34, halign: "center" },
       1: { cellWidth: 22, fontStyle: "bold", halign: "center" },
       2: { cellWidth: 22, halign: "center" },
-      3: { cellWidth: 38, fontStyle: "bold" },
-      4: { cellWidth: "auto" },
-      5: { cellWidth: 20, halign: "center" }
+      3: { cellWidth: "auto", fontStyle: "bold" },
+      4: { cellWidth: 20, halign: "center" }
     }
   });
 
@@ -9414,7 +9470,6 @@ function renderAdminAlertLogsTable() {
               <th style="padding: 14px 18px; font-weight: 700; color: #475569; font-size: 12px; text-transform: uppercase; letter-spacing: 0.5px; font-family: var(--font-serif, 'Playfair Display', Georgia, serif);">Kiosk</th>
               <th style="padding: 14px 18px; font-weight: 700; color: #475569; font-size: 12px; text-transform: uppercase; letter-spacing: 0.5px; font-family: var(--font-serif, 'Playfair Display', Georgia, serif);">Category</th>
               <th style="padding: 14px 18px; font-weight: 700; color: #475569; font-size: 12px; text-transform: uppercase; letter-spacing: 0.5px; font-family: var(--font-serif, 'Playfair Display', Georgia, serif);">Alert Title</th>
-              <th style="padding: 14px 18px; font-weight: 700; color: #475569; font-size: 12px; text-transform: uppercase; letter-spacing: 0.5px; font-family: var(--font-serif, 'Playfair Display', Georgia, serif);">Details</th>
               <th style="padding: 14px 18px; font-weight: 700; color: #475569; font-size: 12px; text-transform: uppercase; letter-spacing: 0.5px; font-family: var(--font-serif, 'Playfair Display', Georgia, serif);">Status</th>
             </tr>
           </thead>
@@ -9435,7 +9490,6 @@ function renderAdminAlertLogsTable() {
                   </td>
                   <td style="padding: 14px 18px; color: #64748b; font-weight: 600; text-transform: capitalize;">${escapeHtml(log.category || "-")}</td>
                   <td style="padding: 14px 18px; color: #0f172a; font-weight: 700; max-width: 200px; font-family: var(--font-serif, 'Playfair Display', Georgia, serif);">${escapeHtml(log.title || "-")}</td>
-                  <td style="padding: 14px 18px; color: #475569; line-height: 1.4; max-width: 340px;">${escapeHtml(log.detail || "-")}</td>
                   <td style="padding: 14px 18px; white-space: nowrap;">
                     <span style="${badgeStyle} font-size: 11.5px; font-weight: 700; padding: 4px 12px; border-radius: 20px; display: inline-block;">${statusLabel}</span>
                   </td>
@@ -9443,7 +9497,7 @@ function renderAdminAlertLogsTable() {
               `;
             }).join('') : `
               <tr>
-                <td colspan="6" style="padding: 36px; text-align: center; color: #94a3b8;">
+                <td colspan="5" style="padding: 36px; text-align: center; color: #94a3b8;">
                   ${uiIcon("history", 32)}
                   <p style="margin: 8px 0 0 0; font-size: 14px; font-weight: 500;">No alert logs found matching your filters.</p>
                 </td>
@@ -9882,8 +9936,16 @@ function transactionMatchesDateRange(record, from, to) {
 function filteredAdminTransactions() {
   const filters = state.transactionFilters;
   const search = filters.search.trim().toLowerCase();
+  // The top "Report" filter card (Kiosk ID + Apply Filter) writes to
+  // state.revenueFilter, but this table was only ever reading the
+  // separate inline filter bar's state.transactionFilters - so applying
+  // a kiosk there had no effect on what's shown. Layer it in here (empty
+  // kioskId = no-op, so the table's existing default view and the inline
+  // filter bar are unaffected).
+  const reportFilter = state.revenueFilter;
 
   return adminTransactionRecords()
+    .filter((record) => !reportFilter.kioskId || String(record.kiosk || "").toUpperCase() === reportFilter.kioskId.toUpperCase())
     .filter((record) => filters.kiosk === "all" || record.kiosk === filters.kiosk)
     .filter((record) => transactionMatchesStatus(record, filters.status))
     .filter((record) => transactionMatchesDateRange(record, filters.from, filters.to))
@@ -9923,7 +9985,8 @@ function renderTransactionLog() {
     money(record.amount),
     record.method,
     record.status,
-    record.print || "-"
+    record.print || "-",
+    record.reference || record.method || "-"
   ]);
 
   return `
@@ -9934,7 +9997,7 @@ function renderTransactionLog() {
         <strong>${escapeHtml(String(records.length))} record${records.length === 1 ? "" : "s"}</strong>
       </div>
       ${renderTransactionFilters()}
-      ${renderPaginatedTable("revenueTransactions", ["Date", "Kiosk", "Service", "Amount", "Method", "Status", "Print"], rows, "No matching transaction records.")}
+      ${renderPaginatedTable("revenueTransactions", ["Date", "Kiosk", "Service", "Amount", "Method", "Status", "Print", "Gateway Ref"], rows, "No matching transaction records.")}
     </div>
   `;
 }
@@ -9945,18 +10008,12 @@ function dashboardMetrics() {
   const kiosks = state.adminData.kiosks || [];
   const projects = state.adminData.projects || [];
   const transactions = state.adminData.transactions || [];
-  const refunds = state.adminData.refunds || [];
-  const pendingRefunds = refunds.filter((r) => {
-    const status = String(r.status || "").toLowerCase();
-    return status === "pending" || status === "requested";
-  });
   const activeKiosks = dashboard.activeKiosks ?? kiosks.filter((kiosk) => kiosk.status === "online").length;
 
   return [
     ["Projects", String(projects.length), `${kiosks.length} kiosk(s) assigned`, "hierarchy", "blue"],
     ["Kiosks", String(kiosks.length), `${activeKiosks} online`, "kiosks", "purple"],
     ["Payments", String(transactions.length), money(revenue.gross ?? 0), "payments", "green"],
-    ["Refunds", String(refunds.length), `${pendingRefunds.length} pending`, "refunds", pendingRefunds.length ? "red" : "green"],
     ["Net Revenue", money(revenue.net ?? 0), "After refunds", "pricing", "green"]
   ];
 }
@@ -10315,7 +10372,7 @@ function renderDashboard() {
       </div>
     </div>
 
-    <!-- Row 2: Top Revenue Projects & Recent Activity -->
+    <!-- Row 2: Top Revenue Projects & Recent Logs -->
     <div class="dashboard-two-col">
       <div class="module-card">
         <div class="dashboard-card-header">
@@ -10330,36 +10387,12 @@ function renderDashboard() {
       <div class="module-card">
         <div class="dashboard-card-header">
           <div>
-            <h2>Recent Activity</h2>
-            <p>Live transaction activity feed</p>
-          </div>
-        </div>
-        ${renderRecentActivityList()}
-      </div>
-    </div>
-
-    <!-- Row 3: Recent Logs & Paper Toner Alerts -->
-    <div class="dashboard-two-col">
-      <div class="module-card">
-        <div class="dashboard-card-header">
-          <div>
             <h2>Recent Logs</h2>
             <p>Maintenance and hardware log updates</p>
           </div>
           <button class="dashboard-card-action" data-admin-page="alerts">View All</button>
         </div>
         ${renderRecentMaintenanceLogsList()}
-      </div>
-
-      <div class="module-card">
-        <div class="dashboard-card-header">
-          <div>
-            <h2>Paper & Toner Alerts</h2>
-            <p>Live paper tray, toner, and jam hardware checks</p>
-          </div>
-          <button class="dashboard-card-action" data-admin-page="kiosks">View Kiosks</button>
-        </div>
-        ${renderPaperTonerAlertsCard(alerts)}
       </div>
     </div>
   `;
@@ -10526,14 +10559,18 @@ window.downloadRevenueReportPDF = async function () {
   doc.setTextColor(42, 120, 214);
   doc.text(clientName, pageWidth / 2, logoY + 19, { align: "center" });
 
+  // Clamp below the logo's actual rendered bottom edge so a long client
+  // name / kiosk ID never runs into the company logo pinned top-right.
+  const metaY = Math.max(logoY + 27, logoY + logoMaxHeight + 2);
+
   doc.setFont(undefined, "normal");
   doc.setFontSize(11);
   doc.setTextColor(100);
-  doc.text(`Kiosk ID: ${kioskLabel}`, pageWidth / 2, logoY + 27, { align: "center" });
-  doc.text(`Range: ${filter.start} to ${filter.end}`, pageWidth / 2, logoY + 33, { align: "center" });
+  doc.text(`Kiosk ID: ${kioskLabel}`, pageWidth / 2, metaY, { align: "center" });
+  doc.text(`Range: ${filter.start} to ${filter.end}`, pageWidth / 2, metaY + 6, { align: "center" });
   doc.setTextColor(0);
 
-  const dividerY = logoY + 42;
+  const dividerY = metaY + 15;
   doc.setDrawColor(42, 120, 214);
   doc.setLineWidth(0.6);
   doc.line(14, dividerY, pageWidth - 14, dividerY);
@@ -10619,21 +10656,25 @@ window.downloadFormPrintReportPDF = async function () {
   doc.setTextColor(42, 120, 214);
   doc.text(`Client Name: ${clientName}`, pageWidth / 2, logoY + 19, { align: "center" });
 
+  // Clamp below the logo's actual rendered bottom edge so a long client
+  // name / kiosk ID never runs into the company logo pinned top-right.
+  const metaY = Math.max(logoY + 27, logoY + logoMaxHeight + 2);
+
   doc.setFont(undefined, "normal");
   doc.setFontSize(11);
   doc.setTextColor(100);
-  doc.text(`Kiosk ID: ${kioskLabel}`, pageWidth / 2, logoY + 27, { align: "center" });
-  doc.text(`Range: ${filter.start} to ${filter.end}`, pageWidth / 2, logoY + 33, { align: "center" });
+  doc.text(`Kiosk ID: ${kioskLabel}`, pageWidth / 2, metaY, { align: "center" });
+  doc.text(`Range: ${filter.start} to ${filter.end}`, pageWidth / 2, metaY + 6, { align: "center" });
   doc.setTextColor(0);
 
-  const dividerY = logoY + 42;
+  const dividerY = metaY + 15;
   doc.setDrawColor(42, 120, 214);
   doc.setLineWidth(0.6);
   doc.line(14, dividerY, pageWidth - 14, dividerY);
 
   doc.autoTable({
     startY: dividerY + 8,
-    head: [['KIOSK ID', 'FORM / TEMPLATE', 'PRINTS', 'REVENUE']],
+    head: [['KIOSK ID', 'FORMS', 'PRINTS', 'REVENUE']],
     body: tableData,
     theme: 'grid',
     columnStyles: {
@@ -10849,11 +10890,11 @@ function renderAdminAnalyticsFilterCard(hasData) {
         <span style="display: block; font-size: 0.9rem; font-weight: 600; color: var(--muted); margin-bottom: 10px;">Filter Type</span>
         <div style="display: flex; gap: 18px;">
           <label class="analytics-radio" style="display: flex; align-items: center; gap: 8px; font-size: 0.95rem;">
-            <input type="radio" name="admin-analytics-filter-type" value="financialYear" ${draft.filterType === "financialYear" ? "checked" : ""} onchange="window.updateAdminAnalyticsFilterDraft('filterType', this.value); window.applyAdminAnalyticsFilter();" style="width: 18px; height: 18px;" />
+            <input type="radio" name="admin-analytics-filter-type" value="financialYear" ${draft.filterType === "financialYear" ? "checked" : ""} onchange="window.updateAdminAnalyticsFilterDraft('filterType', this.value);" style="width: 18px; height: 18px;" />
             <span>Financial Year</span>
           </label>
           <label class="analytics-radio" style="display: flex; align-items: center; gap: 8px; font-size: 0.95rem;">
-            <input type="radio" name="admin-analytics-filter-type" value="dateRange" ${draft.filterType === "dateRange" ? "checked" : ""} onchange="window.updateAdminAnalyticsFilterDraft('filterType', this.value); window.applyAdminAnalyticsFilter();" style="width: 18px; height: 18px;" />
+            <input type="radio" name="admin-analytics-filter-type" value="dateRange" ${draft.filterType === "dateRange" ? "checked" : ""} onchange="window.updateAdminAnalyticsFilterDraft('filterType', this.value);" style="width: 18px; height: 18px;" />
             <span>Date Range</span>
           </label>
         </div>
@@ -10869,7 +10910,7 @@ function renderAdminAnalyticsFilterCard(hasData) {
 
         ${draft.filterType === "financialYear" ? `
           <label class="setting-field" style="display: flex; flex-direction: column; gap: 8px; font-size: 0.95rem; font-weight: 600; color: var(--muted);">Financial Year
-            <select style="width: 100%; padding: 14px 16px; border-radius: 10px; font-size: 15px;" onchange="window.updateAdminAnalyticsFilterDraft('financialYear', this.value); window.applyAdminAnalyticsFilter();">
+            <select style="width: 100%; padding: 14px 16px; border-radius: 10px; font-size: 15px;" onchange="window.updateAdminAnalyticsFilterDraft('financialYear', this.value);">
               <option value="current" ${draft.financialYear === "current" ? "selected" : ""}>Current FY (Apr-Mar)</option>
               <option value="last" ${draft.financialYear === "last" ? "selected" : ""}>Last FY</option>
               <option value="previous" ${draft.financialYear === "previous" ? "selected" : ""}>Previous FY</option>
@@ -10878,10 +10919,10 @@ function renderAdminAnalyticsFilterCard(hasData) {
         ` : `
           <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 18px;">
             <label class="setting-field" style="display: flex; flex-direction: column; gap: 8px; font-size: 0.95rem; font-weight: 600; color: var(--muted);">Start Date
-              <input type="date" style="width: 100%; padding: 14px 16px; border-radius: 10px; font-size: 15px;" value="${escapeHtml(draft.start)}" onchange="window.updateAdminAnalyticsFilterDraft('start', this.value); window.applyAdminAnalyticsFilter();" />
+              <input type="date" style="width: 100%; padding: 14px 16px; border-radius: 10px; font-size: 15px;" value="${escapeHtml(draft.start)}" onchange="window.updateAdminAnalyticsFilterDraft('start', this.value);" />
             </label>
             <label class="setting-field" style="display: flex; flex-direction: column; gap: 8px; font-size: 0.95rem; font-weight: 600; color: var(--muted);">End Date
-              <input type="date" style="width: 100%; padding: 14px 16px; border-radius: 10px; font-size: 15px;" value="${escapeHtml(draft.end)}" onchange="window.updateAdminAnalyticsFilterDraft('end', this.value); window.applyAdminAnalyticsFilter();" />
+              <input type="date" style="width: 100%; padding: 14px 16px; border-radius: 10px; font-size: 15px;" value="${escapeHtml(draft.end)}" onchange="window.updateAdminAnalyticsFilterDraft('end', this.value);" />
             </label>
           </div>
         `}
@@ -11593,14 +11634,18 @@ window.downloadAdminAnalyticsPDF = async function () {
   doc.setTextColor(42, 120, 214);
   doc.text(`Client Name: ${clientName}`, pageWidth / 2, logoY + 19, { align: "center" });
 
+  // Clamp below the logo's actual rendered bottom edge so a long client
+  // name / kiosk ID never runs into the company logo pinned top-right.
+  const metaY = Math.max(logoY + 27, logoY + logoMaxHeight + 2);
+
   doc.setFont(undefined, "normal");
   doc.setFontSize(11);
   doc.setTextColor(100);
-  doc.text(`Kiosk ID: ${kioskLabel}`, pageWidth / 2, logoY + 27, { align: "center" });
-  doc.text(`${tabLabel} · Range: ${rangeLabel}`, pageWidth / 2, logoY + 33, { align: "center" });
+  doc.text(`Kiosk ID: ${kioskLabel}`, pageWidth / 2, metaY, { align: "center" });
+  doc.text(`${tabLabel} · Range: ${rangeLabel}`, pageWidth / 2, metaY + 6, { align: "center" });
   doc.setTextColor(0);
 
-  const dividerY = logoY + 42;
+  const dividerY = metaY + 15;
   doc.setDrawColor(42, 120, 214);
   doc.setLineWidth(0.6);
   doc.line(14, dividerY, pageWidth - 14, dividerY);
@@ -11678,6 +11723,25 @@ function getTemplateName(templateId) {
   return templateId;
 }
 
+// Template ids are only unique within their own service, not globally, so
+// searching every service (getTemplateName above) can match the wrong
+// template if two unrelated services/kiosks happen to reuse the same
+// auto-generated id - misattributing a form's name to the wrong kiosk.
+// Scope the lookup to the services actually assigned to THIS kiosk first;
+// only fall back to the unscoped search if the kiosk's current service
+// assignment doesn't have it (e.g. it changed since the print).
+function getTemplateNameForKiosk(kioskId, templateId) {
+  if (!templateId) return "Unknown Form";
+  const kiosk = adminKioskById(kioskId);
+  if (kiosk) {
+    for (const service of servicesForAdminKiosk(kiosk)) {
+      const template = (service.templates || []).find((t) => t.id === templateId);
+      if (template) return template.title || template.id;
+    }
+  }
+  return getTemplateName(templateId);
+}
+
 function calculateFormSellingReport() {
   const startObj = new Date(state.revenueFilter.start);
   startObj.setHours(0, 0, 0, 0);
@@ -11705,7 +11769,7 @@ function calculateFormSellingReport() {
       report[key] = {
         kioskId,
         templateId,
-        templateName: getTemplateName(templateId) || job.fileName || templateId,
+        templateName: getTemplateNameForKiosk(kioskId, templateId) || job.fileName || templateId,
         printCount: 0,
         revenue: 0
       };
@@ -11721,40 +11785,31 @@ function calculateFormSellingReport() {
 function renderFormSellingTable() {
   const tableData = calculateFormSellingReport();
   
-  const rows = tableData.map(item => {
-    const trendNum = Math.floor(Math.random() * 15) + 1;
-    const isPositive = Math.random() > 0.3;
-    const trendClass = isPositive ? "positive" : "negative";
-    const trendIcon = isPositive ? "+" : "-";
-
-    return `
+  const rows = tableData.map(item => `
       <div class="rt-row form-selling-row">
         <div class="rt-cell"><strong>${escapeHtml(item.kioskId)}</strong></div>
         <div class="rt-cell">${escapeHtml(item.templateName)}</div>
         <div class="rt-cell"><strong>${escapeHtml(String(item.printCount))} prints</strong></div>
         <div class="rt-cell">${escapeHtml(money(item.revenue))}</div>
-        <div class="rt-cell"><span class="stat-trend ${trendClass}" style="color: ${isPositive ? '#10b981' : '#ef4444'}; font-weight: 600;">${trendIcon}${trendNum}%</span></div>
       </div>
-    `;
-  }).join("");
+    `).join("");
 
   const emptyState = tableData.length === 0 ? `<div class="rt-row"><div class="rt-cell" style="grid-column: 1 / -1; text-align: center; padding: 32px; color: #64748b;">No form sales data available for this period.</div></div>` : "";
 
   return `
     <div class="chart-head" style="margin-bottom: 16px; display: flex; justify-content: space-between; align-items: center;">
-      <h3 class="section-title" style="margin: 0; font-size: 1.1em; font-weight: 600;">Form Selling Report</h3>
+      <h3 class="section-title" style="margin: 0; font-size: 1.1em; font-weight: 600;">Form Selling Report (Kiosk-wise)</h3>
     </div>
     <div class="rt-table" style="background: var(--surface); border: 1px solid var(--line); border-radius: 12px; overflow: hidden; font-size: 0.9em; box-shadow: 0 1px 2px rgba(0,0,0,0.05);">
-      <div class="rt-header form-selling-header" style="display: grid; grid-template-columns: 1fr 2fr 1fr 1fr 1fr; padding: 12px 0; border-bottom: 1px solid #f1f5f9; color: #64748b; font-weight: 500;">
-        <div class="rt-cell">Kiosk ID</div>
-        <div class="rt-cell">Form / Template</div>
-        <div class="rt-cell">Prints</div>
+      <div class="rt-header form-selling-header" style="display: grid; grid-template-columns: 1.5fr 2fr 1fr 1fr; padding: 12px 0; border-bottom: 1px solid #f1f5f9; color: #64748b; font-weight: 500;">
+        <div class="rt-cell">Kiosk (Client)</div>
+        <div class="rt-cell">Forms</div>
+        <div class="rt-cell">Total Prints</div>
         <div class="rt-cell">Revenue</div>
-        <div class="rt-cell">Trend</div>
       </div>
-      <div class="rt-body" style="max-height: 400px; overflow-y: auto;">
-        ${emptyState}
+      <div class="rt-body">
         ${rows}
+        ${emptyState}
       </div>
     </div>
   `;
@@ -11958,6 +12013,7 @@ function renderSystemStatus() {
           <div class="health-list">
             ${renderHealthRow("Project", kiosk.projectId || "Unassigned", kiosk.projectId ? "good" : "warn")}
             ${renderHealthRow("Status", kiosk.status || "Unknown", kiosk.status === "online" ? "good" : "warn")}
+            ${renderHealthRow("Internet", kiosk.internetOnline === false ? "Offline" : "Online", kiosk.internetOnline === false ? "bad" : "good")}
             ${renderHealthRow("Last Online", formatDateTime(kiosk.lastOnline), kiosk.lastOnline ? "good" : "warn")}
           </div>
         </div>
@@ -12672,44 +12728,43 @@ function renderProjectEditorPanel() {
   `;
 }
 
+// Projects shown as cards rather than a plain table - reuses the same
+// card/grid classes (and their spacing/alignment fixes) as Super Admin's
+// Project Management page, so both panels look and behave the same way.
 function renderProjectManagementTable() {
   const page = adminPaginated(state.adminData.projects, "projects");
   const canManage = kioskAdminCanManageSetup();
 
+  const cards = page.items.map((project) => {
+    const isActive = project.status === "active";
+    const kioskCount = state.adminData.kiosks.filter((kiosk) => kiosk.projectId === project.projectId).length;
+    return `
+      <article class="kiosk-service-row" style="display: flex; flex-direction: column; justify-content: space-between;">
+        <div class="simple-service-head" style="flex-direction: column; align-items: flex-start; gap: 16px;">
+          <div class="simple-service-title" style="align-items: flex-start;">
+            <div>
+              <h2 style="font-size: 1.1rem; line-height: 1.3;">${escapeHtml(project.name || project.projectId || "Project")}</h2>
+              <p class="helper-text" style="margin-top: 4px; line-height: 1.4;">${escapeHtml(project.description || "No description.")}</p>
+            </div>
+          </div>
+          <div class="simple-service-actions" style="width: 100%; justify-content: flex-start;">
+            <span class="badge ${isActive ? "good" : "bad"}" style="margin-right: auto;">${escapeHtml(project.status || "unknown")}</span>
+            ${canManage ? `<button class="secondary-button small-button" data-project-edit="${escapeHtml(project.projectId || "")}">Edit</button>` : ""}
+          </div>
+        </div>
+        <div class="simple-service-meta kiosk-service-row-meta" style="margin-top: 16px;">
+          <span>Project ID <strong>${escapeHtml(project.projectId || "-")}</strong></span>
+          <span>Kiosks <strong>${kioskCount}</strong></span>
+        </div>
+      </article>
+    `;
+  }).join("");
+
+  const empty = page.items.length ? "" : `<div class="empty-note">No projects are assigned to this account.</div>`;
+
   return `
-    <div class="table-wrap">
-      <table>
-        <thead>
-          <tr>
-            <th>Project Name</th>
-            <th>Project ID</th>
-            <th>Status</th>
-            <th>Kiosks</th>
-            <th>Description</th>
-            ${canManage ? "<th>Actions</th>" : ""}
-          </tr>
-        </thead>
-        <tbody>
-          ${page.items.length ? page.items.map((project) => `
-            <tr>
-              <td>${escapeHtml(project.name || "")}</td>
-              <td>${escapeHtml(project.projectId || "")}</td>
-              <td>${escapeHtml(project.status || "")}</td>
-              <td>${escapeHtml(String(state.adminData.kiosks.filter((kiosk) => kiosk.projectId === project.projectId).length))}</td>
-              <td>${escapeHtml(project.description || "")}</td>
-              ${canManage ? `
-              <td>
-                <div class="table-actions">
-                  <button class="action-btn-edit" data-project-edit="${escapeHtml(project.projectId || "")}" title="Edit">${uiIcon("edit", 18)}</button>
-                </div>
-              </td>
-              ` : ""}
-            </tr>
-          `).join("") : `
-            <tr><td colspan="${canManage ? 6 : 5}">No projects are assigned to this account.</td></tr>
-          `}
-        </tbody>
-      </table>
+    <div class="kiosk-service-modal-list kiosk-service-page-list" style="display: grid; grid-template-columns: repeat(auto-fill, minmax(320px, 1fr)); gap: 16px;">
+      ${cards}${empty}
     </div>
     ${renderAdminPagination("projects", page)}
   `;
@@ -13431,9 +13486,9 @@ async function handleClick(event) {
   if (target.dataset.service) {
     // The service card's wrapping <div> also carries data-service so the whole
     // card is clickable, but only the inner <button> gets the HTML `disabled`
-    // attribute — gate here too so an offline printer can't be bypassed by
-    // clicking the card body instead of the button.
-    if (!printerReadyForCustomerFlow()) {
+    // attribute — gate here too so an offline printer (or no internet) can't
+    // be bypassed by clicking the card body instead of the button.
+    if (!printerReadyForCustomerFlow() || customerInternetBlockStatus()) {
       return;
     }
     state.selectedService = target.dataset.service;
@@ -14532,6 +14587,7 @@ setInterval(tickPrinterOfflineWatchdog, 1000);
 // ── Printer Health IPC bridge (Electron-only, non-breaking) ─────────────────
 // No-op when window.kioskPrinterHealth is not exposed (non-Electron / demo mode).
 initPrinterHealthIpc();
+initInternetStatusIpc();
 
 window.addEventListener("hashchange", () => {
   if (state.mode === "admin" && state.adminAuthed) {

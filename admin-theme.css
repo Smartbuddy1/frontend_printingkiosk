@@ -1843,7 +1843,10 @@ button:disabled:hover {
 .kiosk-settings-checks {
   display: grid;
   gap: 10px;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
+  /* auto-fit collapses unused tracks instead of reserving a fixed 3
+     columns, so a single checkbox stretches to fill the row instead of
+     sitting in a 1/3-width box with empty space beside it. */
+  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
 }
 
 .kiosk-setting-check {
@@ -8061,6 +8064,7 @@ tbody tr:hover {
 }
 
 .kiosk-service-modal-list {
+  align-items: start;
   display: grid;
   gap: 12px;
 }
@@ -8284,6 +8288,19 @@ tbody tr:hover {
   overflow-wrap: anywhere;
 }
 
+.template-title-input {
+  width: 100%;
+  font-size: 14px;
+  font-weight: 600;
+  margin: 0;
+  padding: 6px 10px;
+  border: 1px solid #cbd5e1;
+  border-radius: 8px;
+  background: #ffffff;
+  color: #0f172a;
+  box-sizing: border-box;
+}
+
 .template-row-copy .helper-text {
   font-size: 12px;
   margin: 2px 0 0;
@@ -8457,6 +8474,13 @@ tbody tr:hover {
     flex: 0 0 48px;
   }
 
+  /* Kiosk Admin only (not Super Admin, which also needs Account Settings
+     from this menu) — logout is already reachable from the nav drawer
+     footer, so the topbar avatar is redundant on mobile. */
+  .admin-layout:not(.super-admin-layout) .profile-menu-container {
+    display: none;
+  }
+
   .admin-nav-backdrop {
     background: rgba(5, 15, 31, 0.58);
     border: 0;
@@ -8524,6 +8548,24 @@ tbody tr:hover {
   .admin-nav-drawer-head strong {
     color: #ffffff;
     font-size: 21px;
+  }
+
+  .admin-nav-drawer-brand {
+    align-items: center;
+    background: #ffffff;
+    border-radius: 10px;
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.12);
+    display: inline-flex;
+    justify-content: center;
+    padding: 4px 10px;
+  }
+
+  .admin-nav-drawer-brand .brand-logo-full {
+    display: block;
+    height: 44px;
+    max-width: 170px;
+    object-fit: contain;
+    width: auto;
   }
 
   .admin-nav-drawer-head button {
@@ -16379,7 +16421,7 @@ tbody tr:hover {
 
 /* Form Selling Report Specifics */
 .form-selling-header, .form-selling-row {
-  grid-template-columns: 1.5fr 2fr 1fr 1fr 1fr !important;
+  grid-template-columns: 1.5fr 2fr 1fr 1fr !important;
 }
 .form-selling-row:hover {
   background-color: #f8fafc;
@@ -26964,28 +27006,34 @@ body.admin-mode #app {
   background: var(--erp-line) !important;
 }
 
-/* ================= EXACT REFERENCE NAVBAR DESIGN ================= */
-
-.admin-nav,
-.admin-layout .admin-nav,
-.super-admin-layout .admin-nav {
-  background: #0b1329 !important;
-  border-right: 1px solid rgba(255, 255, 255, 0.08) !important;
-  color: #ffffff !important;
-  display: flex !important;
-  flex-direction: column !important;
-  justify-content: space-between !important;
-  padding: 0 !important;
-  width: 280px !important;
-  min-width: 280px !important;
-  max-width: 280px !important;
-  height: 100% !important;
-  min-height: 0 !important;
-  max-height: 100% !important;
-  flex: 1 1 0px !important;
-  position: relative !important;
-  top: auto !important;
-  overflow: hidden !important;
+/* ================= EXACT REFERENCE NAVBAR DESIGN =================
+   Desktop-only: below 1024px .admin-nav becomes the off-canvas mobile
+   drawer (position:fixed + translateX slide, see styles.css). These
+   !important rules used to apply unconditionally and clobbered that
+   fixed positioning/transform at every width, leaving the drawer
+   stuck out of view behind its own backdrop on mobile. */
+@media (min-width: 1024px) {
+  .admin-nav,
+  .admin-layout .admin-nav,
+  .super-admin-layout .admin-nav {
+    background: #0b1329 !important;
+    border-right: 1px solid rgba(255, 255, 255, 0.08) !important;
+    color: #ffffff !important;
+    display: flex !important;
+    flex-direction: column !important;
+    justify-content: space-between !important;
+    padding: 0 !important;
+    width: 280px !important;
+    min-width: 280px !important;
+    max-width: 280px !important;
+    height: 100% !important;
+    min-height: 0 !important;
+    max-height: 100% !important;
+    flex: 1 1 0px !important;
+    position: relative !important;
+    top: auto !important;
+    overflow: hidden !important;
+  }
 }
 
 .admin-nav-group {
@@ -27085,15 +27133,19 @@ body.admin-mode #app {
   box-sizing: border-box !important;
 }
 
-#app .admin-layout .admin-nav,
-#app .super-admin-layout .admin-nav,
-.admin-layout .admin-nav,
-.super-admin-layout .admin-nav,
-.admin-nav {
-  padding-bottom: 0 !important;
-  display: flex !important;
-  flex-direction: column !important;
-  justify-content: space-between !important;
+/* Desktop-only, same reason as the block above: zeroing padding-bottom
+   here would eat the mobile drawer's safe-area bottom padding. */
+@media (min-width: 1024px) {
+  #app .admin-layout .admin-nav,
+  #app .super-admin-layout .admin-nav,
+  .admin-layout .admin-nav,
+  .super-admin-layout .admin-nav,
+  .admin-nav {
+    padding-bottom: 0 !important;
+    display: flex !important;
+    flex-direction: column !important;
+    justify-content: space-between !important;
+  }
 }
 
 .sidebar-user-card,
@@ -27866,7 +27918,9 @@ body.admin-mode #app {
   position: relative !important;
   z-index: 10 !important;
   width: 100% !important;
-  max-width: 760px !important;
+  /* 980px matches the "Edit Client Account" (kioskAdmins) modal below,
+     which is the reference size every Create/Edit popup should share. */
+  max-width: min(980px, calc(100vw - 64px)) !important;
   max-height: none !important;
   overflow: visible !important;
   margin: 0 auto !important;
@@ -27947,22 +28001,18 @@ body.admin-mode #app {
   -webkit-overflow-scrolling: touch !important;
 }
 
-/* Service editor's two-column fields (Service Name/Description,
-   Mode/Enabled) get cramped at the shared 760px modal width, forcing
-   a tall, scrolly column instead of a proportional card. Widen just
-   this editor; height stays capped by .service-editor-popup's own
-   max-height, so it doesn't grow taller. Matches the ID-anchored
-   selector above (not just plain .editor-modal-content) so it actually
-   outranks it instead of losing on specificity. */
+/* Same 980px reference width as the base .editor-modal-content rule and
+   the kioskAdmins editor below - every Create/Edit popup (Services,
+   Pricing, Projects, Kiosks, Clients) shares one consistent size. */
 #app .super-admin-layout .editor-modal-shell:not(.service-editor-modal-shell) .editor-modal-content.editor-modal-content-services,
 .editor-modal-content.editor-modal-content-services {
-  max-width: min(1080px, calc(100vw - 64px)) !important;
+  max-width: min(980px, calc(100vw - 64px)) !important;
 }
 
 #app .super-admin-layout .editor-modal-shell .editor-modal-content.pricing-editor-modal-content,
 #app .super-admin-layout .editor-modal-shell:not(.service-editor-modal-shell) .editor-modal-content.pricing-editor-modal-content,
 .editor-modal-content.pricing-editor-modal-content {
-  max-width: min(880px, calc(100vw - 48px)) !important;
+  max-width: min(980px, calc(100vw - 64px)) !important;
 }
 
 /* The kioskAdmins (Create/Edit Account) editor also carries the idle-
@@ -28310,6 +28360,7 @@ body.admin-mode #app {
     flex: 0 1 auto !important;
     padding: 4px !important;
     border-right: none !important;
+    background: transparent !important;
   }
 
   .admin-topbar .brand-logo-full-card {
@@ -28893,16 +28944,20 @@ h1, h2, h3, .admin-header h1, .stage-header h1, .section-heading h2, .module-car
   margin-inline: 0 !important;
 }
 
-.admin-layout .admin-nav,
-.super-admin-layout .admin-nav {
-  height: 100% !important;
-  min-height: 0 !important;
-  max-height: 100% !important;
-  display: flex !important;
-  flex-direction: column !important;
-  justify-content: space-between !important;
-  overflow: hidden !important;
-  background-color: var(--sidebar-bg) !important;
+/* Desktop-only: below 1024px this fights the off-canvas mobile drawer's
+   fixed positioning/height (see styles.css .admin-nav mobile rules). */
+@media (min-width: 1024px) {
+  .admin-layout .admin-nav,
+  .super-admin-layout .admin-nav {
+    height: 100% !important;
+    min-height: 0 !important;
+    max-height: 100% !important;
+    display: flex !important;
+    flex-direction: column !important;
+    justify-content: space-between !important;
+    overflow: hidden !important;
+    background-color: var(--sidebar-bg) !important;
+  }
 }
 
 /* ==========================================================
@@ -29105,11 +29160,15 @@ h1, h2, h3, .admin-header h1, .stage-header h1, .section-heading h2, .module-car
   user-select: none !important;
 }
 
-.admin-layout .admin-nav,
-.super-admin-layout .admin-nav {
-  border-right: none !important;
-  padding: 24px 16px !important;
-  color: var(--sidebar-text) !important;
+/* Desktop-only, same reason as the block above: unscoped padding/border
+   here overrode the mobile drawer's own padding and safe-area inset. */
+@media (min-width: 1024px) {
+  .admin-layout .admin-nav,
+  .super-admin-layout .admin-nav {
+    border-right: none !important;
+    padding: 24px 16px !important;
+    color: var(--sidebar-text) !important;
+  }
 }
 
 .admin-nav-group {
@@ -30006,9 +30065,11 @@ button.ghost-button:hover {
 }
 
 .editor-modal-content {
+  /* width/max-width intentionally not set here - erp-overrides.css's
+     #app-scoped rules own sizing for every editor modal so there's one
+     source of truth instead of this file and that one fighting over it. */
   position: relative !important;
   z-index: 10 !important;
-  width: min(840px, 94vw) !important;
   max-height: min(90vh, 850px) !important;
   overflow-y: auto !important;
   border-radius: 24px !important;
@@ -30260,11 +30321,13 @@ button.ghost-button:hover {
   background: #94a3b8 !important;
 }
 
-/* Pricing Editor Modal Popup */
+/* Pricing Editor Modal Popup - kept in sync with the same 980px reference
+   width as erp-overrides.css's copy of this rule (loaded earlier); this
+   file loads last, so a mismatched value here would silently win. */
 #app .super-admin-layout .editor-modal-shell .editor-modal-content.pricing-editor-modal-content,
 #app .super-admin-layout .editor-modal-shell:not(.service-editor-modal-shell) .editor-modal-content.pricing-editor-modal-content,
 .editor-modal-content.pricing-editor-modal-content {
-  max-width: min(880px, calc(100vw - 48px)) !important;
+  max-width: min(980px, calc(100vw - 64px)) !important;
 }
 
 #app .super-admin-layout .editor-modal-shell .editor-panel.pricing-editor-card,

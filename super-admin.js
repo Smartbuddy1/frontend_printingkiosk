@@ -59,6 +59,7 @@ const state = {
   snapshot: null,
   snapshotPoller: null,
   loading: false,
+  paymentHealth: null,
   notice: "",
   error: "",
   loginError: "",
@@ -117,7 +118,11 @@ const state = {
   search: "",
   transactionFilters: {
     search: "",
-    status: "all",
+    // Default to success only - pending/incomplete payment attempts
+    // (initiated but never confirmed by the gateway) cluttered the
+    // Transaction Logs report. Still fully selectable via the status
+    // dropdown, this only changes what shows before anyone touches it.
+    status: "success",
     client: "all",
     kiosk: "all",
     from: "",
@@ -793,11 +798,23 @@ async function loadSnapshot({ quiet = false } = {}) {
     if (!error.sessionExpired) {
       state.error = error.message || "Super admin backend is offline.";
     }
-  } finally {
-    state.loading = false;
-    if ((state.authed || !state.loginError) && !state.editor && !state.pricingEditor) {
-      render();
-    }
+  }
+
+  // Payment gateway health is informational only (surfaces a dashboard
+  // warning when the Razorpay webhook secret isn't configured, since that
+  // safety net is what confirms a payment when the customer's own browser
+  // never completes the round trip back to /api/payment/verify) - a
+  // failure here should never block or error out the rest of the dashboard.
+  try {
+    const health = await fetchJson("/api/health");
+    state.paymentHealth = health.payments || null;
+  } catch {
+    state.paymentHealth = null;
+  }
+
+  state.loading = false;
+  if ((state.authed || !state.loginError) && !state.editor && !state.pricingEditor) {
+    render();
   }
 }
 
@@ -1248,7 +1265,29 @@ function renderHeader(title, subtitle, action = "") {
   `;
 }
 
+let noticeAutoClearTimer = null;
+let noticeAutoClearFor = null;
+
 function renderNotice() {
+  if (state.notice) {
+    // Auto-dismiss success/status banners so they don't sit on screen
+    // until a manual page refresh. Re-arms only when the message text
+    // actually changes, so a fresh save/delete notice gets its own
+    // full countdown instead of inheriting a near-expired one.
+    if (state.notice !== noticeAutoClearFor) {
+      if (noticeAutoClearTimer) clearTimeout(noticeAutoClearTimer);
+      noticeAutoClearFor = state.notice;
+      noticeAutoClearTimer = setTimeout(() => {
+        if (state.notice === noticeAutoClearFor) {
+          state.notice = "";
+          render();
+        }
+      }, 4000);
+    }
+  } else {
+    noticeAutoClearFor = null;
+  }
+
   const notices = [
     state.notice ? `<div class="save-note" style="margin-bottom: 12px;">${escapeHtml(state.notice)}</div>` : "",
     state.error ? `<div class="empty-note" style="margin-bottom: 12px;">${escapeHtml(state.error)}</div>` : ""
@@ -1574,9 +1613,15 @@ function renderRecentActivityList() {
   const sampleJobs = jobs.length ? [...jobs].reverse().slice(0, 4).map((job) => {
     const project = transactionProjectForKiosk(job.kioskId);
     const client = transactionClientForProject(project);
+    const kiosk = transactionKioskRecord(job.kioskId);
     return {
       kioskId: job.kioskId || "Unknown Kiosk",
-      location: [project?.name, client?.name].filter(Boolean).join(" | ") || undefined,
+      // Fall back through project/client, then the kiosk's own name/branch,
+      // before giving up - never show a fake "Active Kiosk Location" that
+      // looks like real data for a kiosk with no resolvable location.
+      location: [project?.name, client?.name].filter(Boolean).join(" | ")
+        || [kiosk?.name, kiosk?.branch].filter(Boolean).join(" | ")
+        || "Unallocated kiosk",
       amount: job.amount,
       time: formatDateTime(job.createdAt),
       status: /failed/i.test(job.printStatus || "") ? "failed" : "success"
@@ -1597,10 +1642,10 @@ function renderRecentActivityList() {
           </div>
           <div class="activity-content">
             <span class="activity-title">${escapeHtml(job.kioskId || job.title || "Print Job")}</span>
-            <span class="activity-subtitle">${escapeHtml(job.location || job.detail || "Active Kiosk Location")}</span>
+            <span class="activity-subtitle">${escapeHtml(job.location || job.detail || "Unallocated kiosk")}</span>
           </div>
           <div class="activity-meta">
-            <span class="activity-amount">₹${job.amount || 5}</span>
+            <span class="activity-amount">${money(job.amount)}</span>
             <span class="activity-time">${escapeHtml(job.time || "Just now")}</span>
           </div>
         </div>
@@ -1682,6 +1727,31 @@ function renderPaperTonerAlertsCard(alerts = []) {
   `;
 }
 
+// Surfaces on the dashboard when Razorpay is accepting payments but the
+// webhook safety net isn't configured - without it, a payment only ever
+// gets confirmed if the customer's own browser completes the round trip
+// back to /api/payment/verify, so any dropped connection or closed tab
+// leaves it stuck as "Pending" forever even if the money was captured.
+function renderPaymentWebhookWarning() {
+  const health = state.paymentHealth;
+  if (!health || !health.razorpayConfigured || health.webhookConfigured) return "";
+
+  return `
+    <div style="display: flex; align-items: flex-start; gap: 14px; background: #fffbeb; border: 1px solid #fde68a; border-radius: 14px; padding: 16px 20px; margin-bottom: 20px;">
+      <div style="width: 36px; height: 36px; border-radius: 10px; background: #fef3c7; color: #b45309; display: flex; align-items: center; justify-content: center; flex-shrink: 0;">
+        ${uiIcon("alert", 20)}
+      </div>
+      <div>
+        <strong style="display: block; color: #92400e; font-size: 14px; font-weight: 700; margin-bottom: 2px;">Payment webhook not configured</strong>
+        <span style="display: block; color: #92400e; font-size: 13px; line-height: 1.5;">
+          Razorpay payments only confirm through the customer's own browser right now. If their connection drops or they close the tab before that finishes, the payment stays "Pending" even if the money was actually captured.
+          Set <code style="background: rgba(180, 83, 9, 0.12); padding: 1px 5px; border-radius: 4px;">RAZORPAY_WEBHOOK_SECRET</code> on the backend and register <code style="background: rgba(180, 83, 9, 0.12); padding: 1px 5px; border-radius: 4px;">/api/payment/webhook</code> in your Razorpay Dashboard to fix this reliably.
+        </span>
+      </div>
+    </div>
+  `;
+}
+
 function renderDashboard() {
   const summary = state.snapshot?.summary || {};
   const alerts = superAdminOperationalAlerts();
@@ -1700,7 +1770,8 @@ function renderDashboard() {
   return `
     ${renderHeader("Dashboard", "Hello Admin, here is your system overview.")}
     ${renderNotice()}
-    
+    ${renderPaymentWebhookWarning()}
+
     <div class="metrics-grid dashboard-metrics">
       ${[
       ["Total Clients", summary.kioskAdmins || data("kioskAdmins").length || 0, `↗ ${data("kioskAdmins").length} registered`, "profile", "blue", "kioskAdmins"],
@@ -1790,7 +1861,7 @@ function renderDashboard() {
       </div>
     </div>
 
-    <!-- Row 2: Top Revenue Projects & Recent Activity -->
+    <!-- Row 2: Top Revenue Projects & Recent Logs -->
     <div class="dashboard-two-col">
       <div class="module-card">
         <div class="dashboard-card-header">
@@ -1805,37 +1876,12 @@ function renderDashboard() {
       <div class="module-card">
         <div class="dashboard-card-header">
           <div>
-            <h2>Recent Activity</h2>
-            <p>Live transaction activity feed</p>
-          </div>
-          <button class="dashboard-card-action" data-page="transactions">View All</button>
-        </div>
-        ${renderRecentActivityList()}
-      </div>
-    </div>
-
-    <!-- Row 3: Recent Logs & Paper Toner Alerts -->
-    <div class="dashboard-two-col">
-      <div class="module-card">
-        <div class="dashboard-card-header">
-          <div>
             <h2>Recent Logs</h2>
             <p>Maintenance and hardware log updates</p>
           </div>
           <button class="dashboard-card-action" data-page="alerts">View All</button>
         </div>
         ${renderRecentMaintenanceLogsList()}
-      </div>
-
-      <div class="module-card">
-        <div class="dashboard-card-header">
-          <div>
-            <h2>Paper & Toner Alerts</h2>
-            <p>Live paper tray, toner, and jam hardware checks</p>
-          </div>
-          <button class="dashboard-card-action" data-page="kiosks">View Kiosks</button>
-        </div>
-        ${renderPaperTonerAlertsCard(alerts)}
       </div>
     </div>
   `;
@@ -1975,9 +2021,14 @@ function superAdminAllAlertRecords() {
     createdAt: alert.lastUpdated || new Date().toISOString()
   }));
 
+  // Only skip a persisted log when it duplicates a currently-live alert -
+  // checking against liveAlerts (not the growing `combined`) so multiple
+  // distinct historical incidents with the same kioskId+title+status
+  // (e.g. two separate resolved paper jams on the same kiosk) don't get
+  // collapsed into a single record.
   const combined = [...liveAlerts];
   for (const log of persistedLogs) {
-    if (!combined.some(c => c.kioskId === log.kioskId && c.title === log.title && c.status === log.status)) {
+    if (!liveAlerts.some(c => c.kioskId === log.kioskId && c.title === log.title && c.status === log.status)) {
       combined.push(log);
     }
   }
@@ -2077,6 +2128,13 @@ window.downloadAlertsReportPDF = async function () {
     headerY += 8;
   }
 
+  // Long filter-description text ("Kiosk: All | Category: All | Status:
+  // All...") is centered across the full page width, so its right half
+  // can run into the company logo pinned top-right if it starts too high.
+  // Clamp to below the logo's actual rendered bottom edge regardless of
+  // text length or whether the client-name line above pushed it down.
+  headerY = Math.max(headerY, logoY + logoMaxHeight + 2);
+
   doc.setFont(undefined, "normal");
   doc.setFontSize(10.5);
   doc.setTextColor(100);
@@ -2099,14 +2157,13 @@ window.downloadAlertsReportPDF = async function () {
     log.kioskId || "Unknown",
     (log.category || "-").toUpperCase(),
     log.title || "-",
-    log.detail || "-",
     log.status === "resolved" ? "Resolved" : "Active"
   ]);
 
   doc.autoTable({
     startY: dividerY + 8,
-    head: [["Date & Time", "Kiosk", "Category", "Alert Title", "Details", "Status"]],
-    body: tableData.length ? tableData : [["-", "-", "-", "No alert records match the selected filters", "-", "-"]],
+    head: [["Date & Time", "Kiosk", "Category", "Alert Title", "Status"]],
+    body: tableData.length ? tableData : [["-", "-", "-", "No alert records match the selected filters", "-"]],
     theme: "grid",
     styles: {
       fontSize: 8.5,
@@ -2130,9 +2187,8 @@ window.downloadAlertsReportPDF = async function () {
       0: { cellWidth: 34, halign: "center" },
       1: { cellWidth: 22, fontStyle: "bold", halign: "center" },
       2: { cellWidth: 22, halign: "center" },
-      3: { cellWidth: 38, fontStyle: "bold" },
-      4: { cellWidth: "auto" },
-      5: { cellWidth: 20, halign: "center" }
+      3: { cellWidth: "auto", fontStyle: "bold" },
+      4: { cellWidth: 20, halign: "center" }
     }
   });
 
@@ -2216,7 +2272,6 @@ function renderAlertLogsTable() {
               <th style="padding: 14px 18px; font-weight: 700; color: #475569; font-size: 12px; text-transform: uppercase; letter-spacing: 0.5px; font-family: var(--font-serif, 'Playfair Display', Georgia, serif);">Kiosk</th>
               <th style="padding: 14px 18px; font-weight: 700; color: #475569; font-size: 12px; text-transform: uppercase; letter-spacing: 0.5px; font-family: var(--font-serif, 'Playfair Display', Georgia, serif);">Category</th>
               <th style="padding: 14px 18px; font-weight: 700; color: #475569; font-size: 12px; text-transform: uppercase; letter-spacing: 0.5px; font-family: var(--font-serif, 'Playfair Display', Georgia, serif);">Alert Title</th>
-              <th style="padding: 14px 18px; font-weight: 700; color: #475569; font-size: 12px; text-transform: uppercase; letter-spacing: 0.5px; font-family: var(--font-serif, 'Playfair Display', Georgia, serif);">Details</th>
               <th style="padding: 14px 18px; font-weight: 700; color: #475569; font-size: 12px; text-transform: uppercase; letter-spacing: 0.5px; font-family: var(--font-serif, 'Playfair Display', Georgia, serif);">Status</th>
             </tr>
           </thead>
@@ -2237,7 +2292,6 @@ function renderAlertLogsTable() {
                   </td>
                   <td style="padding: 14px 18px; color: #64748b; font-weight: 600; text-transform: capitalize;">${escapeHtml(log.category || "-")}</td>
                   <td style="padding: 14px 18px; color: #0f172a; font-weight: 700; max-width: 200px; font-family: var(--font-serif, 'Playfair Display', Georgia, serif);">${escapeHtml(log.title || "-")}</td>
-                  <td style="padding: 14px 18px; color: #475569; line-height: 1.4; max-width: 340px;">${escapeHtml(log.detail || "-")}</td>
                   <td style="padding: 14px 18px; white-space: nowrap;">
                     <span style="${badgeStyle} font-size: 11.5px; font-weight: 700; padding: 4px 12px; border-radius: 20px; display: inline-block;">${statusLabel}</span>
                   </td>
@@ -2245,7 +2299,7 @@ function renderAlertLogsTable() {
               `;
             }).join('') : `
               <tr>
-                <td colspan="6" style="padding: 36px; text-align: center; color: #94a3b8;">
+                <td colspan="5" style="padding: 36px; text-align: center; color: #94a3b8;">
                   ${uiIcon("history", 32)}
                   <p style="margin: 8px 0 0 0; font-size: 14px; font-weight: 500;">No alert logs found matching your filters.</p>
                 </td>
@@ -2530,8 +2584,17 @@ function transactionMatchesDateRange(record, from, to) {
 function filteredSuperAdminTransactions() {
   const filters = state.transactionFilters;
   const search = filters.search.trim().toLowerCase();
+  // The top "Report" filter card (Client Name / Kiosk ID + Apply Filter)
+  // writes to state.revenueFilter, but this table was only ever reading
+  // the separate inline filter bar's state.transactionFilters - so
+  // applying a client/kiosk there had no effect on what's shown. Layer
+  // it in here (empty clientId/kioskId = no-op, so the table's existing
+  // default view and the inline filter bar are unaffected).
+  const reportFilter = state.revenueFilter;
 
   return superAdminTransactionRecords()
+    .filter((record) => !reportFilter.clientId || record.clientId === reportFilter.clientId)
+    .filter((record) => !reportFilter.kioskId || String(record.kiosk || "").toUpperCase() === reportFilter.kioskId.toUpperCase())
     .filter((record) => filters.client === "all" || record.clientId === filters.client)
     .filter((record) => filters.kiosk === "all" || record.kiosk === filters.kiosk)
     .filter((record) => transactionMatchesStatus(record, filters.status))
@@ -2902,6 +2965,10 @@ window.downloadRevenueReportPDF = async function () {
     headerY += 8;
   }
 
+  // Clamp below the logo's actual rendered bottom edge so a long client
+  // name / kiosk ID never runs into the company logo pinned top-right.
+  headerY = Math.max(headerY, logoY + logoMaxHeight + 2);
+
   doc.setFont(undefined, "normal");
   doc.setFontSize(11);
   doc.setTextColor(100);
@@ -3006,6 +3073,10 @@ window.downloadFormPrintReportPDF = async function () {
     headerY += 8;
   }
 
+  // Clamp below the logo's actual rendered bottom edge so a long client
+  // name / kiosk ID never runs into the company logo pinned top-right.
+  headerY = Math.max(headerY, logoY + logoMaxHeight + 2);
+
   doc.setFont(undefined, "normal");
   doc.setFontSize(11);
   doc.setTextColor(100);
@@ -3020,7 +3091,7 @@ window.downloadFormPrintReportPDF = async function () {
 
   doc.autoTable({
     startY: dividerY + 8,
-    head: [['KIOSK ID', 'FORM / TEMPLATE', 'PRINTS', 'REVENUE']],
+    head: [['KIOSK ID', 'FORMS', 'PRINTS', 'REVENUE']],
     body: tableData,
     theme: 'grid',
     columnStyles: {
@@ -3375,7 +3446,10 @@ function renderAnalytics() {
               <span>💰</span> Yearly Transaction Revenue (₹) ${selectedClient ? `- ${escapeHtml(clientLabel)}` : ''}
             </h2>
           </div>
-          ${renderAnalyticsUPIRevenueBarChart()}
+          ${(() => {
+            const buckets = analyticsBucketedSeries(analyticsAutoBasis());
+            return buckets.length ? renderAnalyticsBarChart(buckets) : `<div class="empty-note">No data for this range yet.</div>`;
+          })()}
         </div>
 
         <div class="module-card" style="background: #ffffff; border: 1px solid #e2e8f0; border-radius: 16px; padding: 28px 24px 22px; box-shadow: 0 4px 20px rgba(0, 0, 0, 0.02);">
@@ -3662,44 +3736,51 @@ function renderAnalyticsUPIRevenueBarChart() {
 }
 
 function renderAnalyticsKioskLineChart() {
-  const defaultMonths = ["Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec", "Jan", "Feb", "Mar"];
+  // Bucket by real calendar date (same analyticsBuckets/analyticsAutoBasis
+  // infrastructure the bar chart and PDF export use) instead of matching
+  // on month NAME only - the old approach merged same-named months from
+  // different years into one point for any range spanning >1 year.
   const jobs = data("jobs") || [];
   const records = analyticsFilteredRecords();
   const bounds = analyticsFilterBounds();
+  const basis = analyticsAutoBasis();
+  const rawBuckets = analyticsBuckets(bounds.start, bounds.end, basis);
+  // Fall back to a fixed current-FY month range only when the filter has
+  // no resolvable span at all (e.g. "All dates"), so the chart still has
+  // something to draw.
+  const buckets = rawBuckets.length ? rawBuckets : analyticsBuckets(
+    new Date(new Date().getFullYear(), 3, 1),
+    new Date(new Date().getFullYear() + 1, 2, 31),
+    "monthly"
+  );
+  const bucketByKey = new Map(buckets.map((bucket) => [bucket.key, { label: bucket.label, rev: 0, forms: 0 }]));
 
-  const monthMetrics = defaultMonths.map((m) => {
-    let rev = 0;
-    let forms = 0;
-
-    records.forEach((r) => {
-      const d = new Date(r.dateValue);
-      if (isNaN(d.getTime())) return;
-      if (d.toLocaleString("en-US", { month: "short" }) === m) {
-        rev += Number(r.amount || 0);
-      }
-    });
-
-    jobs.forEach((j) => {
-      if (!jobMatchesAnalyticsFilter(j, bounds)) return;
-      const d = new Date(j.createdAt);
-      if (d.toLocaleString("en-US", { month: "short" }) === m) {
-        if (j.templateId) forms += 1;
-      }
-    });
-
-    return { label: m, rev, forms };
+  records.forEach((r) => {
+    const d = new Date(r.dateValue);
+    if (isNaN(d.getTime())) return;
+    const bucket = bucketByKey.get(analyticsBucketKeyForDate(d, basis));
+    if (bucket) bucket.rev += Number(r.amount || 0);
   });
 
+  jobs.forEach((j) => {
+    if (!jobMatchesAnalyticsFilter(j, bounds)) return;
+    if (!j.templateId) return;
+    const d = new Date(j.createdAt);
+    if (isNaN(d.getTime())) return;
+    const bucket = bucketByKey.get(analyticsBucketKeyForDate(d, basis));
+    if (bucket) bucket.forms += 1;
+  });
+
+  const monthMetrics = [...bucketByKey.values()];
   const hasData = monthMetrics.some((m) => m.rev > 0 || m.forms > 0);
 
-  const list = hasData ? monthMetrics : defaultMonths.map((m) => {
-    if (m === "Jul") return { label: m, rev: 202, forms: 18 };
-    if (m === "Aug") return { label: m, rev: 25, forms: 4 };
-    if (m === "Sep") return { label: m, rev: 140, forms: 12 };
-    if (m === "Oct") return { label: m, rev: 210, forms: 22 };
-    if (m === "Nov") return { label: m, rev: 175, forms: 15 };
-    return { label: m, rev: 0, forms: 0 };
-  });
+  const demoRevByIndex = [0, 0, 202, 25, 140, 210, 175, 0, 0, 0, 0, 0];
+  const demoFormsByIndex = [0, 0, 18, 4, 12, 22, 15, 0, 0, 0, 0, 0];
+  const list = hasData ? monthMetrics : monthMetrics.map((m, idx) => ({
+    label: m.label,
+    rev: demoRevByIndex[idx % demoRevByIndex.length],
+    forms: demoFormsByIndex[idx % demoFormsByIndex.length]
+  }));
 
   const maxVal = Math.max(250, ...list.map((i) => i.rev));
   const padding = { top: 25, right: 30, bottom: 42, left: 68 };
@@ -4246,6 +4327,10 @@ window.downloadAnalyticsPDF = async function () {
     headerY += 8;
   }
 
+  // Clamp below the logo's actual rendered bottom edge so a long client
+  // name / kiosk ID never runs into the company logo pinned top-right.
+  headerY = Math.max(headerY, logoY + logoMaxHeight + 2);
+
   doc.setFont(undefined, "normal");
   doc.setFontSize(11);
   doc.setTextColor(100);
@@ -4779,13 +4864,56 @@ function renderCollection(collection) {
     </div>
   `;
 
-  const body = renderCollectionTable(collection, rows);
+  const body = collection === "projects" ? renderProjectCards(rows) : renderCollectionTable(collection, rows);
 
   return `
     ${renderHeader(meta.title, meta.subtitle, headerActions)}
     ${renderNotice()}
     ${body}
     ${renderEditorPanel()}
+  `;
+}
+
+// Projects shown as cards rather than a plain table - reuses the same
+// card/grid classes (and their spacing/alignment fixes) already applied
+// to the Services page, so this stays visually consistent with it instead
+// of introducing a third one-off card style.
+function renderProjectCards(rows) {
+  const pageKey = "collection-projects";
+  const page = paginated(rows, pageKey);
+
+  const cards = page.items.map((project) => {
+    const isActive = project.status === "active";
+    return `
+      <article class="kiosk-service-row" style="display: flex; flex-direction: column; justify-content: space-between;">
+        <div class="simple-service-head" style="flex-direction: column; align-items: flex-start; gap: 16px;">
+          <div class="simple-service-title" style="align-items: flex-start;">
+            <div>
+              <h2 style="font-size: 1.1rem; line-height: 1.3;">${escapeHtml(project.name || project.projectId)}</h2>
+              <p class="helper-text" style="margin-top: 4px; line-height: 1.4;">${escapeHtml(project.description || "No description.")}</p>
+            </div>
+          </div>
+          <div class="simple-service-actions" style="width: 100%; justify-content: flex-start;">
+            <span class="badge ${isActive ? "good" : "bad"}" style="margin-right: auto;">${escapeHtml(project.status || "unknown")}</span>
+            <button class="secondary-button small-button" data-record-edit="projects" data-record-id="${escapeHtml(project.projectId)}">Edit</button>
+            <button class="danger-button small-button" data-record-delete="projects" data-record-id="${escapeHtml(project.projectId)}">Delete</button>
+          </div>
+        </div>
+        <div class="simple-service-meta kiosk-service-row-meta" style="margin-top: 16px;">
+          <span>Client <strong>${escapeHtml(kioskAdminName(project.adminId))}</strong></span>
+          <span>Created <strong>${escapeHtml(formatDateTime(project.createdAt))}</strong></span>
+        </div>
+      </article>
+    `;
+  }).join("");
+
+  const empty = page.items.length ? "" : `<div class="empty-note">No project records found.</div>`;
+
+  return `
+    <div class="kiosk-service-modal-list kiosk-service-page-list" style="display: grid; grid-template-columns: repeat(auto-fill, minmax(320px, 1fr)); gap: 16px;">
+      ${cards}${empty}
+    </div>
+    ${renderPagination(pageKey, page)}
   `;
 }
 
@@ -5280,7 +5408,7 @@ function renderDraftTemplate(template, index) {
         <span class="template-row-index">${index + 1}</span>
         ${renderEditorImagePreview(template.imageUrl, template.title || `T${index + 1}`)}
         <div class="template-row-copy">
-          <h4>${escapeHtml(template.title || `Template ${index + 1}`)}</h4>
+          <input type="text" class="template-title-input" data-template-field="title" data-template-index="${index}" value="${escapeHtml(template.title || "")}" placeholder="Template ${index + 1}" aria-label="Template name" />
           <p class="helper-text">${escapeHtml(templateDocumentKind(template.documentType || template.imageUrl).toUpperCase())} | ${Number(template.pages || 1)} page${Number(template.pages || 1) === 1 ? "" : "s"} | ${escapeHtml(template.imageUrl ? "Ready for kiosk" : "Upload needed")}</p>
         </div>
         <button class="danger-button small-button" data-draft-template-delete="${index}">Remove</button>
@@ -6979,6 +7107,25 @@ function getTemplateName(templateId) {
   return templateId;
 }
 
+// Template ids are only unique within their own service, not globally, so
+// searching every service in the system (getTemplateName above) can match
+// the wrong template if two unrelated services/kiosks happen to reuse the
+// same auto-generated id - misattributing a form's name to the wrong
+// kiosk. Scope the lookup to the services actually assigned to THIS kiosk
+// first; only fall back to the unscoped search if the kiosk's current
+// service assignment doesn't have it (e.g. it changed since the print).
+function getTemplateNameForKiosk(kioskId, templateId) {
+  if (!templateId) return "Unknown Form";
+  const kiosk = data("kiosks").find((k) => k.kioskId === kioskId);
+  if (kiosk) {
+    for (const service of servicesForKiosk(kiosk)) {
+      const template = (service.templates || []).find((t) => t.id === templateId);
+      if (template) return template.title || template.id;
+    }
+  }
+  return getTemplateName(templateId);
+}
+
 function calculateFormSellingReport() {
   const startObj = new Date(state.revenueFilter.start);
   startObj.setHours(0, 0, 0, 0);
@@ -7013,7 +7160,7 @@ function calculateFormSellingReport() {
       report[key] = {
         kioskId,
         templateId,
-        templateName: getTemplateName(templateId) || job.fileName || templateId,
+        templateName: getTemplateNameForKiosk(kioskId, templateId) || job.fileName || templateId,
         printCount: 0,
         revenue: 0
       };
@@ -7029,22 +7176,14 @@ function calculateFormSellingReport() {
 function renderFormSellingTable() {
   const tableData = calculateFormSellingReport();
 
-  const rows = tableData.map(item => {
-    const trendNum = Math.floor(Math.random() * 15) + 1;
-    const isPositive = Math.random() > 0.3;
-    const trendClass = isPositive ? "positive" : "negative";
-    const trendIcon = isPositive ? "+" : "-";
-
-    return `
+  const rows = tableData.map(item => `
       <div class="rt-row form-selling-row">
         <div class="rt-cell"><strong>${escapeHtml(item.kioskId)}</strong></div>
         <div class="rt-cell">${escapeHtml(item.templateName)}</div>
         <div class="rt-cell"><strong>${escapeHtml(String(item.printCount))} prints</strong></div>
         <div class="rt-cell">${escapeHtml(money(item.revenue))}</div>
-        <div class="rt-cell"><span class="stat-trend ${trendClass}" style="color: ${isPositive ? '#10b981' : '#ef4444'}; font-weight: 600;">${trendIcon}${trendNum}%</span></div>
       </div>
-    `;
-  }).join("");
+    `).join("");
 
   const emptyState = tableData.length === 0 ? `<div class="rt-row"><div class="rt-cell" style="grid-column: 1 / -1; text-align: center; padding: 32px; color: #64748b;">No form sales data available for this period.</div></div>` : "";
 
@@ -7053,12 +7192,11 @@ function renderFormSellingTable() {
       <h3 class="section-title" style="margin: 0; font-size: 1.1em; font-weight: 600;">Form Selling Report (Kiosk-wise)</h3>
     </div>
     <div class="rt-table" style="background: var(--surface); border: 1px solid var(--line); border-radius: 12px; overflow: hidden; font-size: 0.9em; box-shadow: 0 1px 2px rgba(0,0,0,0.05);">
-      <div class="rt-header form-selling-header" style="display: grid; grid-template-columns: 1.5fr 2fr 1fr 1fr 1fr; padding: 12px 0; border-bottom: 1px solid #f1f5f9; color: #64748b; font-weight: 500;">
+      <div class="rt-header form-selling-header" style="display: grid; grid-template-columns: 1.5fr 2fr 1fr 1fr; padding: 12px 0; border-bottom: 1px solid #f1f5f9; color: #64748b; font-weight: 500;">
         <div class="rt-cell">Kiosk (Client)</div>
-        <div class="rt-cell">Form / Template</div>
+        <div class="rt-cell">Forms</div>
         <div class="rt-cell">Total Prints</div>
         <div class="rt-cell">Revenue</div>
-        <div class="rt-cell">Trend</div>
       </div>
       <div class="rt-body">
         ${rows}
