@@ -10087,7 +10087,6 @@ function renderTransactionLog() {
     record.kiosk,
     record.service,
     money(record.amount),
-    record.method,
     record.status,
     record.reference || record.method || "-"
   ]);
@@ -10100,7 +10099,7 @@ function renderTransactionLog() {
         <strong>${escapeHtml(String(records.length))} record${records.length === 1 ? "" : "s"}</strong>
       </div>
       ${renderTransactionFilters()}
-      ${renderPaginatedTable("revenueTransactions", ["Date", "Kiosk", "Service", "Amount", "Method", "Status", "Gateway Ref"], rows, "No matching transaction records.")}
+      ${renderPaginatedTable("revenueTransactions", ["Date", "Kiosk", "Service", "Amount", "Status", "Gateway Ref"], rows, "No matching transaction records.")}
     </div>
   `;
 }

@@ -2054,12 +2054,10 @@ window.downloadAlertsReportPDF = async function () {
   doc.text("Alert History Report", pageWidth / 2, logoY + 10, { align: "center" });
 
   let headerY = logoY + 19;
-  if (selectedClient) {
-    doc.setFontSize(15);
-    doc.setTextColor(42, 120, 214);
-    doc.text(clientLabel, pageWidth / 2, headerY, { align: "center" });
-    headerY += 8;
-  }
+  doc.setFontSize(15);
+  doc.setTextColor(42, 120, 214);
+  doc.text(`Client Name: ${clientLabel}`, pageWidth / 2, headerY, { align: "center" });
+  headerY += 8;
 
   // Long filter-description text ("Kiosk: All | Category: All | Status:
   // All...") is centered across the full page width, so its right half
@@ -2882,12 +2880,10 @@ window.downloadRevenueReportPDF = async function () {
   doc.text("Revenue Report", pageWidth / 2, logoY + 10, { align: "center" });
 
   let headerY = logoY + 19;
-  if (selectedClient) {
-    doc.setFontSize(15);
-    doc.setTextColor(42, 120, 214);
-    doc.text(clientLabel, pageWidth / 2, headerY, { align: "center" });
-    headerY += 8;
-  }
+  doc.setFontSize(15);
+  doc.setTextColor(42, 120, 214);
+  doc.text(`Client Name: ${clientLabel}`, pageWidth / 2, headerY, { align: "center" });
+  headerY += 8;
 
   // Clamp below the logo's actual rendered bottom edge so a long client
   // name / kiosk ID never runs into the company logo pinned top-right.
@@ -2990,12 +2986,10 @@ window.downloadFormPrintReportPDF = async function () {
   doc.text("Form Selling Report", pageWidth / 2, logoY + 10, { align: "center" });
 
   let headerY = logoY + 19;
-  if (selectedClient) {
-    doc.setFontSize(15);
-    doc.setTextColor(42, 120, 214);
-    doc.text(`Client Name: ${clientLabel}`, pageWidth / 2, headerY, { align: "center" });
-    headerY += 8;
-  }
+  doc.setFontSize(15);
+  doc.setTextColor(42, 120, 214);
+  doc.text(`Client Name: ${clientLabel}`, pageWidth / 2, headerY, { align: "center" });
+  headerY += 8;
 
   // Clamp below the logo's actual rendered bottom edge so a long client
   // name / kiosk ID never runs into the company logo pinned top-right.
@@ -4398,12 +4392,10 @@ window.downloadAnalyticsPDF = async function () {
   doc.text(tab === "form" ? "Form Selling Report" : "Revenue Report", pageWidth / 2, logoY + 10, { align: "center" });
 
   let headerY = logoY + 19;
-  if (selectedClient) {
-    doc.setFontSize(15);
-    doc.setTextColor(42, 120, 214);
-    doc.text(`Client Name: ${clientName}`, pageWidth / 2, headerY, { align: "center" });
-    headerY += 8;
-  }
+  doc.setFontSize(15);
+  doc.setTextColor(42, 120, 214);
+  doc.text(`Client Name: ${clientName}`, pageWidth / 2, headerY, { align: "center" });
+  headerY += 8;
 
   // Clamp below the logo's actual rendered bottom edge so a long client
   // name / kiosk ID never runs into the company logo pinned top-right.
