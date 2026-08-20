@@ -4444,15 +4444,40 @@ window.downloadAnalyticsPDF = async function () {
 
     if (buckets.length) {
       const html = renderAnalyticsBarChart(buckets, { forPrint: true });
-      const chart = await analyticsPrintSafeChartImage(html);
+      const lineHtml = renderAnalyticsLineChart(buckets, { forPrint: true });
+      const [chart, lineChart] = await Promise.all([
+        analyticsPrintSafeChartImage(html),
+        analyticsPrintSafeChartImage(lineHtml)
+      ]);
+
+      // Both charts together at the single-chart display width (180mm) need
+      // more height than is actually left on page 1 below the header
+      // (~193mm available vs ~220mm needed), so the "keep them together"
+      // page-break check below always pushed both to page 2, leaving page 1
+      // almost empty. A slightly narrower (and proportionally shorter, same
+      // aspect ratio) display width for this specific two-chart layout closes
+      // that gap so both genuinely fit alongside the header on page 1.
+      const twoChartDisplayWidth = Math.min(chartDisplayWidth, 155);
+      const chartHeight = chart ? twoChartDisplayWidth * (chart.height / chart.width) : 0;
+      const lineChartHeight = lineChart ? twoChartDisplayWidth * (lineChart.height / lineChart.width) : 0;
+      const chartOffsetX = (pageWidth - twoChartDisplayWidth) / 2;
+
+      // Decide the page break ONCE, before drawing either chart, based on
+      // whether BOTH fit in the space left on the current page. Checking
+      // each chart's own fit independently (as before) let the bar chart
+      // claim whatever room was left on page 1, then stranded the line
+      // chart alone on page 2 - the two charts read as one connected report
+      // and should stay adjacent instead of splitting across pages.
+      // 14 = 6 (heading) + 8 (gap after, matches the reduced gap used below);
+      // the line chart keeps the original 14mm trailing gap (20 = 6 + 14),
+      // since nothing is drawn after it on this page.
+      const combinedHeightNeeded = (chart ? 14 + chartHeight : 0) + (lineChart ? 20 + lineChartHeight : 0);
+      if (combinedHeightNeeded > 0 && cursorY + combinedHeightNeeded > pageHeight - 42) {
+        doc.addPage();
+        cursorY = 20;
+      }
 
       if (chart) {
-        const chartHeight = chartDisplayWidth * (chart.height / chart.width);
-        if (cursorY + 20 + chartHeight > pageHeight - 42) {
-          doc.addPage();
-          cursorY = 20;
-        }
-
         doc.setFont(undefined, "bold");
         doc.setFontSize(13);
         doc.setTextColor(27, 175, 122);
@@ -4460,20 +4485,11 @@ window.downloadAnalyticsPDF = async function () {
         doc.setTextColor(0);
         cursorY += 6;
 
-        doc.addImage(chart.dataUrl, "PNG", (pageWidth - chartDisplayWidth) / 2, cursorY, chartDisplayWidth, chartHeight);
-        cursorY += chartHeight + 14;
+        doc.addImage(chart.dataUrl, "PNG", chartOffsetX, cursorY, twoChartDisplayWidth, chartHeight);
+        cursorY += chartHeight + 8;
       }
 
-      const lineHtml = renderAnalyticsLineChart(buckets, { forPrint: true });
-      const lineChart = await analyticsPrintSafeChartImage(lineHtml);
-
       if (lineChart) {
-        const lineChartHeight = chartDisplayWidth * (lineChart.height / lineChart.width);
-        if (cursorY + 20 + lineChartHeight > pageHeight - 42) {
-          doc.addPage();
-          cursorY = 20;
-        }
-
         doc.setFont(undefined, "bold");
         doc.setFontSize(13);
         doc.setTextColor(27, 175, 122);
@@ -4481,7 +4497,7 @@ window.downloadAnalyticsPDF = async function () {
         doc.setTextColor(0);
         cursorY += 6;
 
-        doc.addImage(lineChart.dataUrl, "PNG", (pageWidth - chartDisplayWidth) / 2, cursorY, chartDisplayWidth, lineChartHeight);
+        doc.addImage(lineChart.dataUrl, "PNG", chartOffsetX, cursorY, twoChartDisplayWidth, lineChartHeight);
         cursorY += lineChartHeight + 14;
       }
     }
