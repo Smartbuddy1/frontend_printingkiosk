@@ -59,7 +59,6 @@ const state = {
   snapshot: null,
   snapshotPoller: null,
   loading: false,
-  paymentHealth: null,
   notice: "",
   error: "",
   loginError: "",
@@ -232,7 +231,7 @@ const collections = {
     title: "Kiosk Management",
     subtitle: "Create kiosks under a project. Kiosk creation is available only to super admins.",
     key: "kioskId",
-    columns: ["projectId", "kioskId", "name", "branch", "status", "lastOnline"],
+    columns: ["projectId", "kioskId", "name", "branch"],
     fields: [
       { key: "kioskId", label: "Kiosk ID", required: true },
       { key: "setupCode", label: "Mini PC Setup Code", required: true },
@@ -339,30 +338,6 @@ const collections = {
       paymentMethod: "Manual",
       status: "Pending",
       createdAt: new Date().toISOString()
-    })
-  },
-  refunds: {
-    title: "Refund CRUD",
-    subtitle: "Refund requests, reasons, linked payment/job, amount, and approval status.",
-    key: "refundId",
-    columns: ["refundId", "jobId", "paymentId", "amount", "reason", "status", "requestedAt"],
-    fields: [
-      { key: "refundId", label: "Refund ID", required: true },
-      { key: "jobId", label: "Job ID" },
-      { key: "paymentId", label: "Payment ID" },
-      { key: "amount", label: "Amount", type: "number" },
-      { key: "reason", label: "Reason", type: "textarea" },
-      { key: "status", label: "Status", type: "select", options: ["Refund Pending", "Approved", "Rejected", "Paid"] },
-      { key: "requestedAt", label: "Requested At" }
-    ],
-    defaults: () => ({
-      refundId: `REF-${Date.now()}`,
-      jobId: "",
-      paymentId: "",
-      amount: 0,
-      reason: "Admin refund",
-      status: "Refund Pending",
-      requestedAt: new Date().toISOString()
     })
   }
 };
@@ -798,18 +773,6 @@ async function loadSnapshot({ quiet = false } = {}) {
     if (!error.sessionExpired) {
       state.error = error.message || "Super admin backend is offline.";
     }
-  }
-
-  // Payment gateway health is informational only (surfaces a dashboard
-  // warning when the Razorpay webhook secret isn't configured, since that
-  // safety net is what confirms a payment when the customer's own browser
-  // never completes the round trip back to /api/payment/verify) - a
-  // failure here should never block or error out the rest of the dashboard.
-  try {
-    const health = await fetchJson("/api/health");
-    state.paymentHealth = health.payments || null;
-  } catch {
-    state.paymentHealth = null;
   }
 
   state.loading = false;
@@ -1727,38 +1690,12 @@ function renderPaperTonerAlertsCard(alerts = []) {
   `;
 }
 
-// Surfaces on the dashboard when Razorpay is accepting payments but the
-// webhook safety net isn't configured - without it, a payment only ever
-// gets confirmed if the customer's own browser completes the round trip
-// back to /api/payment/verify, so any dropped connection or closed tab
-// leaves it stuck as "Pending" forever even if the money was captured.
-function renderPaymentWebhookWarning() {
-  const health = state.paymentHealth;
-  if (!health || !health.razorpayConfigured || health.webhookConfigured) return "";
-
-  return `
-    <div style="display: flex; align-items: flex-start; gap: 14px; background: #fffbeb; border: 1px solid #fde68a; border-radius: 14px; padding: 16px 20px; margin-bottom: 20px;">
-      <div style="width: 36px; height: 36px; border-radius: 10px; background: #fef3c7; color: #b45309; display: flex; align-items: center; justify-content: center; flex-shrink: 0;">
-        ${uiIcon("alert", 20)}
-      </div>
-      <div>
-        <strong style="display: block; color: #92400e; font-size: 14px; font-weight: 700; margin-bottom: 2px;">Payment webhook not configured</strong>
-        <span style="display: block; color: #92400e; font-size: 13px; line-height: 1.5;">
-          Razorpay payments only confirm through the customer's own browser right now. If their connection drops or they close the tab before that finishes, the payment stays "Pending" even if the money was actually captured.
-          Set <code style="background: rgba(180, 83, 9, 0.12); padding: 1px 5px; border-radius: 4px;">RAZORPAY_WEBHOOK_SECRET</code> on the backend and register <code style="background: rgba(180, 83, 9, 0.12); padding: 1px 5px; border-radius: 4px;">/api/payment/webhook</code> in your Razorpay Dashboard to fix this reliably.
-        </span>
-      </div>
-    </div>
-  `;
-}
-
 function renderDashboard() {
   const summary = state.snapshot?.summary || {};
   const alerts = superAdminOperationalAlerts();
   const affectedKiosks = new Set(alerts.map((alert) => alert.kioskId).filter(Boolean)).size;
   const paperAlerts = alerts.filter((alert) => alert.category === "paper").length;
   const tonerAlerts = alerts.filter((alert) => alert.category === "toner").length;
-  const pendingRefunds = data("refunds").filter((r) => String(r.status || "").toLowerCase() === "pending" || String(r.status || "").toLowerCase() === "requested");
   const series = buildRevenueSeries(summary, 7);
 
   const activeKiosksCount = summary.activeKiosks || 0;
@@ -1770,15 +1707,13 @@ function renderDashboard() {
   return `
     ${renderHeader("Dashboard", "Hello Admin, here is your system overview.")}
     ${renderNotice()}
-    ${renderPaymentWebhookWarning()}
 
     <div class="metrics-grid dashboard-metrics">
       ${[
       ["Total Clients", summary.kioskAdmins || data("kioskAdmins").length || 0, `↗ ${data("kioskAdmins").length} registered`, "profile", "blue", "kioskAdmins"],
       ["Total Projects", summary.projects || data("projects").length, `↗ ${summary.kioskAdmins || data("kioskAdmins").length} clients`, "hierarchy", "amber", "projects"],
       ["Total Kiosks", summary.kiosks || 0, `↗ ${summary.activeKiosks || 0} online`, "kiosks", "purple", "kiosks"],
-      ["Total Payments", summary.payments || 0, `↗ ${money(summary.gross || 0)} successful`, "payments", "green", "revenue"],
-      ["Net Revenue", money(summary.net || 0), "↗ After refunds", "revenue", "emerald", "revenue"]
+      ["Net Revenue", money(summary.net || 0), "↗ Total revenue", "revenue", "emerald", "revenue"]
     ].map(([label, value, detail, icon, tone, pageId]) => {
       const toneMap = {
         purple: 'linear-gradient(135deg, #8b5cf6, #7c3aed)',
@@ -1795,7 +1730,7 @@ function renderDashboard() {
         <div class="metric-card" data-page="${pageId}" style="cursor: pointer;">
           <span class="metric-title">${escapeHtml(label)}</span>
           <strong class="metric-value">${escapeHtml(value)}</strong>
-          <span class="trend-pill ${isNegative ? 'negative' : ''}">${escapeHtml(detail)}</span>
+          ${detail ? `<span class="trend-pill ${isNegative ? 'negative' : ''}">${escapeHtml(detail)}</span>` : ""}
           <div class="metric-icon-box" style="background: ${bg};">${uiIcon(icon, 22)}</div>
         </div>
       `;
@@ -2103,8 +2038,6 @@ window.downloadAlertsReportPDF = async function () {
     loadImageNaturalSize(companyLogo)
   ]);
 
-  drawPdfWatermark(doc, companyLogo, companyLogoSize);
-
   if (clientLogo) {
     const box = fitImageBox(clientLogoSize, logoMaxWidth, logoMaxHeight);
     doc.addImage(clientLogo, dataUrlImageFormat(clientLogo), 14, logoY + (logoMaxHeight - box.height) / 2, box.width, box.height);
@@ -2162,6 +2095,7 @@ window.downloadAlertsReportPDF = async function () {
 
   doc.autoTable({
     startY: dividerY + 8,
+    margin: { bottom: 42 },
     head: [["Date & Time", "Kiosk", "Category", "Alert Title", "Status"]],
     body: tableData.length ? tableData : [["-", "-", "-", "No alert records match the selected filters", "-"]],
     theme: "grid",
@@ -2192,14 +2126,8 @@ window.downloadAlertsReportPDF = async function () {
     }
   });
 
-  const pageCount = doc.internal.getNumberOfPages();
-  for (let i = 1; i <= pageCount; i++) {
-    doc.setPage(i);
-    doc.setFontSize(8);
-    doc.setTextColor(148, 163, 184);
-    doc.text(`Page ${i} of ${pageCount} - Printing Kiosk Management System`, pageWidth / 2, 290, { align: "center" });
-  }
-
+  redrawWatermarkOnAllPages(doc, companyLogo, companyLogoSize);
+  drawPdfCompanyFooter(doc);
   doc.save(`Alert_History_Report_${new Date().toISOString().split("T")[0]}.pdf`);
 };
 
@@ -2560,7 +2488,6 @@ function transactionMatchesStatus(record, status) {
   if (status === "success") return /success|paid|captured|completed/.test(paymentText);
   if (status === "pending") return /pending|created|queue/.test(paymentText);
   if (status === "failed") return /failed|error|declined|cancel/.test(combinedText);
-  if (status === "refund") return /refund/.test(combinedText);
   return true;
 }
 
@@ -2625,7 +2552,6 @@ function renderTransactionFilters(records) {
         <option value="success" ${filters.status === "success" ? "selected" : ""}>Success</option>
         <option value="pending" ${filters.status === "pending" ? "selected" : ""}>Pending</option>
         <option value="failed" ${filters.status === "failed" ? "selected" : ""}>Failed</option>
-        <option value="refund" ${filters.status === "refund" ? "selected" : ""}>Refund</option>
       </select>
       <select data-transaction-filter="client" aria-label="Client">
         <option value="all" ${filters.client === "all" ? "selected" : ""}>All clients</option>
@@ -2940,8 +2866,6 @@ window.downloadRevenueReportPDF = async function () {
     loadImageNaturalSize(companyLogo)
   ]);
 
-  drawPdfWatermark(doc, companyLogo, companyLogoSize);
-
   if (clientLogo) {
     const box = fitImageBox(clientLogoSize, logoMaxWidth, logoMaxHeight);
     doc.addImage(clientLogo, dataUrlImageFormat(clientLogo), 14, logoY + (logoMaxHeight - box.height) / 2, box.width, box.height);
@@ -3008,6 +2932,8 @@ window.downloadRevenueReportPDF = async function () {
     ...PDF_TABLE_STYLE
   });
 
+  redrawWatermarkOnAllPages(doc, companyLogo, companyLogoSize);
+  drawPdfCompanyFooter(doc);
   doc.save(`Revenue_Report_${filter.start}_to_${filter.end}.pdf`);
 };
 
@@ -3047,8 +2973,6 @@ window.downloadFormPrintReportPDF = async function () {
     loadImageNaturalSize(clientLogo),
     loadImageNaturalSize(companyLogo)
   ]);
-
-  drawPdfWatermark(doc, companyLogo, companyLogoSize);
 
   if (clientLogo) {
     const box = fitImageBox(clientLogoSize, logoMaxWidth, logoMaxHeight);
@@ -3103,6 +3027,8 @@ window.downloadFormPrintReportPDF = async function () {
     ...PDF_TABLE_STYLE
   });
 
+  redrawWatermarkOnAllPages(doc, companyLogo, companyLogoSize);
+  drawPdfCompanyFooter(doc);
   doc.save(`Form_Selling_Report_${filter.start}_to_${filter.end}.pdf`);
 };
 
@@ -3295,6 +3221,23 @@ function analyticsBucketedSeries(basis = "monthly") {
   return buckets;
 }
 
+function analyticsSeriesWithLocalDemo(buckets, basis = "monthly") {
+  if (!buckets.length || buckets.some((bucket) => Number(bucket.amount || 0) > 0)) return buckets;
+
+  const demoValuesByBasis = {
+    daily: [35, 70, 52, 110, 84, 145, 96, 178, 132, 205, 164, 120],
+    weekly: [180, 260, 210, 390, 325, 470, 410, 560, 495, 620],
+    yearly: [1850, 2430, 3180, 2760],
+    monthly: [120, 210, 175, 330, 280, 460, 390, 540, 610, 490, 720, 650]
+  };
+  const demoValues = demoValuesByBasis[basis] || demoValuesByBasis.monthly;
+
+  return buckets.map((bucket, index) => ({
+    ...bucket,
+    amount: demoValues[index % demoValues.length]
+  }));
+}
+
 // Form/template print revenue only (job.templateId truthy, mirrors the
 // same filter calculateFormSellingReport() uses), bucketed by date the
 // same way analyticsBucketedSeries buckets payments - lets the Analytics
@@ -3447,7 +3390,8 @@ function renderAnalytics() {
             </h2>
           </div>
           ${(() => {
-            const buckets = analyticsBucketedSeries(analyticsAutoBasis());
+            const basis = analyticsAutoBasis();
+            const buckets = analyticsSeriesWithLocalDemo(analyticsBucketedSeries(basis), basis);
             return buckets.length ? renderAnalyticsBarChart(buckets) : `<div class="empty-note">No data for this range yet.</div>`;
           })()}
         </div>
@@ -3547,7 +3491,10 @@ function renderAnalyticsFormSellingBarChart({ forPrint = false } = {}) {
   const maxVal = Math.max(30, ...dataList.map((d) => d.forms));
   const padding = { top: 60, right: 30, bottom: 42, left: 68 };
   const width = 920;
-  const height = 300;
+  // Print gets a taller canvas than the on-screen widget - once scaled down
+  // to fit the PDF page width, the old fixed 300 left the chart a short,
+  // cramped strip with a lot of empty page below it.
+  const height = forPrint ? 460 : 300;
   const chartH = height - padding.top - padding.bottom;
   const chartW = width - padding.left - padding.right;
   const { ticks: yTicks, max: yMax } = analyticsYTicks(maxVal, padding, chartH);
@@ -3832,29 +3779,43 @@ function renderAnalyticsKioskLineChart() {
       <div style="width: 100%; overflow-x: auto;">
         <style>
           .analytics-kiosk-line-point-group { cursor: pointer; }
-          .analytics-kiosk-line-guide, .analytics-kiosk-line-tooltip { opacity: 0; pointer-events: none; transition: opacity 0.15s ease; }
+          .analytics-kiosk-line-guide, .analytics-kiosk-line-tooltip { opacity: 0; pointer-events: none; transition: opacity 0.18s ease; }
           .analytics-kiosk-line-point-group:hover .analytics-kiosk-line-guide,
           .analytics-kiosk-line-point-group:hover .analytics-kiosk-line-tooltip { opacity: 1; }
-          .analytics-kiosk-line-point-group:hover .analytics-kiosk-line-dot { r: 5.5; }
+          .analytics-kiosk-line-dot { transition: r 0.18s ease; }
+          .analytics-kiosk-line-point-group:hover .analytics-kiosk-line-dot { r: 7; }
         </style>
         <svg viewBox="0 0 ${width} ${height}" style="width: 100%; min-width: 700px; height: auto; font-family: var(--font-sans, system-ui, -apple-system, sans-serif);">
           <defs>
             <linearGradient id="kioskLineGradient" x1="0" y1="0" x2="1" y2="0">
-              <stop offset="0%" stop-color="#10b981" />
-              <stop offset="100%" stop-color="#059669" />
+              <stop offset="0%" stop-color="#12b981" />
+              <stop offset="100%" stop-color="#047857" />
             </linearGradient>
 
             <linearGradient id="kioskAreaGradient" x1="0" y1="0" x2="0" y2="1">
-              <stop offset="0%" stop-color="#10b981" stop-opacity="0.25" />
-              <stop offset="100%" stop-color="#10b981" stop-opacity="0.0" />
+              <stop offset="0%" stop-color="#10b981" stop-opacity="0.32" />
+              <stop offset="55%" stop-color="#10b981" stop-opacity="0.08" />
+              <stop offset="100%" stop-color="#10b981" stop-opacity="0" />
             </linearGradient>
+
+            <filter id="kioskLineShadow" x="-10%" y="-60%" width="120%" height="240%">
+              <feDropShadow dx="0" dy="3" stdDeviation="3.5" flood-color="#059669" flood-opacity="0.3" />
+            </filter>
+
+            <filter id="kioskDotShadow" x="-120%" y="-120%" width="340%" height="340%">
+              <feDropShadow dx="0" dy="1.5" stdDeviation="1.8" flood-color="#065f46" flood-opacity="0.4" />
+            </filter>
+
+            <filter id="kioskTooltipShadow" x="-50%" y="-50%" width="200%" height="240%">
+              <feDropShadow dx="0" dy="5" stdDeviation="7" flood-color="#0f172a" flood-opacity="0.2" />
+            </filter>
           </defs>
 
-          <!-- Dashed Horizontal Grid Lines & Y-Axis Scale -->
+          <!-- Light Solid Horizontal Grid Lines & Y-Axis Scale -->
           ${yTicks.map((t) => `
-            ${t.value > 0 ? `<line x1="${padding.left}" y1="${t.y.toFixed(1)}" x2="${width - padding.right}" y2="${t.y.toFixed(1)}" stroke="#e2e8f0" stroke-width="1" stroke-dasharray="3,3" />` : ""}
+            ${t.value > 0 ? `<line x1="${padding.left}" y1="${t.y.toFixed(1)}" x2="${width - padding.right}" y2="${t.y.toFixed(1)}" stroke="#eef1f6" stroke-width="1.5" />` : ""}
             <line x1="${padding.left - 5}" y1="${t.y.toFixed(1)}" x2="${padding.left}" y2="${t.y.toFixed(1)}" stroke="#94a3b8" stroke-width="1.5" />
-            <text x="${padding.left - 12}" y="${(t.y + 4).toFixed(1)}" font-size="12" font-weight="500" fill="#64748b" text-anchor="end">${Math.round(t.value)}</text>
+            <text x="${padding.left - 12}" y="${(t.y + 4).toFixed(1)}" font-size="12" font-weight="600" fill="#64748b" text-anchor="end">₹${Math.round(t.value)}</text>
           `).join("")}
 
           <!-- Left Vertical Y-Axis Line -->
@@ -3867,13 +3828,15 @@ function renderAnalyticsKioskLineChart() {
           <path d="${revArea}" fill="url(#kioskAreaGradient)" />
 
           <!-- SINGLE Revenue Curve Line -->
-          <path d="${revLine}" fill="none" stroke="url(#kioskLineGradient)" stroke-width="3.5" stroke-linecap="round" stroke-linejoin="round" />
+          <path d="${revLine}" fill="none" stroke="url(#kioskLineGradient)" stroke-width="3.5" stroke-linecap="round" stroke-linejoin="round" filter="url(#kioskLineShadow)" />
 
           <!-- Revenue Data Points, Month ticks and Tooltips -->
           ${revPoints.map((pt) => {
-            const tooltipW = 120;
+            const tooltipW = 130;
+            const tooltipH = 48;
             const tooltipX = Math.min(width - padding.right - tooltipW, Math.max(padding.left, pt.x - tooltipW / 2));
-            const tooltipY = Math.max(padding.top, pt.y - 56);
+            const tooltipY = Math.max(padding.top, pt.y - 62);
+            const pointerX = Math.min(tooltipW - 14, Math.max(14, pt.x - tooltipX));
             return `
               <!-- Month tick mark -->
               <line x1="${pt.x.toFixed(1)}" y1="${(padding.top + chartH).toFixed(1)}" x2="${pt.x.toFixed(1)}" y2="${(padding.top + chartH + 5).toFixed(1)}" stroke="#94a3b8" stroke-width="1.5" />
@@ -3881,11 +3844,12 @@ function renderAnalyticsKioskLineChart() {
               <g class="analytics-kiosk-line-point-group">
                 <line class="analytics-kiosk-line-guide" x1="${pt.x.toFixed(1)}" y1="${pt.y.toFixed(1)}" x2="${pt.x.toFixed(1)}" y2="${(padding.top + chartH).toFixed(1)}" stroke="#10b981" stroke-width="1.5" stroke-dasharray="3,3" />
                 <rect x="${(pt.x - 14).toFixed(1)}" y="${padding.top}" width="28" height="${chartH}" fill="transparent" />
-                <circle class="analytics-kiosk-line-dot" cx="${pt.x.toFixed(1)}" cy="${pt.y.toFixed(1)}" r="4" fill="#ffffff" stroke="#10b981" stroke-width="3" />
-                <g class="analytics-kiosk-line-tooltip" transform="translate(${tooltipX.toFixed(1)}, ${tooltipY.toFixed(1)})">
-                  <rect width="${tooltipW}" height="42" rx="8" fill="#ffffff" stroke="#e2e8f0" stroke-width="1" />
-                  <text x="${tooltipW / 2}" y="17" font-size="12" font-weight="700" fill="#0f172a" text-anchor="middle">${escapeHtml(pt.label)}</text>
-                  <text x="${tooltipW / 2}" y="32" font-size="11.5" font-weight="600" fill="#059669" text-anchor="middle">Revenue : ₹${pt.val}</text>
+                <circle class="analytics-kiosk-line-dot" cx="${pt.x.toFixed(1)}" cy="${pt.y.toFixed(1)}" r="4.5" fill="#ffffff" stroke="#059669" stroke-width="3" filter="url(#kioskDotShadow)" />
+                <g class="analytics-kiosk-line-tooltip" transform="translate(${tooltipX.toFixed(1)}, ${tooltipY.toFixed(1)})" filter="url(#kioskTooltipShadow)">
+                  <path d="M ${(pointerX - 6).toFixed(1)} ${tooltipH} L ${pointerX.toFixed(1)} ${tooltipH + 7} L ${(pointerX + 6).toFixed(1)} ${tooltipH} Z" fill="#ffffff" />
+                  <rect width="${tooltipW}" height="${tooltipH}" rx="10" fill="#ffffff" />
+                  <text x="${tooltipW / 2}" y="18" font-size="11" font-weight="600" fill="#94a3b8" text-anchor="middle" letter-spacing="0.02em">${escapeHtml(pt.label)}</text>
+                  <text x="${tooltipW / 2}" y="36" font-size="15" font-weight="800" fill="#047857" text-anchor="middle">₹${pt.val}</text>
                 </g>
                 <text x="${pt.x.toFixed(1)}" y="${(padding.top + chartH + 20).toFixed(1)}" font-size="12" font-weight="500" fill="#64748b" text-anchor="middle">${pt.label}</text>
                 <title>${pt.label}: Revenue ₹${pt.val} | Forms Sold: ${pt.forms}</title>
@@ -3896,10 +3860,10 @@ function renderAnalyticsKioskLineChart() {
       </div>
 
       <!-- Centered Modern Legend Matching Reference UI -->
-      <div style="display: flex; align-items: center; justify-content: center; gap: 16px; margin-top: 16px;">
-        <div style="display: inline-flex; align-items: center; gap: 8px;">
-          <span style="width: 12px; height: 12px; border-radius: 2px; background: #10b981; display: inline-block;"></span>
-          <span style="font-size: 13px; font-weight: 600; color: #059669; font-family: var(--font-sans, system-ui, sans-serif);">UPI Revenue Trend (₹)</span>
+      <div style="display: flex; align-items: center; justify-content: center; gap: 16px; margin-top: 18px;">
+        <div style="display: inline-flex; align-items: center; gap: 8px; background: #ecfdf5; border: 1px solid #a7f3d0; padding: 6px 16px; border-radius: 999px;">
+          <span style="width: 10px; height: 10px; border-radius: 50%; background: linear-gradient(135deg, #12b981, #047857); display: inline-block;"></span>
+          <span style="font-size: 12.5px; font-weight: 700; color: #047857; letter-spacing: 0.02em; font-family: var(--font-sans, system-ui, sans-serif);">UPI Revenue Trend (₹)</span>
         </div>
       </div>
     </div>
@@ -3931,23 +3895,38 @@ function analyticsYTicks(maxValue, padding, chartHeight) {
 }
 
 function renderAnalyticsBarChart(buckets, { forPrint = false } = {}) {
-  const printColor = "#1e4fb0";
+  const printColor = "#10b981";
   const minGroupWidth = 40;
-  const padding = { top: 20, right: 24, bottom: 40, left: 64 };
-  const baseChartWidth = 960 - padding.left - padding.right;
-  const chartWidth = Math.max(baseChartWidth, buckets.length * minGroupWidth);
+  const padding = { top: 58, right: 30, bottom: 42, left: 68 };
+  const baseChartWidth = 920 - padding.left - padding.right;
+  // On screen, width grows with bucket count and the wrapper scrolls
+  // horizontally, so wide date ranges stay legible. In print there's no
+  // scroll - keep print at the fixed base width and a taller canvas instead,
+  // with labels thinned below so the axis never overlaps.
+  const chartWidth = forPrint ? baseChartWidth : Math.max(baseChartWidth, buckets.length * minGroupWidth);
   const width = chartWidth + padding.left + padding.right;
-  const height = 320;
+  const height = forPrint ? 460 : 290;
   const chartHeight = height - padding.top - padding.bottom;
   const maxValue = Math.max(0, ...buckets.map((bucket) => bucket.amount));
   const { ticks: yTicks, max: yMax } = analyticsYTicks(maxValue, padding, chartHeight);
   const groupWidth = chartWidth / buckets.length;
-  const barWidth = Math.max(6, groupWidth * 0.5);
+  const barWidth = Math.min(26, Math.max(forPrint ? 2 : 6, groupWidth * 0.45));
+  const totalAmount = buckets.reduce((total, bucket) => total + Number(bucket.amount || 0), 0);
+  const totalBadgeWidth = 172;
+  const totalBadgeHeight = 34;
+  const totalBadgeX = width - padding.right - totalBadgeWidth;
+  const totalBadgeY = 12;
+  // Print export skips labels for every single bar when there are dozens
+  // (same reasoning/technique as the line chart's labelStep below) so axis
+  // text never overlaps into an unreadable smear.
+  const maxAxisLabels = 12;
+  const labelStep = Math.max(1, Math.ceil(buckets.length / maxAxisLabels));
 
   const bars = buckets.map((bucket, index) => {
     const groupX = padding.left + index * groupWidth;
     const barHeight = (bucket.amount / yMax) * chartHeight;
     return {
+      index,
       label: analyticsBarLabel(bucket),
       barX: groupX + groupWidth / 2 - barWidth / 2,
       barY: padding.top + chartHeight - barHeight,
@@ -3959,10 +3938,11 @@ function renderAnalyticsBarChart(buckets, { forPrint = false } = {}) {
 
   const styleBlock = forPrint ? "" : `
     <style>
-      .analytics-chart-wrap { --amount-color: #2a78d6; position: relative; overflow-x: auto; overflow-y: hidden; padding-bottom: 8px; }
-      .analytics-bar { transition: opacity 0.15s ease; }
-      .analytics-bar-group:hover .analytics-bar { opacity: 0.85; }
-      .analytics-bar-tooltip { opacity: 0; pointer-events: none; transition: opacity 0.15s ease; }
+      .analytics-chart-wrap { position: relative; overflow-x: auto; overflow-y: hidden; padding-bottom: 4px; }
+      .analytics-bar-group { cursor: pointer; }
+      .analytics-bar-emerald { fill: #10b981; transition: fill 0.15s ease, filter 0.15s ease; }
+      .analytics-bar-group:hover .analytics-bar-emerald { fill: #059669; filter: drop-shadow(0 4px 8px rgba(16, 185, 129, 0.35)); }
+      .analytics-bar-tooltip { opacity: 0; pointer-events: none; transition: opacity 0.15s ease, transform 0.15s ease; }
       .analytics-bar-group:hover .analytics-bar-tooltip { opacity: 1; }
     </style>
   `;
@@ -3970,28 +3950,50 @@ function renderAnalyticsBarChart(buckets, { forPrint = false } = {}) {
   return `
     ${styleBlock}
     <div class="analytics-chart-wrap">
-      <svg viewBox="0 0 ${width} ${height}" role="img" aria-label="Bar chart" style="min-width: 100%; width: ${width}px; height: ${height}px;">
+      <svg viewBox="0 0 ${width} ${height}" role="img" aria-label="Bar chart" style="min-width: 100%; width: ${width}px; height: ${height}px; font-family: var(--font-sans, system-ui, -apple-system, sans-serif);">
+        <!-- Filtered Total Amount -->
+        <g transform="translate(${totalBadgeX.toFixed(1)}, ${totalBadgeY})">
+          <rect width="${totalBadgeWidth}" height="${totalBadgeHeight}" rx="10" fill="#ecfdf5" stroke="#a7f3d0" stroke-width="1" />
+          <text x="14" y="14" fill="#047857" font-size="10.5px" font-weight="700" text-transform="uppercase">Total Amount</text>
+          <text x="14" y="27" fill="#065f46" font-size="13px" font-weight="800">${escapeHtml(money(totalAmount))}</text>
+        </g>
+
+        <!-- Dashed Horizontal Gridlines & Y-Axis Scale -->
         <g>
           ${yTicks.map((tick) => `
-            <line x1="${padding.left}" x2="${width - padding.right}" y1="${tick.y.toFixed(1)}" y2="${tick.y.toFixed(1)}" stroke="#f1f5f9" stroke-width="2" stroke-dasharray="6,6" />
-            <text x="${padding.left - 10}" y="${(tick.y + 4).toFixed(1)}" text-anchor="end" fill="#64748b" font-size="12px" font-family="Inter, sans-serif">${escapeHtml(money(tick.value).replace("Rs. ", ""))}</text>
+            ${tick.value > 0 ? `<line x1="${padding.left}" x2="${width - padding.right}" y1="${tick.y.toFixed(1)}" y2="${tick.y.toFixed(1)}" stroke="#e2e8f0" stroke-width="1" stroke-dasharray="3,3" />` : ""}
+            <line x1="${padding.left - 5}" y1="${tick.y.toFixed(1)}" x2="${padding.left}" y2="${tick.y.toFixed(1)}" stroke="#94a3b8" stroke-width="1.5" />
+            <text x="${padding.left - 12}" y="${(tick.y + 4).toFixed(1)}" text-anchor="end" fill="#64748b" font-size="12px" font-weight="500">${Math.round(tick.value)}</text>
           `).join("")}
         </g>
+
+        <!-- Left Vertical Y-Axis Line -->
+        <line x1="${padding.left}" y1="${padding.top}" x2="${padding.left}" y2="${(padding.top + chartHeight).toFixed(1)}" stroke="#94a3b8" stroke-width="1.5" />
+
+        <!-- Bottom Solid X-Axis Baseline -->
+        <line x1="${padding.left}" y1="${(padding.top + chartHeight).toFixed(1)}" x2="${width - padding.right}" y2="${(padding.top + chartHeight).toFixed(1)}" stroke="#94a3b8" stroke-width="1.5" />
+
+        <!-- Bars, Month Ticks and Tooltips -->
         <g>
-          ${bars.map((bar, index) => {
-            const colors = ["#3b82f6", "#10b981", "#8b5cf6", "#f59e0b"];
-            const barColor = colors[index % colors.length];
+          ${bars.map((bar) => {
+            const tooltipW = 140;
+            const tooltipX = Math.min(width - padding.right - tooltipW, Math.max(padding.left, bar.centerX - tooltipW / 2));
+            const tooltipY = Math.max(padding.top, bar.barY - 58);
             return `
+            <!-- Month tick mark -->
+            <line x1="${bar.centerX.toFixed(1)}" y1="${(padding.top + chartHeight).toFixed(1)}" x2="${bar.centerX.toFixed(1)}" y2="${(padding.top + chartHeight + 5).toFixed(1)}" stroke="#94a3b8" stroke-width="1.5" />
+
             <g class="analytics-bar-group">
-              <rect class="analytics-bar" x="${bar.barX.toFixed(1)}" y="${bar.barY.toFixed(1)}" width="${barWidth.toFixed(1)}" height="${Math.max(0, bar.barHeight).toFixed(1)}" rx="4" fill="${forPrint ? printColor : barColor}" />
               <rect x="${(bar.centerX - groupWidth / 2).toFixed(1)}" y="${padding.top}" width="${groupWidth.toFixed(1)}" height="${chartHeight}" fill="transparent" />
-              <text x="${bar.centerX.toFixed(1)}" y="${height - 16}" text-anchor="middle" fill="#64748b" font-size="11px" font-weight="500">${escapeHtml(bar.label)}</text>
+              <rect class="analytics-bar-emerald" x="${bar.barX.toFixed(1)}" y="${bar.barY.toFixed(1)}" width="${barWidth.toFixed(1)}" height="${Math.max(0, bar.barHeight).toFixed(1)}" rx="5" fill="${forPrint ? printColor : "#10b981"}" />
+              ${(!forPrint || bar.index % labelStep === 0) ? `<text x="${bar.centerX.toFixed(1)}" y="${(padding.top + chartHeight + 20).toFixed(1)}" text-anchor="middle" fill="#64748b" font-size="12px" font-weight="500">${escapeHtml(bar.label)}</text>` : ""}
               ${forPrint
-                ? (bar.amount > 0 ? `<text x="${bar.centerX.toFixed(1)}" y="${Math.max(padding.top + 10, bar.barY - 6).toFixed(1)}" text-anchor="middle" fill="${printColor}" font-size="11px" font-weight="700">${escapeHtml(money(bar.amount))}</text>` : "")
+                ? (bar.index % labelStep === 0 && bar.amount > 0 ? `<text x="${bar.centerX.toFixed(1)}" y="${Math.max(padding.top + 10, bar.barY - 6).toFixed(1)}" text-anchor="middle" fill="${printColor}" font-size="11px" font-weight="700">${escapeHtml(money(bar.amount))}</text>` : "")
                 : `
-                <g class="analytics-bar-tooltip" transform="translate(${Math.min(width - 100, Math.max(4, bar.centerX - 50))}, ${Math.max(padding.top, bar.barY - 30)})">
-                  <rect width="100" height="26" rx="6" fill="#ffffff" stroke="#e2e8f0" />
-                  <text x="10" y="17" fill="var(--amount-color)" font-size="11px" font-weight="700">${escapeHtml(money(bar.amount))}</text>
+                <g class="analytics-bar-tooltip" transform="translate(${tooltipX.toFixed(1)}, ${tooltipY.toFixed(1)})">
+                  <rect width="${tooltipW}" height="48" rx="8" fill="#ffffff" stroke="#e2e8f0" stroke-width="1" filter="drop-shadow(0 4px 12px rgba(15, 23, 42, 0.08))" />
+                  <text x="14" y="19" fill="#0f172a" font-size="12.5px" font-weight="700">${escapeHtml(bar.label)}</text>
+                  <text x="14" y="36" fill="#059669" font-size="12px" font-weight="600">UPI Amount (Rs.) : ${escapeHtml(String(bar.amount || 0))}</text>
                 </g>
               `}
             </g>
@@ -3999,6 +4001,14 @@ function renderAnalyticsBarChart(buckets, { forPrint = false } = {}) {
           }).join("")}
         </g>
       </svg>
+    </div>
+
+    <!-- Centered Modern Legend Matching Kiosk Admin Analytics -->
+    <div style="display: flex; align-items: center; justify-content: center; gap: 16px; margin-top: 16px;">
+      <div style="display: inline-flex; align-items: center; gap: 8px;">
+        <span style="width: 12px; height: 12px; border-radius: 2px; background: #10b981; display: inline-block;"></span>
+        <span style="font-size: 13px; font-weight: 600; color: #059669; font-family: var(--font-sans, system-ui, sans-serif);">UPI Amount (Rs.)</span>
+      </div>
     </div>
   `;
 }
@@ -4008,9 +4018,16 @@ function renderAnalyticsLineChart(buckets, { forPrint = false } = {}) {
   const minGroupWidth = 40;
   const padding = { top: 20, right: 24, bottom: 40, left: 64 };
   const baseChartWidth = 960 - padding.left - padding.right;
-  const chartWidth = Math.max(baseChartWidth, buckets.length * minGroupWidth);
+  // See renderAnalyticsBarChart's identical comment: print has no scroll, so
+  // letting width grow with bucket count just shrinks the rendered height
+  // toward nothing once it's scaled to fit the page. Keep print at the
+  // fixed base width; label thinning below already keeps the axis legible.
+  const chartWidth = forPrint ? baseChartWidth : Math.max(baseChartWidth, buckets.length * minGroupWidth);
   const width = chartWidth + padding.left + padding.right;
-  const height = 320;
+  // Print gets a taller canvas than the on-screen widget - once scaled down
+  // to fit the PDF page width, the old fixed 320 left the chart a short,
+  // cramped strip with a lot of empty page below it.
+  const height = forPrint ? 480 : 320;
   const chartHeight = height - padding.top - padding.bottom;
   const maxValue = Math.max(0, ...buckets.map((bucket) => bucket.amount));
   const { ticks: yTicks, max: yMax } = analyticsYTicks(maxValue, padding, chartHeight);
@@ -4225,7 +4242,10 @@ function drawPdfWatermark(doc, logoDataUrl, naturalSize) {
     const box = fitImageBox(naturalSize, pageWidth * 0.6, pageHeight * 0.35);
 
     doc.saveGraphicsState();
-    doc.setGState(new doc.GState({ opacity: 0.07 }));
+    // 0.07 was too faint for the wordmark's thin text strokes to read at all
+    // (only the bolder icon mark survived) - 0.12 keeps it clearly subtle
+    // background watermark while actually being legible.
+    doc.setGState(new doc.GState({ opacity: 0.12 }));
     doc.addImage(logoDataUrl, dataUrlImageFormat(logoDataUrl), (pageWidth - box.width) / 2, (pageHeight - box.height) / 2, box.width, box.height);
     doc.restoreGraphicsState();
   } catch {
@@ -4234,7 +4254,67 @@ function drawPdfWatermark(doc, logoDataUrl, naturalSize) {
   }
 }
 
+// drawPdfWatermark() only paints whichever page is active at call time. A
+// report that spills onto page 2+ (long alert/transaction table, wide
+// chart) used to leave those extra pages with no watermark at all - call
+// this at the very end, once all content (including any doc.addPage()
+// calls) has been added, so every page in the finished document gets one.
+function redrawWatermarkOnAllPages(doc, logoDataUrl, naturalSize) {
+  if (!logoDataUrl) return;
+  const pageCount = doc.internal.getNumberOfPages();
+  for (let i = 1; i <= pageCount; i++) {
+    doc.setPage(i);
+    drawPdfWatermark(doc, logoDataUrl, naturalSize);
+  }
+}
+
+// Standard footer for every PDF export: company address/CIN/contact + page
+// number + generated timestamp on every page, plus a blank signature block
+// (System Administrator / Authorized Signatory) on the last page only. Call
+// this last, right before doc.save(), after all content (including any
+// doc.addPage() calls) has been added, so the page count is final.
+function drawPdfCompanyFooter(doc) {
+  const pageCount = doc.internal.getNumberOfPages();
+  const generatedAt = new Date().toLocaleString();
+  const marginX = 14;
+
+  for (let i = 1; i <= pageCount; i++) {
+    doc.setPage(i);
+    const pageWidth = doc.internal.pageSize.getWidth();
+    const pageHeight = doc.internal.pageSize.getHeight();
+
+    if (i === pageCount) {
+      const lineY = pageHeight - 40;
+      const labelY = pageHeight - 36;
+      doc.setDrawColor(148, 163, 184);
+      doc.setLineWidth(0.3);
+      doc.line(marginX, lineY, marginX + 65, lineY);
+      doc.line(pageWidth - marginX - 65, lineY, pageWidth - marginX, lineY);
+      doc.setFont(undefined, "normal");
+      doc.setFontSize(10);
+      doc.setTextColor(51, 65, 85);
+      doc.text("System Administrator", marginX + 32.5, labelY, { align: "center" });
+      doc.text("Authorized Signatory", pageWidth - marginX - 32.5, labelY, { align: "center" });
+    }
+
+    const dividerY = pageHeight - 24;
+    doc.setDrawColor(226, 232, 240);
+    doc.setLineWidth(0.3);
+    doc.line(marginX, dividerY, pageWidth - marginX, dividerY);
+
+    doc.setFont(undefined, "normal");
+    doc.setFontSize(8);
+    doc.setTextColor(100, 116, 139);
+    doc.text("AARYA INNOVTECH PVT. LTD. CIN: U29305MH2019PTC327551 | +91 9359604384 | https://aaryainnovtech.com/", marginX, pageHeight - 18);
+    doc.text(`Page ${i} of ${pageCount}`, pageWidth - marginX, pageHeight - 18, { align: "right" });
+    doc.text("Nashik Office: Flat No.4A, Sayali Darshan A-Wing, Makhamalabad Road, Nashik-422003.", marginX, pageHeight - 13);
+    doc.text(`Generated on: ${generatedAt}`, pageWidth - marginX, pageHeight - 13, { align: "right" });
+    doc.setTextColor(0);
+  }
+}
+
 const PDF_TABLE_STYLE = {
+  margin: { bottom: 42 },
   styles: {
     fontSize: 10,
     lineColor: [42, 120, 214],
@@ -4302,8 +4382,6 @@ window.downloadAnalyticsPDF = async function () {
     loadImageNaturalSize(companyLogo)
   ]);
 
-  drawPdfWatermark(doc, companyLogo, companyLogoSize);
-
   if (clientLogo) {
     const box = fitImageBox(clientLogoSize, logoMaxWidth, logoMaxHeight);
     doc.addImage(clientLogo, dataUrlImageFormat(clientLogo), 14, logoY + (logoMaxHeight - box.height) / 2, box.width, box.height);
@@ -4353,7 +4431,7 @@ window.downloadAnalyticsPDF = async function () {
 
     if (chart) {
       const chartHeight = chartDisplayWidth * (chart.height / chart.width);
-      if (cursorY + 20 + chartHeight > pageHeight - 14) {
+      if (cursorY + 20 + chartHeight > pageHeight - 42) {
         doc.addPage();
         cursorY = 20;
       }
@@ -4369,7 +4447,8 @@ window.downloadAnalyticsPDF = async function () {
       cursorY += chartHeight + 14;
     }
   } else {
-    const buckets = seriesFn(analyticsAutoBasis());
+    const basis = analyticsAutoBasis();
+    const buckets = analyticsSeriesWithLocalDemo(seriesFn(basis), basis);
 
     if (buckets.length) {
       const html = renderAnalyticsBarChart(buckets, { forPrint: true });
@@ -4377,7 +4456,7 @@ window.downloadAnalyticsPDF = async function () {
 
       if (chart) {
         const chartHeight = chartDisplayWidth * (chart.height / chart.width);
-        if (cursorY + 20 + chartHeight > pageHeight - 14) {
+        if (cursorY + 20 + chartHeight > pageHeight - 42) {
           doc.addPage();
           cursorY = 20;
         }
@@ -4398,7 +4477,7 @@ window.downloadAnalyticsPDF = async function () {
 
       if (lineChart) {
         const lineChartHeight = chartDisplayWidth * (lineChart.height / lineChart.width);
-        if (cursorY + 20 + lineChartHeight > pageHeight - 14) {
+        if (cursorY + 20 + lineChartHeight > pageHeight - 42) {
           doc.addPage();
           cursorY = 20;
         }
@@ -4416,6 +4495,8 @@ window.downloadAnalyticsPDF = async function () {
     }
   }
 
+  redrawWatermarkOnAllPages(doc, companyLogo, companyLogoSize);
+  drawPdfCompanyFooter(doc);
   doc.save(`Graphical_Analytics_${tabLabel.replace(/[^a-z0-9]+/gi, "_")}_${clientName.replace(/[^a-z0-9]+/gi, "_")}_${rangeLabel.replace(/[^a-z0-9]+/gi, "_")}.pdf`);
 };
 
@@ -4485,7 +4566,7 @@ function renderKioskSalesChart() {
 }
 
 function totalRecords() {
-  return ["projects", "kioskAdmins", "kiosks", "services", "jobs", "refunds"]
+  return ["projects", "kioskAdmins", "kiosks", "services", "jobs"]
     .reduce((sum, key) => sum + data(key).length, 0);
 }
 
@@ -4666,12 +4747,6 @@ function servicesForKiosk(kiosk = {}) {
     if (kioskIds.length) return kioskIds.includes(kioskId);
     return serviceForProject(service, projectId);
   });
-}
-
-function kioskPricingOverrideCount(kiosk = {}) {
-  const serviceIds = new Set(servicesForKiosk(kiosk).map((service) => service.id));
-  return Object.keys(kioskPricingOverrides(kiosk.kioskId || ""))
-    .filter((serviceId) => serviceIds.has(serviceId)).length;
 }
 
 function serviceProjectLabel(projectId) {
@@ -4937,7 +5012,7 @@ function renderCollectionTable(collection, rows) {
   const page = paginated(rows, pageKey);
 
   return `
-    <div class="table-wrap">
+    <div class="table-wrap collection-table collection-table-${escapeHtml(collection)}">
       <table>
         <thead>
           <tr>
@@ -4980,6 +5055,7 @@ function collectionColumnLabel(column) {
   if (column === "projectIds") return "Projects";
   if (column === "kioskTitle") return "Kiosk Heading";
   if (column === "kioskSubtitle") return "Kiosk Description";
+  if (column === "printerReady") return "Printer";
   return labelize(column);
 }
 
@@ -5025,6 +5101,22 @@ function formatCell(collection, column, row) {
     const isGood = row[column] === "online" || row[column] === "active";
     const color = isGood ? "#10b981" : "#ef4444";
     return `<div style="display: flex; align-items: center; gap: 6px;"><span style="width: 8px; height: 8px; border-radius: 50%; background-color: ${color}; flex-shrink: 0;"></span><span>${escapeHtml(row[column] || "")}</span></div>`;
+  }
+  if (column === "printerReady") {
+    // "status" above only reflects the kiosk PC/network being reachable -
+    // deliberately kept separate from printer hardware, see the comment on
+    // /api/kiosk/health in server.js. That means a kiosk PC that's online
+    // but has no printer plugged in at all still shows a green "online"
+    // status - this column is what actually tells an operator whether the
+    // printer itself is connected and ready to print right now.
+    const hasHealthData = row.printerHealth && typeof row.printerHealth === "object";
+    if (!hasHealthData) {
+      return `<div style="display: flex; align-items: center; gap: 6px;"><span style="width: 8px; height: 8px; border-radius: 50%; background-color: #94a3b8; flex-shrink: 0;"></span><span>Unknown</span></div>`;
+    }
+    const isReady = row.printerReady === true;
+    const color = isReady ? "#10b981" : "#ef4444";
+    const label = isReady ? "Ready" : (row.printerErrorMessage || "Not connected");
+    return `<div style="display: flex; align-items: center; gap: 6px;" title="${escapeHtml(row.printerErrorMessage || "")}"><span style="width: 8px; height: 8px; border-radius: 50%; background-color: ${color}; flex-shrink: 0;"></span><span>${escapeHtml(label)}</span></div>`;
   }
   if (collection === "kioskAdmins" && column === "kioskTitle") return escapeHtml(clientKioskTitle(row) || "Not set");
   if (collection === "kioskAdmins" && column === "kioskSubtitle") return escapeHtml(clientKioskSubtitle(row) || "Not set");
@@ -5113,6 +5205,144 @@ function renderGenericEditor(collection) {
   `;
 }
 
+// Shared by the full render and refreshIdleImageGridDom()'s scoped patch, so
+// a fresh upload/move/delete never has to fall back to a full render() to
+// pick up markup changes.
+function idleImageGridItemsHtml(images) {
+  if (!images.length) return `<div class="empty-note">No slideshow images uploaded yet.</div>`;
+
+  return images.map((imageUrl, index) => `
+    <div class="idle-image-item">
+      ${renderEditorImagePreview(imageUrl, `IMG${index + 1}`)}
+      <div class="idle-image-item-actions">
+        <button type="button" class="idle-image-action-btn idle-image-action-up" data-idle-image-move="${index}" data-idle-image-direction="-1" ${index === 0 ? "disabled" : ""} title="Move up" aria-label="Move image up">${uiIcon("arrow-right", 13)}</button>
+        <button type="button" class="idle-image-action-btn idle-image-action-down" data-idle-image-move="${index}" data-idle-image-direction="1" ${index === images.length - 1 ? "disabled" : ""} title="Move down" aria-label="Move image down">${uiIcon("arrow-right", 13)}</button>
+        <button type="button" class="idle-image-action-btn idle-image-action-remove" data-idle-image-delete="${index}" title="Remove image" aria-label="Remove image">${uiIcon("trash", 13)}</button>
+      </div>
+    </div>
+  `).join("");
+}
+
+// Updates just the slideshow-images panel in place from state.editor.draft,
+// instead of calling the global render(). This panel lives inside the
+// bigger multi-field "Edit Client Account" modal, where every OTHER field
+// (name, email, project...) only syncs back into state.editor.draft at Save
+// time - a full render() here would rebuild the whole modal from that draft
+// and silently discard anything typed elsewhere but not yet saved (same
+// reasoning as window.updateIdleMediaModePreview above).
+function refreshIdleImageGridDom() {
+  if (!state.editor) return;
+  const images = Array.isArray(state.editor.draft.idleImageUrls) ? state.editor.draft.idleImageUrls : [];
+
+  const grid = document.querySelector("[data-idle-image-grid]");
+  if (grid) grid.innerHTML = idleImageGridItemsHtml(images);
+
+  const heading = document.querySelector("[data-idle-image-heading]");
+  if (heading) heading.textContent = `Slideshow images ${images.length ? `(${images.length}/10)` : ""}`;
+
+  const uploadInput = document.querySelector("[data-idle-image-upload]");
+  if (uploadInput) uploadInput.disabled = images.length >= 10;
+}
+
+function refreshIdleVideoDom() {
+  if (!state.editor) return;
+  const videoUrl = state.editor.draft.idleVideoUrl || "";
+
+  const label = document.querySelector("[data-idle-video-upload-label]");
+  if (label) label.textContent = videoUrl ? "Replace video" : "Upload video";
+
+  const urlInput = document.querySelector('[data-editor-field="idleVideoUrl"]');
+  if (urlInput) urlInput.value = videoUrl;
+
+  const slot = document.querySelector("[data-idle-video-preview-slot]");
+  if (slot) {
+    slot.innerHTML = videoUrl ? `<video src="${escapeHtml(videoUrl)}" muted loop controls class="idle-video-preview"></video>` : "";
+  }
+}
+
+// Same "patch just this bit of DOM instead of the global render()" fix as
+// the idle-screensaver upload handlers above - avoids wiping other unsaved
+// fields in the same editor modal and resetting its scroll position.
+function refreshClientLogoDom() {
+  if (!state.editor) return;
+  const value = state.editor.draft.logoUrl || "";
+  const wrapper = document.querySelector('[data-field-wrapper="logoUrl"]');
+  if (!wrapper) return;
+
+  const previewSlot = wrapper.querySelector("[data-image-upload-preview]");
+  if (previewSlot) previewSlot.innerHTML = renderEditorImagePreview(value, state.editor.draft.name || "CL");
+
+  const statusEl = wrapper.querySelector("[data-image-upload-status]");
+  if (statusEl) statusEl.textContent = value ? "Image uploaded" : "No file chosen";
+
+  const hiddenInput = wrapper.querySelector('[data-editor-field="logoUrl"]');
+  if (hiddenInput) hiddenInput.value = value;
+}
+
+function refreshDraftTemplateCardDom(index) {
+  if (!state.editor) return;
+  const template = (state.editor.draft.templates || [])[index];
+  if (!template) return;
+  const card = document.querySelector(`[data-draft-template-card="${index}"]`);
+  if (card) card.outerHTML = renderDraftTemplate(template, index);
+}
+
+function setIdleUploadStatus(selector, message, tone = "info") {
+  const el = document.querySelector(selector);
+  if (!el) return;
+  el.textContent = message || "";
+  el.classList.toggle("is-error", tone === "error");
+}
+
+function setIdleUploadProgress(wrapSelector, fillSelector, percent) {
+  const wrap = document.querySelector(wrapSelector);
+  const fill = document.querySelector(fillSelector);
+  if (!wrap || !fill) return;
+  if (percent === null) {
+    wrap.hidden = true;
+    fill.style.width = "0%";
+    return;
+  }
+  wrap.hidden = false;
+  fill.style.width = `${Math.max(0, Math.min(100, percent))}%`;
+}
+
+// Same auth/base-URL/error-shape contract as fetchJson, but via
+// XMLHttpRequest instead of fetch() - fetch has no upload-progress event,
+// only XHR exposes xhr.upload.onprogress, which the idle-screensaver
+// image/video upload progress bar needs.
+function uploadWithProgress(path, formData, onProgress) {
+  return new Promise((resolve, reject) => {
+    const xhr = new XMLHttpRequest();
+    xhr.open("POST", `${BACKEND_URL}${path}`);
+    if (state.authToken) {
+      xhr.setRequestHeader("Authorization", `Bearer ${state.authToken}`);
+    }
+    xhr.upload.onprogress = (event) => {
+      if (onProgress && event.lengthComputable) {
+        onProgress(Math.round((event.loaded / event.total) * 100));
+      }
+    };
+    xhr.onload = () => {
+      let payload = {};
+      try { payload = JSON.parse(xhr.responseText || "{}"); } catch { /* non-JSON error body */ }
+      if (xhr.status >= 200 && xhr.status < 300) {
+        resolve(payload);
+        return;
+      }
+      const error = new Error(payload.error || `Request failed: ${xhr.status}`);
+      error.status = xhr.status;
+      if (state.authToken && isSessionAuthError(error)) {
+        expireAdminSession();
+        error.sessionExpired = true;
+      }
+      reject(error);
+    };
+    xhr.onerror = () => reject(new Error("Network error during upload."));
+    xhr.send(formData);
+  });
+}
+
 function renderKioskAdminIdleScreensaverEditor(draft) {
   const mode = ["none", "image", "video"].includes(draft.idleMediaMode) ? draft.idleMediaMode : "none";
   const images = Array.isArray(draft.idleImageUrls) ? draft.idleImageUrls : [];
@@ -5141,34 +5371,29 @@ function renderKioskAdminIdleScreensaverEditor(draft) {
       </div>
 
       <div class="idle-media-section ${mode === "image" ? "" : "is-dimmed"}" data-idle-media-section="image">
-        <h3 style="font-size: 14px; font-weight: 700; color: #334155; margin-bottom: 10px;">Slideshow images ${images.length ? `(${images.length}/10)` : ""}</h3>
+        <h3 style="font-size: 14px; font-weight: 700; color: #334155; margin-bottom: 10px;" data-idle-image-heading>Slideshow images ${images.length ? `(${images.length}/10)` : ""}</h3>
         <label class="template-upload-row compact-template-upload" style="margin-bottom: 14px; display: inline-block;">
           <span style="background: linear-gradient(135deg, #6366f1 0%, #8b5cf6 100%); color: white; border-radius: 10px; padding: 8px 16px; font-size: 12.5px; font-weight: 700; cursor: pointer; display: inline-flex; align-items: center; gap: 6px;">Add images</span>
           <input type="file" accept="image/png,image/jpeg,image/gif,image/webp" data-idle-image-upload multiple ${images.length >= 10 ? "disabled" : ""} style="display: none;" />
         </label>
-        <div class="idle-image-grid">
-          ${images.length ? images.map((imageUrl, index) => `
-            <div class="idle-image-item">
-              ${renderEditorImagePreview(imageUrl, `IMG${index + 1}`)}
-              <div class="idle-image-item-actions">
-                <button type="button" class="ghost-button small-button" data-idle-image-move="${index}" data-idle-image-direction="-1" ${index === 0 ? "disabled" : ""}>Up</button>
-                <button type="button" class="ghost-button small-button" data-idle-image-move="${index}" data-idle-image-direction="1" ${index === images.length - 1 ? "disabled" : ""}>Down</button>
-                <button type="button" class="danger-button small-button" data-idle-image-delete="${index}">Remove</button>
-              </div>
-            </div>
-          `).join("") : `<div class="empty-note">No slideshow images uploaded yet.</div>`}
+        <div class="idle-upload-progress" data-idle-upload-progress hidden><div class="idle-upload-progress-fill" data-idle-upload-progress-fill></div></div>
+        <div class="idle-upload-status" data-idle-upload-status></div>
+        <div class="idle-image-grid" data-idle-image-grid>
+          ${idleImageGridItemsHtml(images)}
         </div>
       </div>
 
       <div class="idle-media-section ${mode === "video" ? "" : "is-dimmed"}" data-idle-media-section="video" style="margin-top: 14px;">
         <h3 style="font-size: 14px; font-weight: 700; color: #334155; margin-bottom: 8px;">Idle video</h3>
         <label class="template-upload-row compact-template-upload" style="margin-bottom: 10px; display: inline-block;">
-          <span style="background: linear-gradient(135deg, #6366f1 0%, #8b5cf6 100%); color: white; border-radius: 10px; padding: 8px 16px; font-size: 12.5px; font-weight: 700; cursor: pointer; display: inline-flex; align-items: center; gap: 6px;">${videoUrl ? "Replace video" : "Upload video"}</span>
+          <span data-idle-video-upload-label style="background: linear-gradient(135deg, #6366f1 0%, #8b5cf6 100%); color: white; border-radius: 10px; padding: 8px 16px; font-size: 12.5px; font-weight: 700; cursor: pointer; display: inline-flex; align-items: center; gap: 6px;">${videoUrl ? "Replace video" : "Upload video"}</span>
           <input type="file" accept="video/mp4,video/webm" data-idle-video-upload style="display: none;" />
         </label>
+        <div class="idle-upload-progress" data-idle-video-upload-progress hidden><div class="idle-upload-progress-fill" data-idle-video-upload-progress-fill></div></div>
+        <div class="idle-upload-status" data-idle-video-upload-status></div>
         <p style="font-size: 12px; color: #64748b; margin: 0 0 8px;">Upload an MP4/WebM file (max 50 MB), or paste a direct video URL below.</p>
         <input type="url" value="${escapeHtml(videoUrl)}" data-editor-field="idleVideoUrl" placeholder="Direct MP4 or video URL..." style="width: 100%; padding: 10px 14px; border-radius: 12px; border: 1px solid #cbd5e1; font-size: 13px; background: #ffffff; color: #0f172a; margin-bottom: 10px;" />
-        ${videoUrl ? `<video src="${escapeHtml(videoUrl)}" muted loop controls class="idle-video-preview"></video>` : ""}
+        <div data-idle-video-preview-slot>${videoUrl ? `<video src="${escapeHtml(videoUrl)}" muted loop controls class="idle-video-preview"></video>` : ""}</div>
       </div>
     </section>
   `;
@@ -5214,10 +5439,10 @@ function renderField(field, draft, disabled = false) {
 
   if (field.type === "image-upload") {
     return `
-      <div style="grid-column: span 2;">
+      <div style="grid-column: span 2;" data-field-wrapper="${escapeHtml(field.key)}">
         <label style="display: block; font-size: 13.5px; font-weight: 700; color: #334155; margin-bottom: 8px; font-family: var(--font-serif, 'Playfair Display', Georgia, serif);">${escapeHtml(field.label)}</label>
         <div style="background: #f8fafc; border: 2px dashed #cbd5e1; border-radius: 16px; padding: 18px 22px; display: flex; align-items: center; gap: 20px; transition: border-color 0.2s ease;">
-          <div style="flex-shrink: 0;">
+          <div style="flex-shrink: 0;" data-image-upload-preview>
             ${renderEditorImagePreview(value, draft.name || "CL")}
           </div>
           <div style="flex: 1; display: flex; flex-direction: column; gap: 6px;">
@@ -5226,7 +5451,7 @@ function renderField(field, draft, disabled = false) {
                 ${uiIcon("upload", 16)} Choose File
                 <input type="file" accept="image/png,image/jpeg,image/gif,image/webp" data-client-logo-upload ${disabled ? "disabled" : ""} style="display: none;" onchange="if(this.files[0]){ this.parentElement.nextElementSibling.innerText = this.files[0].name; }" />
               </label>
-              <span style="font-size: 12.5px; font-weight: 600; color: #64748b;">${value ? "Image uploaded" : "No file chosen"}</span>
+              <span style="font-size: 12.5px; font-weight: 600; color: #64748b;" data-image-upload-status>${value ? "Image uploaded" : "No file chosen"}</span>
             </div>
             <input type="hidden" value="${escapeHtml(value)}" data-editor-field="${escapeHtml(field.key)}" />
             ${field.helper ? `<small style="font-size: 12px; color: #94a3b8; margin-top: 2px; display: block;">${escapeHtml(field.helper)}</small>` : ""}
@@ -5403,13 +5628,13 @@ function renderEditorImagePreview(imageUrl = "", fallback = "TM") {
 
 function renderDraftTemplate(template, index) {
   return `
-    <div class="template-editor-card compact-template-card">
+    <div class="template-editor-card compact-template-card" data-draft-template-card="${index}">
       <div class="template-editor-top compact-template-top">
         <span class="template-row-index">${index + 1}</span>
         ${renderEditorImagePreview(template.imageUrl, template.title || `T${index + 1}`)}
         <div class="template-row-copy">
           <input type="text" class="template-title-input" data-template-field="title" data-template-index="${index}" value="${escapeHtml(template.title || "")}" placeholder="Template ${index + 1}" aria-label="Template name" />
-          <p class="helper-text">${escapeHtml(templateDocumentKind(template.documentType || template.imageUrl).toUpperCase())} | ${Number(template.pages || 1)} page${Number(template.pages || 1) === 1 ? "" : "s"} | ${escapeHtml(template.imageUrl ? "Ready for kiosk" : "Upload needed")}</p>
+          <p class="helper-text" data-template-helper="${index}">${escapeHtml(templateDocumentKind(template.documentType || template.imageUrl).toUpperCase())} | ${Number(template.pages || 1)} page${Number(template.pages || 1) === 1 ? "" : "s"} | ${escapeHtml(template.imageUrl ? "Ready for kiosk" : "Upload needed")}</p>
         </div>
         <button class="danger-button small-button" data-draft-template-delete="${index}">Remove</button>
       </div>
@@ -5441,21 +5666,18 @@ function renderPricing() {
             <th>Kiosk</th>
             <th>Project</th>
             <th>Services</th>
-            <th>Custom Prices</th>
             <th>Actions</th>
           </tr>
         </thead>
         <tbody>
           ${page.items.length ? page.items.map((kiosk) => {
     const serviceCount = servicesForKiosk(kiosk).length;
-    const overrideCount = kioskPricingOverrideCount(kiosk);
     return `
               <tr>
                 <td><strong>${escapeHtml(kiosk.kioskId || "-")}</strong></td>
                 <td>${escapeHtml([kiosk.name, kiosk.branch].filter(Boolean).join(" | ") || "-")}</td>
                 <td>${escapeHtml(projectName(kiosk.projectId))}</td>
                 <td>${serviceCount}</td>
-                <td>${overrideCount ? `${overrideCount} service${overrideCount === 1 ? "" : "s"}` : "Default"}</td>
                 <td>
                   <div class="table-actions">
                     <button class="action-btn-edit" data-pricing-edit-kiosk="${escapeHtml(kiosk.kioskId || "")}" title="Edit Prices">${uiIcon("edit", 18)}</button>
@@ -5463,7 +5685,7 @@ function renderPricing() {
                 </td>
               </tr>
             `;
-  }).join("") : `<tr><td colspan="6">No kiosks found.</td></tr>`}
+  }).join("") : `<tr><td colspan="5">No kiosks found.</td></tr>`}
         </tbody>
       </table>
     </div>
@@ -5513,7 +5735,6 @@ function renderPricingEditorModal() {
             </div>
             <div class="flow-actions" style="display: flex; align-items: center; gap: 10px; margin: 0;">
               <button type="button" class="ghost-button" style="background: #ffffff; color: #475569; border: 1px solid #cbd5e1; border-radius: 10px; padding: 8px 18px; font-weight: 700; font-size: 13px; cursor: pointer; transition: all 0.2s ease;" data-pricing-editor-cancel>Cancel</button>
-              <button type="button" class="danger-button" style="background: #fef2f2; color: #dc2626; border: 1px solid #fca5a5; border-radius: 10px; padding: 8px 18px; font-weight: 700; font-size: 13px; cursor: pointer; transition: all 0.2s ease;" data-pricing-editor-delete="${escapeHtml(kiosk.kioskId)}" ${kioskPricingOverrideCount(kiosk) ? "" : "disabled"}>Delete Prices</button>
               <button type="button" class="primary-button" style="background: linear-gradient(135deg, #4f46e5 0%, #7c3aed 100%); color: #ffffff; border: none; border-radius: 10px; padding: 8px 22px; font-weight: 700; font-size: 13px; cursor: pointer; box-shadow: 0 4px 14px rgba(79, 70, 229, 0.35); transition: all 0.2s ease;" data-pricing-editor-save>Save Prices</button>
             </div>
           </div>
@@ -5690,6 +5911,11 @@ async function superAdminLogin() {
     state.authed = true;
     state.authToken = payload.token || "";
     state.loginError = "";
+    // Always land on the Dashboard after logging in, not whatever page was
+    // open before a previous logout (resolveInitialSuperAdminPage() restores
+    // that from sessionStorage for page refreshes, but a fresh login should
+    // never inherit it).
+    state.page = "dashboard";
     await loadSnapshot();
     startSnapshotPolling();
     startAdminSocket();
@@ -5704,7 +5930,17 @@ async function superAdminLogin() {
 async function handleClick(event) {
   const actionTarget = event.target.closest("[data-action]");
   const button = event.target.closest("button");
-  
+
+  // Close the profile dropdown on any click outside it - opening a modal,
+  // the notification bell, a table row, anything - not just sidebar nav.
+  // The dropdown itself (including its own buttons) lives inside
+  // .profile-menu-container, so this never fights the toggle/open-settings/
+  // logout handlers below.
+  if (state.profileMenuOpen && !event.target.closest(".profile-menu-container")) {
+    state.profileMenuOpen = false;
+    render();
+  }
+
   if (actionTarget?.dataset?.action === "close-settings") {
     state.settingsModalOpen = false;
     state.settingsStatus = "";
@@ -5734,6 +5970,7 @@ async function handleClick(event) {
 
       state.page = pageId;
       state.navOpen = false;
+      state.profileMenuOpen = false;
       state.editor = null;
       state.pricingEditor = null;
       state.search = "";
@@ -5838,6 +6075,7 @@ async function handleClick(event) {
   if (button.dataset.page) {
     state.page = button.dataset.page;
     state.navOpen = false;
+    state.profileMenuOpen = false;
     state.editor = null;
     state.pricingEditor = null;
     state.search = "";
@@ -5996,11 +6234,6 @@ async function handleClick(event) {
 
   if ("pricingEditorSave" in button.dataset) {
     await saveKioskPricing();
-    return;
-  }
-
-  if (button.dataset.pricingEditorDelete) {
-    await deleteKioskPricing(button.dataset.pricingEditorDelete);
     return;
   }
 
@@ -6574,16 +6807,15 @@ function validateClientLogoFile(file) {
 async function uploadSuperAdminClientLogo(file) {
   if (!state.editor || state.editor.collection !== "kioskAdmins") return;
 
+  const statusSelector = '[data-field-wrapper="logoUrl"] [data-image-upload-status]';
+
   const validationError = validateClientLogoFile(file);
   if (validationError) {
-    state.error = validationError;
-    render();
+    setIdleUploadStatus(statusSelector, validationError);
     return;
   }
 
-  state.notice = "Uploading client logo...";
-  state.error = "";
-  render();
+  setIdleUploadStatus(statusSelector, "Uploading client logo...");
 
   try {
     const formData = new FormData();
@@ -6594,15 +6826,17 @@ async function uploadSuperAdminClientLogo(file) {
     });
 
     state.editor.draft.logoUrl = payload.imageUrl || "";
-    state.notice = payload.storage === "s3"
+    refreshClientLogoDom();
+    setIdleUploadStatus(statusSelector, payload.storage === "s3"
       ? "Client logo uploaded to S3. Save Client to publish it."
-      : "Client logo uploaded. Save Client to publish it.";
+      : "Client logo uploaded. Save Client to publish it.");
   } catch (error) {
-    state.notice = "";
-    state.error = error.message || "Client logo upload failed.";
+    if (error.sessionExpired) {
+      render();
+      return;
+    }
+    setIdleUploadStatus(statusSelector, error.message || "Client logo upload failed.");
   }
-
-  render();
 }
 
 function validateIdleImageFile(file) {
@@ -6624,30 +6858,26 @@ async function uploadSuperAdminIdleImages(files) {
   const toUpload = list.slice(0, room);
 
   if (!toUpload.length) {
-    state.error = "You can upload at most 10 idle-screen images.";
-    render();
+    setIdleUploadStatus("[data-idle-upload-status]", "You can upload at most 10 idle-screen images.", "error");
     return;
   }
 
   for (const file of toUpload) {
     const validationError = validateIdleImageFile(file);
     if (validationError) {
-      state.error = validationError;
-      render();
+      setIdleUploadStatus("[data-idle-upload-status]", validationError, "error");
       return;
     }
   }
 
-  state.notice = "Uploading idle-screen images...";
-  state.error = "";
-  render();
+  setIdleUploadStatus("[data-idle-upload-status]", "Uploading idle-screen images...");
+  setIdleUploadProgress("[data-idle-upload-progress]", "[data-idle-upload-progress-fill]", 0);
 
   try {
     const formData = new FormData();
     toUpload.forEach((file) => formData.append("idleImage", file, file.name));
-    const payload = await fetchJson("/api/super-admin/idle-image", {
-      method: "POST",
-      body: formData
+    const payload = await uploadWithProgress("/api/super-admin/idle-image", formData, (percent) => {
+      setIdleUploadProgress("[data-idle-upload-progress]", "[data-idle-upload-progress-fill]", percent);
     });
 
     state.editor.draft.idleImageUrls = [...existing, ...(payload.imageUrls || [])].slice(0, 10);
@@ -6655,13 +6885,17 @@ async function uploadSuperAdminIdleImages(files) {
     // this, uploading images never switched mode off "Off" (or off "Video"),
     // so the images saved fine but the screensaver never actually showed.
     state.editor.draft.idleMediaMode = "image";
-    state.notice = "Idle-screen images uploaded. Save Client to publish them.";
+    setIdleUploadProgress("[data-idle-upload-progress]", "[data-idle-upload-progress-fill]", null);
+    setIdleUploadStatus("[data-idle-upload-status]", "Idle-screen images uploaded. Save Client to publish them.");
+    refreshIdleImageGridDom();
   } catch (error) {
-    state.notice = "";
-    state.error = error.message || "Idle-screen image upload failed.";
+    setIdleUploadProgress("[data-idle-upload-progress]", "[data-idle-upload-progress-fill]", null);
+    if (error.sessionExpired) {
+      render();
+      return;
+    }
+    setIdleUploadStatus("[data-idle-upload-status]", error.message || "Idle-screen image upload failed.", "error");
   }
-
-  render();
 }
 
 function validateIdleVideoFile(file) {
@@ -6677,34 +6911,35 @@ async function uploadSuperAdminIdleVideo(file) {
 
   const validationError = validateIdleVideoFile(file);
   if (validationError) {
-    state.error = validationError;
-    render();
+    setIdleUploadStatus("[data-idle-video-upload-status]", validationError, "error");
     return;
   }
 
-  state.notice = "Uploading idle-screen video...";
-  state.error = "";
-  render();
+  setIdleUploadStatus("[data-idle-video-upload-status]", "Uploading idle-screen video...");
+  setIdleUploadProgress("[data-idle-video-upload-progress]", "[data-idle-video-upload-progress-fill]", 0);
 
   try {
     const formData = new FormData();
     formData.append("idleVideo", file, file.name);
-    const payload = await fetchJson("/api/super-admin/idle-video", {
-      method: "POST",
-      body: formData
+    const payload = await uploadWithProgress("/api/super-admin/idle-video", formData, (percent) => {
+      setIdleUploadProgress("[data-idle-video-upload-progress]", "[data-idle-video-upload-progress-fill]", percent);
     });
 
     state.editor.draft.idleVideoUrl = payload.videoUrl || "";
     state.editor.draft.idleMediaMode = "video";
-    state.notice = payload.storage === "s3"
+    setIdleUploadProgress("[data-idle-video-upload-progress]", "[data-idle-video-upload-progress-fill]", null);
+    setIdleUploadStatus("[data-idle-video-upload-status]", payload.storage === "s3"
       ? "Idle-screen video uploaded to S3. Save Client to publish it."
-      : "Idle-screen video uploaded. Save Client to publish it.";
+      : "Idle-screen video uploaded. Save Client to publish it.");
+    refreshIdleVideoDom();
   } catch (error) {
-    state.notice = "";
-    state.error = error.message || "Idle-screen video upload failed.";
+    setIdleUploadProgress("[data-idle-video-upload-progress]", "[data-idle-video-upload-progress-fill]", null);
+    if (error.sessionExpired) {
+      render();
+      return;
+    }
+    setIdleUploadStatus("[data-idle-video-upload-status]", error.message || "Idle-screen video upload failed.", "error");
   }
-
-  render();
 }
 
 function deleteDraftIdleImage(index) {
@@ -6712,7 +6947,7 @@ function deleteDraftIdleImage(index) {
   const images = Array.isArray(state.editor.draft.idleImageUrls) ? [...state.editor.draft.idleImageUrls] : [];
   images.splice(index, 1);
   state.editor.draft.idleImageUrls = images;
-  render();
+  refreshIdleImageGridDom();
 }
 
 function moveDraftIdleImage(index, direction) {
@@ -6722,22 +6957,21 @@ function moveDraftIdleImage(index, direction) {
   if (targetIndex < 0 || targetIndex >= images.length) return;
   [images[index], images[targetIndex]] = [images[targetIndex], images[index]];
   state.editor.draft.idleImageUrls = images;
-  render();
+  refreshIdleImageGridDom();
 }
 
 async function uploadSuperAdminTemplateImage(file, templateIndex) {
   if (!state.editor || state.editor.collection !== "services") return;
 
+  const statusSelector = `[data-template-helper="${templateIndex}"]`;
+
   const validationError = validateEditorImageFile(file);
   if (validationError) {
-    state.error = validationError;
-    render();
+    setIdleUploadStatus(statusSelector, validationError);
     return;
   }
 
-  state.notice = "Uploading template document...";
-  state.error = "";
-  render();
+  setIdleUploadStatus(statusSelector, "Uploading template document...");
 
   try {
     const documentType = templateDocumentKind(file.type === "application/pdf" || /\.pdf$/i.test(file.name || "") ? "file.pdf" : file.name);
@@ -6755,13 +6989,17 @@ async function uploadSuperAdminTemplateImage(file, templateIndex) {
     updateDraftTemplate(templateIndex, "pages", pages);
     updateDraftTemplate(templateIndex, "title", title);
     updateDraftTemplate(templateIndex, "description", `${documentType.toUpperCase()} template document.`);
-    state.notice = "Template document uploaded. Save Service to publish it.";
+    // Rebuilds this one card from the updated draft (title input, preview,
+    // "Ready for kiosk" helper text) - the transient status text above is
+    // replaced by this along with it, same as the idle-image grid refresh.
+    refreshDraftTemplateCardDom(templateIndex);
   } catch (error) {
-    state.notice = "";
-    state.error = error.message || "Template document upload failed.";
+    if (error.sessionExpired) {
+      render();
+      return;
+    }
+    setIdleUploadStatus(statusSelector, error.message || "Template document upload failed.");
   }
-
-  render();
 }
 
 function editorPayload() {

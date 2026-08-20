@@ -40,6 +40,7 @@ const THANK_YOU_HOME_REDIRECT_SECONDS = 15;
 const PRINTER_OFFLINE_ACTION_SECONDS = 15;
 const PRINT_FAILURE_AUTO_HOME_SECONDS = 120;
 const IDLE_SCREENSAVER_IMAGE_SECONDS = 6;
+const IDLE_MEDIA_LOCAL_CHECK_TIMEOUT_MS = 2500;
 const CUSTOMER_INACTIVITY_TIMEOUTS = Object.freeze({
   uploadQr: 3 * 60 * 1000,
   governmentFormsList: 90 * 1000,
@@ -70,10 +71,17 @@ const HAS_EXPLICIT_LOCAL_AGENT = Boolean(runtimeConfig.get("localAgentUrl") || f
 const DEMO_KIOSK_MODE = runtimeConfig.get("demo") === "true" ||
   runtimeConfig.get("kioskDemo") === "true" ||
   (KIOSK_ID === "LOCAL-KIOSK" && runtimeConfig.get("demo") !== "false");
+// Generic, non-client-specific fallback only - shown when a kiosk's own
+// clientBrand isn't available yet (first boot, offline before any cached
+// value exists) or its real logo URL fails to load (e.g. offline - it's a
+// remote image). Must never be a real client's identity: this used to be
+// hardcoded to one specific customer (Nashik Municipal Corporation), so any
+// OTHER client's kiosk that hit either fallback path showed that customer's
+// name/logo instead of its own.
 const DEFAULT_KIOSK_BRAND = Object.freeze({
-  title: "Nashik Municipal Corporation",
+  title: "Printing Kiosk",
   subtitle: "Printing Kiosk",
-  logoUrl: "./assets/nashik-municipal-logo.jpg"
+  logoUrl: "./assets/aarya-innovtech-logo-transparent.png"
 });
 let localJobSequence = 0;
 let customerInactivityEventsBound = false;
@@ -129,7 +137,6 @@ const ADMIN_TRANSLATION_ROWS = [
   ["Today Jobs", "टुडे जॉब्स", "टुडे जॉब्स"],
   ["Failed Jobs", "फेल्ड जॉब्स", "फेल्ड जॉब्स"],
   ["Pages Printed", "पेजेज प्रिंटेड", "पेजेज प्रिंटेड"],
-  ["Pending Refunds", "पेंडिंग रेफूंदस", "पेंडिंग रेफूंदस"],
   ["Queue Length", "केओए लेंथ", "केओए लेंथ"],
   ["Live backend total", "लाइव बैकेंड टोटल", "लाइव बैकेंड टोटल"],
   ["Managed access", "मैनेज्ड एक्सेस", "मैनेज्ड एक्सेस"],
@@ -161,7 +168,6 @@ const ADMIN_TRANSLATION_ROWS = [
   ["All statuses", "आल सतातुसेस", "आल सतातुसेस"],
   ["Success", "सक्सेस", "सक्सेस"],
   ["Failed", "फेल्ड", "फेल्ड"],
-  ["Refund", "रिफंड", "रिफंड"],
   ["Job ID", "जॉब ईद", "जॉब ईद"],
   ["Date", "डेट", "डेट"],
   ["Branch", "ब्रांच", "ब्रांच"],
@@ -257,7 +263,6 @@ const ADMIN_TRANSLATION_ROWS = [
   ["Printer offline", "प्रिंटर ऑफलाइन", "प्रिंटर ऑफलाइन"],
   ["Printer is not ready", "प्रिंटर इस नॉट रेडी", "प्रिंटर इस नॉट रेडी"],
   ["Payment success but print failed", "पेमेंट सक्सेस बूत प्रिंट फेल्ड", "पेमेंट सक्सेस बूत प्रिंट फेल्ड"],
-  ["Refund request", "रिफंड रिक्वेस्ट", "रिफंड रिक्वेस्ट"],
   ["Backend and assigned kiosk checks are clear.", "बैकेंड एंड एसाइन्ड कीओस्क चेक्स अरे क्लियर.", "बैकेंड एंड एसाइन्ड कीओस्क चेक्स अरे क्लियर."],
   ["Previous", "प्रीवियस", "प्रीवियस"],
   ["Next", "नेक्स्ट", "नेक्स्ट"],
@@ -1677,7 +1682,7 @@ const initialJobs = [];
 function resolveInitialKioskAdminPage() {
   const hash = (window.location.hash || "").replace(/^#\/?/, "").trim();
   if (hash === "reports" || hash === "report") return "revenue";
-  const validPages = ["dashboard", "projects", "kiosks", "pricing", "revenue", "analytics", "alerts", "history", "reports", "refunds"];
+  const validPages = ["dashboard", "projects", "kiosks", "pricing", "revenue", "analytics", "alerts", "history", "reports"];
   if (validPages.includes(hash)) return hash;
   try {
     const saved = sessionStorage.getItem("kiosk_admin_page");
@@ -1868,7 +1873,6 @@ const state = {
     transactions: [],
     projects: [],
     kiosks: [],
-    refunds: [],
     reports: [],
     backendOnline: false,
     lastUpdated: "",
@@ -4806,6 +4810,9 @@ function applyServiceConfig(payload, { rerender = true, source = "backend" } = {
     state.clientBrand = normalizeClientBrand(payload.clientBrand);
     storeClientBrand();
   }
+  if (state.clientBrand?.idleScreensaver) {
+    resolveLocalIdleScreensaverMedia();
+  }
   services = normalizeServicesConfig(payload.services);
   state.pricing = normalizePricing(payload.pricing || state.pricing);
   storeServices();
@@ -4861,6 +4868,15 @@ async function refreshKioskConfig({ rerender = true, force = false } = {}) {
       applyDemoKioskConfig({ rerender });
       return true;
     }
+    // This fetch failing is exactly the case the local idle-media cache
+    // exists for (no internet reaching the cloud backend) - the previous
+    // code only ever tried the local agent right after a SUCCESSFUL remote
+    // sync (inside applyServiceConfig), so it never ran at all while
+    // offline. state.clientBrand still holds the last-known idleScreensaver
+    // manifest (from readStoredClientBrand()/a prior successful sync), so
+    // there's still something to resolve against here.
+    resolveLocalIdleScreensaverMedia();
+    resolveLocalClientBrandIdentity();
     // Silently ignore backend config network errors to avoid confusing users
     return false;
   }
@@ -5011,7 +5027,6 @@ async function loadAdminData({ rerender = true } = {}) {
       kiosks,
       projects,
       system,
-      refunds,
       serviceConfig,
       reports
     ] = await Promise.all([
@@ -5021,7 +5036,6 @@ async function loadAdminData({ rerender = true } = {}) {
       fetchAdminJson("/api/admin/kiosks"),
       fetchAdminJson("/api/admin/projects"),
       fetchAdminJson("/api/admin/system-status"),
-      fetchAdminJson("/api/admin/refunds"),
       fetchAdminJson("/api/admin/services"),
       fetchAdminJson("/api/admin/reports")
     ]);
@@ -5033,7 +5047,6 @@ async function loadAdminData({ rerender = true } = {}) {
       transactions: Array.isArray(transactions.payments) ? transactions.payments : [],
       projects: Array.isArray(projects.projects) ? projects.projects : [],
       kiosks: Array.isArray(kiosks.kiosks) ? kiosks.kiosks : [],
-      refunds: Array.isArray(refunds.refunds) ? refunds.refunds : [],
       reports: Array.isArray(reports.reports) ? reports.reports : [],
       alertLogs: Array.isArray(system.alertLogs) ? system.alertLogs : [],
       backendOnline: system.backend === "online",
@@ -5900,6 +5913,83 @@ function printingInProgress() {
   );
 }
 
+// Best-effort: if the local print agent has already cached this kiosk's idle-
+// screensaver image(s)/video to local disk (see local-agent/printerAgent.js's
+// idle-media sync), swap the local http://localhost:<agent> URLs into
+// state.clientBrand.idleScreensaver in place so the NEXT time the screensaver
+// is shown it plays instantly and offline instead of over the internet.
+// Deliberately mutates in place rather than forcing a re-render: the idle
+// screensaver root is intentionally isolated from render() (see comment
+// below) so a screensaver already on screen is never touched mid-play here -
+// this only affects what the next natural show picks up. Any failure (agent
+// unreachable, not cached yet) is swallowed and the existing remote URLs
+// already in state keep working exactly as before this feature - there is no
+// error state, only an optional upgrade to a faster local copy.
+async function resolveLocalIdleScreensaverMedia() {
+  const idle = state.clientBrand?.idleScreensaver;
+  if (!idle || idle.mode === "none") return;
+
+  const controller = new AbortController();
+  const timeoutId = window.setTimeout(() => controller.abort(), IDLE_MEDIA_LOCAL_CHECK_TIMEOUT_MS);
+
+  try {
+    const local = await fetchJson(`${LOCAL_AGENT_URL}/local/idle-screensaver`, {
+      cache: "no-store",
+      signal: controller.signal
+    });
+
+    if (!local || !local.ready || local.mode !== idle.mode) return;
+
+    if (idle.mode === "image" && Array.isArray(local.imageUrls) && local.imageUrls.length === idle.imageUrls.length) {
+      idle.imageUrls = local.imageUrls;
+    } else if (idle.mode === "video" && local.videoUrl) {
+      idle.videoUrl = local.videoUrl;
+    }
+  } catch {
+    // Local agent unreachable, not cached yet, or a mismatched/stale manifest -
+    // keep using the remote URLs already in state.clientBrand.idleScreensaver.
+  } finally {
+    window.clearTimeout(timeoutId);
+  }
+}
+
+// Same idea as resolveLocalIdleScreensaverMedia() above, but for the kiosk's
+// client identity (title/subtitle/logo) instead of idle-screensaver media.
+// Only ever called from the failed-fetch path (see refreshKioskConfig) -
+// never after a successful sync - so it can only ever replace a stale
+// browser-cached value, never downgrade one this tab just fetched itself.
+// local-agent syncs this independently every ~30s whenever IT can reach the
+// backend, so it's a fresher source of truth than this browser tab's own
+// localStorage-restored state.clientBrand for a kiosk that's been offline
+// since its last client reassignment (which otherwise keeps showing
+// whatever client was cached before that reassignment, indefinitely).
+async function resolveLocalClientBrandIdentity() {
+  const controller = new AbortController();
+  const timeoutId = window.setTimeout(() => controller.abort(), IDLE_MEDIA_LOCAL_CHECK_TIMEOUT_MS);
+
+  try {
+    const local = await fetchJson(`${LOCAL_AGENT_URL}/local/idle-screensaver`, {
+      cache: "no-store",
+      signal: controller.signal
+    });
+
+    const brand = local?.clientBrand;
+    if (!brand || !(brand.title || brand.subtitle || brand.logoUrl)) return;
+
+    if (!state.clientBrand) state.clientBrand = {};
+    if (brand.title) state.clientBrand.title = brand.title;
+    if (brand.subtitle) state.clientBrand.subtitle = brand.subtitle;
+    if (brand.logoUrl) state.clientBrand.logoUrl = brand.logoUrl;
+    if (brand.name) state.clientBrand.name = brand.name;
+    if (brand.clientId) state.clientBrand.clientId = brand.clientId;
+  } catch {
+    // Local agent unreachable or nothing cached yet - keep whatever's
+    // already in state.clientBrand.
+  } finally {
+    window.clearTimeout(timeoutId);
+  }
+}
+
 // Idle-screen screensaver — shown after the kiosk sits idle on the home
 // screen. Lives in its own DOM root outside #app (see index.html) so the
 // 5s config poll and 15s printer-status poll — both of which do a full
@@ -5923,7 +6013,33 @@ function renderIdleScreensaver() {
     ? `<video src="${escapeHtml(idleScreensaver.videoUrl)}" autoplay loop muted playsinline></video>`
     : `<img src="${escapeHtml(idleScreensaver.imageUrls[state.idleScreensaverIndex % idleScreensaver.imageUrls.length])}" alt="" draggable="false" data-no-visual-search />`;
 
-  root.innerHTML = `<div class="idle-screensaver-overlay" data-idle-screensaver-dismiss>${media}</div>`;
+  // Header/footer reuse the real customer page's brand mark, brand copy, and
+  // footer render functions verbatim so the logo/title/footer text stay in
+  // sync with the live page - but with fresh, self-contained CSS (see
+  // styles.css .idle-screensaver-*) instead of relying on the real page's
+  // .customer-shell-scoped rules, since this root has no .customer-shell
+  // ancestor and those rules would silently not apply here. Deliberately
+  // NOT reusing the full topbar (has a live clock with duplicate
+  // getElementById-by-id lookups that would freeze) or the printer-status
+  // badge / language switcher (stale snapshot only, and would fire both a
+  // language switch and a dismiss on the same tap since this whole overlay
+  // is one big click target).
+  root.innerHTML = `
+    <div class="idle-screensaver-overlay" data-idle-screensaver-dismiss>
+      <header class="idle-screensaver-header">
+        ${renderCustomerBrandMark("idle-screensaver-brand-mark", "Printing Kiosk")}
+        ${renderCustomerBrandCopy("idle-screensaver-brand-copy", "Printing Kiosk", "idle-screensaver-brand-title", "idle-screensaver-brand-subtitle")}
+      </header>
+      <div class="idle-screensaver-body">
+        <button type="button" class="idle-screensaver-cta" tabindex="-1">
+          <span>Tap to Start</span>
+          ${uiIcon("arrow-right", 22)}
+        </button>
+        <div class="idle-screensaver-media">${media}</div>
+      </div>
+      ${renderCustomerFooterFormsReference()}
+    </div>
+  `;
   root.querySelector("[data-idle-screensaver-dismiss]")?.addEventListener("click", dismissIdleScreensaver);
 }
 
@@ -8128,12 +8244,10 @@ function renderPrintFailureStep() {
           ${renderHealthRow(freePrint ? "Free print" : "Payment", freePrint ? "Approved" : "Success", "good")}
           ${renderHealthRow("Print", "Needs staff attention", "bad")}
           ${renderHealthRow("Queue", freePrint ? "Ready for retry" : "Saved for retry", "warn")}
-          ${freePrint ? "" : renderHealthRow("Refund", "Available if retry fails", "warn")}
         </div>
         ${state.printStatusMessage ? `<p class="helper-text">${escapeHtml(state.printStatusMessage)}</p>` : ""}
         <div class="flow-actions" style="margin-top: 16px;">
           <button class="primary-button" data-action="retry-print">Retry Print</button>
-          ${freePrint ? "" : `<button class="secondary-button" data-action="request-refund">Request Refund</button>`}
           <button class="ghost-button" data-action="reset-session">Return Home</button>
         </div>
         <p class="helper-text" id="print-failure-home-countdown" style="margin-top: 10px;">${escapeHtml(`Staff has been notified. Returning home automatically in ${Number(state.printFailureAutoHomeSecondsLeft) || PRINT_FAILURE_AUTO_HOME_SECONDS}s if this isn't resolved.`)}</p>
@@ -8872,7 +8986,6 @@ function renderAdminPage() {
   if (page === "analytics") return renderAdminAnalytics();
   if (page === "kiosks") return renderKiosks();
   if (page === "pricing") return renderPricing();
-  if (page === "refunds") return renderRefunds();
   if (page === "alerts") return renderAlerts();
   return renderDashboard();
 }
@@ -9287,8 +9400,6 @@ window.downloadAlertsReportPDF = async function () {
     loadImageNaturalSize(companyLogo)
   ]);
 
-  drawPdfWatermark(doc, companyLogo, companyLogoSize);
-
   if (clientLogo) {
     const box = fitImageBox(clientLogoSize, logoMaxWidth, logoMaxHeight);
     doc.addImage(clientLogo, dataUrlImageFormat(clientLogo), 14, logoY + (logoMaxHeight - box.height) / 2, box.width, box.height);
@@ -9344,6 +9455,7 @@ window.downloadAlertsReportPDF = async function () {
 
   doc.autoTable({
     startY: dividerY + 8,
+    margin: { bottom: 42 },
     head: [["Date & Time", "Kiosk", "Category", "Alert Title", "Status"]],
     body: tableData.length ? tableData : [["-", "-", "-", "No alert records match the selected filters", "-"]],
     theme: "grid",
@@ -9374,14 +9486,8 @@ window.downloadAlertsReportPDF = async function () {
     }
   });
 
-  const pageCount = doc.internal.getNumberOfPages();
-  for (let i = 1; i <= pageCount; i++) {
-    doc.setPage(i);
-    doc.setFontSize(8);
-    doc.setTextColor(148, 163, 184);
-    doc.text(`Page ${i} of ${pageCount} - Printing Kiosk Management System`, pageWidth / 2, 290, { align: "center" });
-  }
-
+  redrawWatermarkOnAllPages(doc, companyLogo, companyLogoSize);
+  drawPdfCompanyFooter(doc);
   doc.save(`Alert_History_Report_${new Date().toISOString().split("T")[0]}.pdf`);
 };
 
@@ -9912,7 +10018,6 @@ function transactionMatchesStatus(record, status) {
   if (status === "success") return /success|paid|captured|completed/.test(paymentText);
   if (status === "pending") return /pending|created|queue/.test(paymentText);
   if (status === "failed") return /failed|error|declined|cancel/.test(combinedText);
-  if (status === "refund") return /refund/.test(combinedText);
   return true;
 }
 
@@ -9964,7 +10069,6 @@ function renderTransactionFilters() {
         <option value="success" ${filters.status === "success" ? "selected" : ""}>Success</option>
         <option value="pending" ${filters.status === "pending" ? "selected" : ""}>Pending</option>
         <option value="failed" ${filters.status === "failed" ? "selected" : ""}>Failed</option>
-        <option value="refund" ${filters.status === "refund" ? "selected" : ""}>Refund</option>
       </select>
       <select data-transaction-filter="kiosk" aria-label="Kiosk">
         <option value="all" ${filters.kiosk === "all" ? "selected" : ""}>All kiosks</option>
@@ -9985,7 +10089,6 @@ function renderTransactionLog() {
     money(record.amount),
     record.method,
     record.status,
-    record.print || "-",
     record.reference || record.method || "-"
   ]);
 
@@ -9997,9 +10100,17 @@ function renderTransactionLog() {
         <strong>${escapeHtml(String(records.length))} record${records.length === 1 ? "" : "s"}</strong>
       </div>
       ${renderTransactionFilters()}
-      ${renderPaginatedTable("revenueTransactions", ["Date", "Kiosk", "Service", "Amount", "Method", "Status", "Print", "Gateway Ref"], rows, "No matching transaction records.")}
+      ${renderPaginatedTable("revenueTransactions", ["Date", "Kiosk", "Service", "Amount", "Method", "Status", "Gateway Ref"], rows, "No matching transaction records.")}
     </div>
   `;
+}
+
+function isTransactionToday(dateValue) {
+  const ts = transactionTimestamp(dateValue);
+  if (!ts) return false;
+  const now = new Date();
+  const startOfToday = new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime();
+  return ts >= startOfToday && ts < startOfToday + 24 * 60 * 60 * 1000;
 }
 
 function dashboardMetrics() {
@@ -10007,14 +10118,15 @@ function dashboardMetrics() {
   const revenue = state.adminData.revenue || {};
   const kiosks = state.adminData.kiosks || [];
   const projects = state.adminData.projects || [];
-  const transactions = state.adminData.transactions || [];
   const activeKiosks = dashboard.activeKiosks ?? kiosks.filter((kiosk) => kiosk.status === "online").length;
+  const todaysTransactions = adminTransactionRecords().filter((record) => isTransactionToday(record.dateValue));
+  const todaysAmount = todaysTransactions.reduce((sum, record) => sum + (Number(record.amount) || 0), 0);
 
   return [
     ["Projects", String(projects.length), `${kiosks.length} kiosk(s) assigned`, "hierarchy", "blue"],
     ["Kiosks", String(kiosks.length), `${activeKiosks} online`, "kiosks", "purple"],
-    ["Payments", String(transactions.length), money(revenue.gross ?? 0), "payments", "green"],
-    ["Net Revenue", money(revenue.net ?? 0), "After refunds", "pricing", "green"]
+    ["Transactions", String(todaysTransactions.length), money(todaysAmount), "payments", "green"],
+    ["Net Revenue", money(revenue.net ?? 0), "Total revenue", "pricing", "green"]
   ];
 }
 
@@ -10538,8 +10650,6 @@ window.downloadRevenueReportPDF = async function () {
     loadImageNaturalSize(companyLogo)
   ]);
 
-  drawPdfWatermark(doc, companyLogo, companyLogoSize);
-
   if (clientLogo) {
     const box = fitImageBox(clientLogoSize, logoMaxWidth, logoMaxHeight);
     doc.addImage(clientLogo, dataUrlImageFormat(clientLogo), 14, logoY + (logoMaxHeight - box.height) / 2, box.width, box.height);
@@ -10602,6 +10712,8 @@ window.downloadRevenueReportPDF = async function () {
     ...PDF_TABLE_STYLE
   });
 
+  redrawWatermarkOnAllPages(doc, companyLogo, companyLogoSize);
+  drawPdfCompanyFooter(doc);
   doc.save(`Revenue_Report_${filter.start}_to_${filter.end}.pdf`);
 };
 
@@ -10634,8 +10746,6 @@ window.downloadFormPrintReportPDF = async function () {
     loadImageNaturalSize(clientLogo),
     loadImageNaturalSize(companyLogo)
   ]);
-
-  drawPdfWatermark(doc, companyLogo, companyLogoSize);
 
   if (clientLogo) {
     const box = fitImageBox(clientLogoSize, logoMaxWidth, logoMaxHeight);
@@ -10686,6 +10796,8 @@ window.downloadFormPrintReportPDF = async function () {
     ...PDF_TABLE_STYLE
   });
 
+  redrawWatermarkOnAllPages(doc, companyLogo, companyLogoSize);
+  drawPdfCompanyFooter(doc);
   doc.save(`Form_Selling_Report_${filter.start}_to_${filter.end}.pdf`);
 };
 
@@ -11044,7 +11156,10 @@ function renderAdminAnalyticsFormSellingBarChart({ forPrint = false } = {}) {
   const maxVal = Math.max(30, ...dataList.map((d) => d.forms));
   const padding = { top: 60, right: 30, bottom: 42, left: 68 };
   const width = 920;
-  const height = 300;
+  // Print gets a taller canvas than the on-screen widget - once scaled down
+  // to fit the PDF page width, the old fixed 300 left the chart a short,
+  // cramped strip with a lot of empty page below it.
+  const height = forPrint ? 460 : 300;
   const chartH = height - padding.top - padding.bottom;
   const chartW = width - padding.left - padding.right;
   const { ticks: yTicks, max: yMax } = adminAnalyticsYTicks(maxVal, padding, chartH);
@@ -11170,10 +11285,18 @@ function renderAdminAnalyticsBarChart(buckets, { forPrint = false } = {}) {
   const minGroupWidth = 40;
   const padding = { top: 25, right: 30, bottom: 42, left: 68 };
   const baseChartWidth = 920 - padding.left - padding.right;
-  const chartWidth = Math.max(baseChartWidth, buckets.length * minGroupWidth);
+  // On screen, width grows with bucket count and the wrapper scrolls
+  // horizontally, so wide date ranges stay legible. In print there's no
+  // scroll - the whole image gets scaled down to a fixed page width, so
+  // letting width balloon here just shrinks the rendered height toward
+  // nothing. Keep print at the fixed base width and a taller canvas instead,
+  // with labels thinned below so the axis never overlaps.
+  const chartWidth = forPrint ? baseChartWidth : Math.max(baseChartWidth, buckets.length * minGroupWidth);
   const width = chartWidth + padding.left + padding.right;
-  const height = 290;
+  const height = forPrint ? 460 : 290;
   const chartHeight = height - padding.top - padding.bottom;
+  const maxAxisLabels = 12;
+  const labelStep = Math.max(1, Math.ceil(buckets.length / maxAxisLabels));
 
   const hasLive = buckets.some((b) => Number(b.amount || 0) > 0);
   const effectiveBuckets = hasLive ? buckets : buckets.map((b) => {
@@ -11185,12 +11308,13 @@ function renderAdminAnalyticsBarChart(buckets, { forPrint = false } = {}) {
   const maxValue = Math.max(140, ...effectiveBuckets.map((bucket) => Number(bucket.amount || 0)));
   const { ticks: yTicks, max: yMax } = adminAnalyticsYTicks(maxValue, padding, chartHeight);
   const groupWidth = chartWidth / effectiveBuckets.length;
-  const barWidth = Math.min(26, Math.max(6, groupWidth * 0.45));
+  const barWidth = Math.min(26, Math.max(forPrint ? 2 : 6, groupWidth * 0.45));
 
   const bars = effectiveBuckets.map((bucket, index) => {
     const groupX = padding.left + index * groupWidth;
     const barHeight = ((Number(bucket.amount) || 0) / yMax) * chartHeight;
     return {
+      index,
       label: adminAnalyticsBarLabel(bucket),
       barX: groupX + groupWidth / 2 - barWidth / 2,
       barY: padding.top + chartHeight - barHeight,
@@ -11240,9 +11364,9 @@ function renderAdminAnalyticsBarChart(buckets, { forPrint = false } = {}) {
             <g class="analytics-bar-group">
               <rect x="${(bar.centerX - groupWidth / 2).toFixed(1)}" y="${padding.top}" width="${groupWidth.toFixed(1)}" height="${chartHeight}" fill="transparent" />
               <rect class="analytics-bar-emerald" x="${bar.barX.toFixed(1)}" y="${bar.barY.toFixed(1)}" width="${barWidth.toFixed(1)}" height="${Math.max(0, bar.barHeight).toFixed(1)}" rx="5" fill="${forPrint ? printColor : "#10b981"}" />
-              <text x="${bar.centerX.toFixed(1)}" y="${(padding.top + chartHeight + 20).toFixed(1)}" text-anchor="middle" fill="#64748b" font-size="12px" font-weight="500">${escapeHtml(bar.label)}</text>
+              ${(!forPrint || bar.index % labelStep === 0) ? `<text x="${bar.centerX.toFixed(1)}" y="${(padding.top + chartHeight + 20).toFixed(1)}" text-anchor="middle" fill="#64748b" font-size="12px" font-weight="500">${escapeHtml(bar.label)}</text>` : ""}
               ${forPrint
-                ? (bar.amount > 0 ? `<text x="${bar.centerX.toFixed(1)}" y="${Math.max(padding.top + 10, bar.barY - 6).toFixed(1)}" text-anchor="middle" fill="${printColor}" font-size="11px" font-weight="700">${escapeHtml(money(bar.amount))}</text>` : "")
+                ? (bar.index % labelStep === 0 && bar.amount > 0 ? `<text x="${bar.centerX.toFixed(1)}" y="${Math.max(padding.top + 10, bar.barY - 6).toFixed(1)}" text-anchor="middle" fill="${printColor}" font-size="11px" font-weight="700">${escapeHtml(money(bar.amount))}</text>` : "")
                 : `
                 <g class="analytics-bar-tooltip" transform="translate(${tooltipX.toFixed(1)}, ${tooltipY.toFixed(1)})">
                   <rect width="${tooltipW}" height="48" rx="8" fill="#ffffff" stroke="#e2e8f0" stroke-width="1" filter="drop-shadow(0 4px 12px rgba(15, 23, 42, 0.08))" />
@@ -11271,9 +11395,12 @@ function renderAdminAnalyticsLineChart(buckets, { forPrint = false } = {}) {
   const minGroupWidth = 40;
   const padding = { top: 25, right: 30, bottom: 42, left: 68 };
   const baseChartWidth = 920 - padding.left - padding.right;
-  const chartWidth = Math.max(baseChartWidth, buckets.length * minGroupWidth);
+  // See renderAdminAnalyticsBarChart's identical comment: print has no
+  // scroll, so letting width grow with bucket count just shrinks the
+  // rendered height toward nothing once it's scaled to fit the page.
+  const chartWidth = forPrint ? baseChartWidth : Math.max(baseChartWidth, buckets.length * minGroupWidth);
   const width = chartWidth + padding.left + padding.right;
-  const height = 290;
+  const height = forPrint ? 460 : 290;
   const chartHeight = height - padding.top - padding.bottom;
 
   const hasLive = buckets.some((b) => Number(b.amount || 0) > 0);
@@ -11537,7 +11664,10 @@ function drawPdfWatermark(doc, logoDataUrl, naturalSize) {
     const box = fitImageBox(naturalSize, pageWidth * 0.6, pageHeight * 0.35);
 
     doc.saveGraphicsState();
-    doc.setGState(new doc.GState({ opacity: 0.07 }));
+    // 0.07 was too faint for the wordmark's thin text strokes to read at all
+    // (only the bolder icon mark survived) - 0.12 keeps it clearly subtle
+    // background watermark while actually being legible.
+    doc.setGState(new doc.GState({ opacity: 0.12 }));
     doc.addImage(logoDataUrl, dataUrlImageFormat(logoDataUrl), (pageWidth - box.width) / 2, (pageHeight - box.height) / 2, box.width, box.height);
     doc.restoreGraphicsState();
   } catch {
@@ -11546,7 +11676,67 @@ function drawPdfWatermark(doc, logoDataUrl, naturalSize) {
   }
 }
 
+// drawPdfWatermark() only paints whichever page is active at call time. A
+// report that spills onto page 2+ (long alert/transaction table, wide
+// chart) used to leave those extra pages with no watermark at all - call
+// this at the very end, once all content (including any doc.addPage()
+// calls) has been added, so every page in the finished document gets one.
+function redrawWatermarkOnAllPages(doc, logoDataUrl, naturalSize) {
+  if (!logoDataUrl) return;
+  const pageCount = doc.internal.getNumberOfPages();
+  for (let i = 1; i <= pageCount; i++) {
+    doc.setPage(i);
+    drawPdfWatermark(doc, logoDataUrl, naturalSize);
+  }
+}
+
+// Standard footer for every PDF export: company address/CIN/contact + page
+// number + generated timestamp on every page, plus a blank signature block
+// (System Administrator / Authorized Signatory) on the last page only. Call
+// this last, right before doc.save(), after all content (including any
+// doc.addPage() calls) has been added, so the page count is final.
+function drawPdfCompanyFooter(doc) {
+  const pageCount = doc.internal.getNumberOfPages();
+  const generatedAt = new Date().toLocaleString();
+  const marginX = 14;
+
+  for (let i = 1; i <= pageCount; i++) {
+    doc.setPage(i);
+    const pageWidth = doc.internal.pageSize.getWidth();
+    const pageHeight = doc.internal.pageSize.getHeight();
+
+    if (i === pageCount) {
+      const lineY = pageHeight - 40;
+      const labelY = pageHeight - 36;
+      doc.setDrawColor(148, 163, 184);
+      doc.setLineWidth(0.3);
+      doc.line(marginX, lineY, marginX + 65, lineY);
+      doc.line(pageWidth - marginX - 65, lineY, pageWidth - marginX, lineY);
+      doc.setFont(undefined, "normal");
+      doc.setFontSize(10);
+      doc.setTextColor(51, 65, 85);
+      doc.text("System Administrator", marginX + 32.5, labelY, { align: "center" });
+      doc.text("Authorized Signatory", pageWidth - marginX - 32.5, labelY, { align: "center" });
+    }
+
+    const dividerY = pageHeight - 24;
+    doc.setDrawColor(226, 232, 240);
+    doc.setLineWidth(0.3);
+    doc.line(marginX, dividerY, pageWidth - marginX, dividerY);
+
+    doc.setFont(undefined, "normal");
+    doc.setFontSize(8);
+    doc.setTextColor(100, 116, 139);
+    doc.text("AARYA INNOVTECH PVT. LTD. CIN: U29305MH2019PTC327551 | +91 9359604384 | https://aaryainnovtech.com/", marginX, pageHeight - 18);
+    doc.text(`Page ${i} of ${pageCount}`, pageWidth - marginX, pageHeight - 18, { align: "right" });
+    doc.text("Nashik Office: Flat No.4A, Sayali Darshan A-Wing, Makhamalabad Road, Nashik-422003.", marginX, pageHeight - 13);
+    doc.text(`Generated on: ${generatedAt}`, pageWidth - marginX, pageHeight - 13, { align: "right" });
+    doc.setTextColor(0);
+  }
+}
+
 const PDF_TABLE_STYLE = {
+  margin: { bottom: 42 },
   styles: {
     fontSize: 10,
     lineColor: [42, 120, 214],
@@ -11613,8 +11803,6 @@ window.downloadAdminAnalyticsPDF = async function () {
     loadImageNaturalSize(companyLogo)
   ]);
 
-  drawPdfWatermark(doc, companyLogo, companyLogoSize);
-
   if (clientLogo) {
     const box = fitImageBox(clientLogoSize, logoMaxWidth, logoMaxHeight);
     doc.addImage(clientLogo, dataUrlImageFormat(clientLogo), 14, logoY + (logoMaxHeight - box.height) / 2, box.width, box.height);
@@ -11660,7 +11848,7 @@ window.downloadAdminAnalyticsPDF = async function () {
 
     if (chart) {
       const chartHeight = chartDisplayWidth * (chart.height / chart.width);
-      if (cursorY + 20 + chartHeight > pageHeight - 14) {
+      if (cursorY + 20 + chartHeight > pageHeight - 42) {
         doc.addPage();
         cursorY = 20;
       }
@@ -11692,7 +11880,7 @@ window.downloadAdminAnalyticsPDF = async function () {
       if (!chart) continue;
 
       const chartHeight = chartDisplayWidth * (chart.height / chart.width);
-      if (cursorY + 20 + chartHeight > pageHeight - 14) {
+      if (cursorY + 20 + chartHeight > pageHeight - 42) {
         doc.addPage();
         cursorY = 20;
       }
@@ -11709,6 +11897,8 @@ window.downloadAdminAnalyticsPDF = async function () {
     }
   }
 
+  redrawWatermarkOnAllPages(doc, companyLogo, companyLogoSize);
+  drawPdfCompanyFooter(doc);
   doc.save(`Graphical_Analytics_${tabLabel.replace(/[^a-z0-9]+/gi, "_")}_${clientName.replace(/[^a-z0-9]+/gi, "_")}_${rangeLabel.replace(/[^a-z0-9]+/gi, "_")}.pdf`);
 };
 
@@ -11976,7 +12166,7 @@ function renderHistory() {
   const status = state.filters.status;
   const rows = liveJobs().map(jobRow)
     .filter((job) => !search || JSON.stringify(job).toLowerCase().includes(search))
-    .filter((job) => status === "all" || (status === "success" && /success|completed/i.test(`${job.payment} ${job.print}`)) || (status === "failed" && /failed/i.test(job.print)) || (status === "refund" && /refund/i.test(`${job.payment} ${job.print}`)))
+    .filter((job) => status === "all" || (status === "success" && /success|completed/i.test(`${job.payment} ${job.print}`)) || (status === "failed" && /failed/i.test(job.print)))
     .map((job) => [
       job.id,
       job.date,
@@ -12026,7 +12216,7 @@ function renderSystemStatus() {
 function renderReports() {
   const reports = state.adminData.reports.length
     ? state.adminData.reports
-    : ["daily-sales", "failed-transactions", "refunds", "maintenance"];
+    : ["daily-sales", "failed-transactions", "maintenance"];
 
   return `
     ${renderAdminHeader("Reports", "Generate PDF, Excel, and CSV reports for accounts, support, and maintenance.", `<button class="primary-button">Generate Report</button>`)}
@@ -12035,7 +12225,7 @@ function renderReports() {
       ${reports.map((report) => `
         <div class="module-card">
           <h2>${escapeHtml(String(report).replace(/-/g, " "))}</h2>
-          <p class="helper-text">Uses live backend jobs, transactions, refunds, and kiosk records.</p>
+          <p class="helper-text">Uses live backend jobs, transactions, and kiosk records.</p>
           <div class="flow-actions">
             <button class="secondary-button">PDF</button>
             <button class="secondary-button">Excel</button>
@@ -12986,20 +13176,19 @@ function renderKioskManagementTable() {
             <th>Project</th>
             <th>Branch</th>
             <th>Status</th>
-            <th>Activation</th>
             <th>Setup Code</th>
             ${canManage ? "<th>Actions</th>" : ""}
           </tr>
         </thead>
         <tbody>
-          ${kiosks.length ? kiosks.map((kiosk) => `
+          ${kiosks.length ? kiosks.map((kiosk) => {
+            return `
             <tr>
               <td>${escapeHtml(kiosk.kioskId || "")}</td>
               <td>${escapeHtml(kiosk.name || "")}</td>
               <td>${escapeHtml(kiosk.projectId || "")}</td>
               <td>${escapeHtml(kiosk.branch || "")}</td>
               <td>${escapeHtml(kiosk.status || "Unknown")}</td>
-              <td>${escapeHtml(kiosk.activatedAt ? "Activated" : "Not activated")}</td>
               <td>${escapeHtml(kiosk.setupCode || "")}</td>
               ${canManage ? `
               <td>
@@ -13009,8 +13198,9 @@ function renderKioskManagementTable() {
               </td>
               ` : ""}
             </tr>
-          `).join("") : `
-            <tr><td colspan="${canManage ? 8 : 7}">No kiosks are assigned to this account.</td></tr>
+          `;
+          }).join("") : `
+            <tr><td colspan="${canManage ? 7 : 6}">No kiosks are assigned to this account.</td></tr>
           `}
         </tbody>
       </table>
@@ -13200,23 +13390,6 @@ async function deleteKiosk(kioskId) {
   render();
 }
 
-function renderRefunds() {
-  const rows = state.adminData.refunds.map((refund) => [
-    refund.refundId || "",
-    refund.jobId || "",
-    refund.paymentId || "",
-    money(refund.amount || 0),
-    refund.reason || "",
-    refund.status || ""
-  ]);
-
-  return `
-    ${renderAdminHeader("Refunds", "Refund records for your assigned projects and kiosks.")}
-    ${adminNotice()}
-    ${renderPaginatedTable("refunds", ["Refund ID", "Job ID", "Payment ID", "Amount", "Reason", "Status"], rows, "No refund records found.")}
-  `;
-}
-
 function renderAlerts() {
   const alerts = adminOperationalAlerts();
   const affectedKiosks = new Set(alerts.map((alert) => alert.kioskId).filter(Boolean)).size;
@@ -13368,7 +13541,6 @@ function renderFilters() {
         <option value="all" ${state.filters.status === "all" ? "selected" : ""}>All statuses</option>
         <option value="success" ${state.filters.status === "success" ? "selected" : ""}>Success</option>
         <option value="failed" ${state.filters.status === "failed" ? "selected" : ""}>Failed</option>
-        <option value="refund" ${state.filters.status === "refund" ? "selected" : ""}>Refund</option>
       </select>
     </div>
   `;
@@ -13446,6 +13618,11 @@ async function adminLogin() {
     state.adminToken = payload.token || "";
     state.adminAccount = payload.admin || null;
     state.adminLoginError = "";
+    // Always land on the Dashboard after logging in, not whatever page was
+    // open before a previous logout (resolveInitialKioskAdminPage() restores
+    // that from sessionStorage for page refreshes, but a fresh login should
+    // never inherit it).
+    state.adminPage = "dashboard";
     render();
     loadAdminData();
     startAdminPolling();
@@ -13961,11 +14138,6 @@ async function handleClick(event) {
       state.step = 3;
       render();
       startLocalPrintJob();
-      break;
-    case "request-refund":
-      state.alerts.unshift(`${currentJobId()} refund request created after print failure.`);
-      state.printStatusMessage = "Refund request saved. Please contact kiosk staff for admin review.";
-      render();
       break;
     case "admin-toggle-profile-menu":
       state.adminProfileMenuOpen = !state.adminProfileMenuOpen;

@@ -87,9 +87,6 @@ const adminSampleData = `window.__adminSampleData = {
   transactions: [
     { paymentId: "PAY-001", jobId: "JOB-LONG-RESPONSIVE-001", kiosk: "KIOSK-NASHIK-CENTRAL-01", service: "Upload & Print", amount: 72, paymentMethod: "UPI", status: "Success", createdAt: new Date().toISOString(), printStatus: "Completed" }
   ],
-  refunds: [
-    { refundId: "REF-001", jobId: "JOB-FAILED-002", paymentId: "PAY-002", amount: 6, reason: "Print failed after payment", status: "Pending", requestedAt: new Date().toISOString() }
-  ],
   kiosks: [
     { kioskId: "KIOSK-NASHIK-CENTRAL-01", name: "Central Office Kiosk", branch: "Main municipal office", projectId: "project-nmc", status: "online", lastOnline: new Date().toISOString() },
     { kioskId: "KIOSK-WARD-02", name: "Ward Office Kiosk", branch: "Ward 2", projectId: "project-nmc", status: "offline", lastOnline: "" }
@@ -110,7 +107,7 @@ function adminSetup(page) {
 
 const adminRoutes = [
   { name: "admin-login", url: "/admin.html?testHooks=true" },
-  ..."dashboard projects kiosks services service-editor pricing revenue system history reports refunds alerts".split(" ").map(page => ({
+  ..."dashboard projects kiosks services service-editor pricing revenue system history reports alerts".split(" ").map(page => ({
     name: `admin-${page}`,
     url: "/admin.html?testHooks=true",
     setup: adminSetup(page)
@@ -131,7 +128,6 @@ const superBase = `(() => {
     services: [{ id: "print", title: "Upload & Print", mode: "upload", enabled: true, projectIds: ["project-nmc"], pricing: { bw: 3, color: 10 }, templates: [] }, { id: "gov-forms", title: "Government Forms", mode: "template", enabled: true, projectIds: ["project-nmc"], pricing: { bw: 3, color: 10 }, templates: [{ id: "birth", title: "Birth Certificate", pages: 1 }] }],
     jobs: [{ jobId: "JOB-LONG-RESPONSIVE-001", kioskId: "KIOSK-NASHIK-CENTRAL-01", service: "Upload & Print", fileName: "very-long-citizen-application-file-name-for-responsive-testing.pdf", pageCount: 12, copies: 2, amount: 72, paymentStatus: "Success", printStatus: "Completed", createdAt: now }],
     payments: [{ paymentId: "PAY-001", jobId: "JOB-LONG-RESPONSIVE-001", gateway: "Razorpay", amount: 72, currency: "INR", paymentMethod: "UPI", status: "Success", createdAt: now }],
-    refunds: [{ refundId: "REF-001", jobId: "JOB-LONG-RESPONSIVE-001", paymentId: "PAY-001", amount: 72, reason: "Responsive test pending refund", status: "Pending", requestedAt: now }],
     releases: []
   }};
 })()`;
@@ -142,7 +138,7 @@ function superSetup(page, modal = false) {
 
 const superRoutes = [
   { name: "super-login", url: "/super-admin.html" },
-  ..."dashboard kioskAdmins projects kiosks pricing revenue jobs payments refunds services".split(" ").map(page => ({
+  ..."dashboard kioskAdmins projects kiosks pricing revenue jobs payments services".split(" ").map(page => ({
     name: `super-${page}`,
     url: "/super-admin.html",
     setup: superSetup(page)

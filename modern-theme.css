@@ -378,7 +378,7 @@ h1, h2, h3, .admin-header h1, .stage-header h1, .section-heading h2, .module-car
 
 .admin-nav-group {
   margin: 0 !important;
-  padding: 12px 14px 12px 14px !important;
+  padding: 12px 8px 12px 14px !important;
   flex: 1 1 0px !important;
   min-height: 0 !important;
   overflow-y: auto !important;

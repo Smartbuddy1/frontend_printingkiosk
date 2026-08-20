@@ -1,7 +1,7 @@
-@import url("https://fonts.googleapis.com/css2?family=Noto+Sans:wght@400;500;600;700&family=Noto+Sans+Devanagari:wght@400;500;600;700&display=swap");
+@import url("https://fonts.googleapis.com/css2?family=Noto+Sans:wght@400;500;600;700&family=Noto+Sans+Devanagari:wght@400;500;600;700&family=Poppins:wght@300;400;500;600;700;800;900&display=swap");
 
 :root {
-  --font-primary: "Noto Sans", Arial, sans-serif;
+  --font-primary: "Poppins", "Noto Sans", Arial, sans-serif;
   --font-devanagari: "Noto Sans Devanagari", "Noto Sans", sans-serif;
   --font-main: var(--font-primary);
   --type-home-title: clamp(34px, 2.45vw, 46px);
@@ -1875,14 +1875,99 @@ button:disabled:hover {
   gap: 6px;
 }
 
+/* Compact icon buttons instead of the old 3 text-labeled buttons (Up/Down/
+   Remove) crammed into a single flex row - at the grid's minimum 110px
+   column width, "Remove" alone didn't fit, so the row overflowed into the
+   next image's column. Fixed-size icon buttons (~26px each) comfortably fit
+   3-in-a-row well within that width regardless of column size. */
 .idle-image-item-actions {
   display: flex;
   gap: 4px;
 }
 
-.idle-image-item-actions .small-button {
-  flex: 1;
-  padding: 4px 6px;
+.idle-image-action-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: 0 0 auto;
+  width: 26px;
+  height: 26px;
+  padding: 0;
+  border-radius: 7px;
+  border: 1px solid #e2e8f0;
+  background: #ffffff;
+  color: #475569;
+  cursor: pointer;
+  transition: background 0.15s ease, border-color 0.15s ease, color 0.15s ease;
+}
+
+.idle-image-action-btn:hover:not(:disabled) {
+  background: #f8fafc;
+  border-color: #cbd5e1;
+  color: #0f172a;
+}
+
+.idle-image-action-btn:disabled {
+  opacity: 0.35;
+  cursor: not-allowed;
+}
+
+.idle-image-action-btn svg {
+  width: 13px;
+  height: 13px;
+}
+
+.idle-image-action-up svg {
+  transform: rotate(-90deg);
+}
+
+.idle-image-action-down svg {
+  transform: rotate(90deg);
+}
+
+.idle-image-action-remove {
+  border-color: #fca5a5;
+  color: #dc2626;
+  background: #fef2f2;
+}
+
+.idle-image-action-remove:hover:not(:disabled) {
+  background: #fee2e2;
+  border-color: #f87171;
+  color: #b91c1c;
+}
+
+/* Inline status/progress for the idle-screensaver upload flow, updated
+   directly via DOM (see refreshIdleImageGridDom() etc.) instead of the app's
+   global render() - this panel lives inside a bigger multi-field edit modal,
+   and a full render() mid-upload would rebuild that whole modal from its
+   draft object, discarding any other field the admin had typed but not yet
+   saved (see the comment on window.updateIdleMediaModePreview). */
+.idle-upload-status {
+  font-size: 12.5px;
+  color: #64748b;
+  margin: 8px 0 0;
+  min-height: 1em;
+}
+
+.idle-upload-status.is-error {
+  color: #dc2626;
+}
+
+.idle-upload-progress {
+  margin-top: 8px;
+  height: 6px;
+  border-radius: 999px;
+  background: #e2e8f0;
+  overflow: hidden;
+}
+
+.idle-upload-progress-fill {
+  height: 100%;
+  width: 0%;
+  border-radius: 999px;
+  background: linear-gradient(135deg, #6366f1, #8b5cf6);
+  transition: width 0.15s ease;
 }
 
 .idle-video-preview {
@@ -5367,7 +5452,7 @@ tbody tr:hover {
 
 /* Print Kiosk reference UI system */
 :root {
-  --font-main: Cambria, "Nirmala UI", "Mangal", Georgia, "Times New Roman", serif;
+  --font-main: "Poppins", "Nirmala UI", "Mangal", Arial, sans-serif;
   --weight-regular: 400;
   --weight-medium: 500;
   --weight-semibold: 600;
@@ -6664,7 +6749,7 @@ tbody tr:hover {
 
 /* Print Kiosk reference UI */
 :root {
-  --font-main: Cambria, "Nirmala UI", "Mangal", Georgia, "Times New Roman", serif;
+  --font-main: "Poppins", "Nirmala UI", "Mangal", Arial, sans-serif;
   --weight-regular: 400;
   --weight-medium: 500;
   --weight-semibold: 600;
@@ -13021,7 +13106,7 @@ tbody tr:hover {
 
 /* Forms V2 UI */
 .forms-v2-stage {
-  font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+  font-family: 'Poppins', -apple-system, BlinkMacSystemFont, sans-serif;
   color: #1e293b;
   display: flex;
   flex-direction: column;
@@ -16537,22 +16622,213 @@ tbody tr:hover {
   z-index: 100000;
   background: #000;
   display: flex;
-  align-items: center;
-  justify-content: center;
+  flex-direction: column;
   cursor: pointer;
 }
 
-.idle-screensaver-overlay img,
-.idle-screensaver-overlay video {
+/* Header: client logo + title/subtitle, styled to match the real kiosk
+   topbar's dark-navy look (same colors as #app .customer-shell >
+   .standard-kiosk-topbar) but written unscoped on purpose - this DOM root
+   sits outside #app/.customer-shell, so the real page's .customer-shell-
+   scoped rules would silently not apply here. */
+.idle-screensaver-header {
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 14px clamp(28px, 3vw, 56px);
+  background: #08265d;
+  box-shadow: 0 4px 14px rgba(8, 38, 93, 0.2);
+}
+
+.idle-screensaver-brand-mark {
+  flex: 0 0 auto;
+  width: clamp(58px, 5.8vh, 68px);
+  height: clamp(58px, 5.8vh, 68px);
+  border-radius: 12px;
+  background: #ffffff;
+  padding: 5px;
+  box-sizing: border-box;
+}
+
+.idle-screensaver-brand-mark img {
   width: 100%;
   height: 100%;
   object-fit: contain;
+}
+
+.idle-screensaver-brand-copy {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.idle-screensaver-brand-title {
+  font-size: clamp(22px, 1.7vw, 30px);
+  font-weight: var(--weight-heading);
+  color: #ffffff;
+  line-height: 1.15;
+}
+
+.idle-screensaver-brand-subtitle {
+  font-size: clamp(14px, 1vw, 17px);
+  font-weight: var(--weight-semibold);
+  color: rgba(255, 255, 255, 0.86);
+}
+
+/* Body: fills the space between header and footer. The media fills it
+   completely edge-to-edge, flush against the header/footer/screen sides
+   with no gaps (object-fit: cover crops overflow as needed so there's never
+   letterboxing) with the "Tap to Start" CTA floating on top of it near the
+   bottom edge. */
+.idle-screensaver-body {
+  position: relative;
+  flex: 1 1 auto;
+  min-height: 0;
+}
+
+.idle-screensaver-cta {
+  position: absolute;
+  bottom: clamp(50px, 12vh, 100px);
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 2;
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  padding: 16px 40px;
+  border-radius: 999px;
+  border: none;
+  cursor: pointer;
+  background: linear-gradient(135deg, var(--blue), #174a9c);
+  color: #ffffff;
+  font-size: clamp(18px, 1.6vw, 24px);
+  font-weight: var(--weight-heading);
+  letter-spacing: 0.01em;
+  box-shadow: 0 14px 34px rgba(23, 74, 156, 0.4);
+  animation: idleScreensaverCtaPulse 2.4s ease-in-out infinite;
+}
+
+.idle-screensaver-cta svg {
+  flex: 0 0 auto;
+}
+
+@keyframes idleScreensaverCtaPulse {
+  0%, 100% { box-shadow: 0 14px 34px rgba(23, 74, 156, 0.4); }
+  50% { box-shadow: 0 18px 46px rgba(23, 74, 156, 0.62); }
+}
+
+.idle-screensaver-media {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+}
+
+.idle-screensaver-media img,
+.idle-screensaver-media video {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
   animation: idleScreensaverFadeIn 0.6s ease both;
 }
 
 @keyframes idleScreensaverFadeIn {
   from { opacity: 0; }
   to { opacity: 1; }
+}
+
+/* Footer: reuses the real page's renderCustomerFooterFormsReference()
+   markup verbatim (same classes), restyled unscoped for the same reason
+   as the header above, using the same navy/teal palette the real footer
+   uses (#app .customer-shell.app-shell .forms-kiosk-footer). */
+.idle-screensaver-overlay .forms-kiosk-footer {
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 14px clamp(24px, 3vw, 46px);
+  background: rgba(255, 255, 255, 0.96);
+}
+
+.idle-screensaver-overlay .forms-kiosk-footer-brand {
+  display: flex;
+  align-items: flex-end;
+  gap: 10px;
+}
+
+.idle-screensaver-overlay .forms-kiosk-footer-brand img {
+  height: clamp(44px, 5.2vh, 56px);
+  width: auto;
+  object-fit: contain;
+}
+
+.idle-screensaver-overlay .forms-kiosk-footer-brand small {
+  display: block;
+  font-size: clamp(11px, 0.78vw, 13px);
+  color: #055ee9;
+  font-weight: 800;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+}
+
+.idle-screensaver-overlay .forms-kiosk-footer-brand .powered-by-company {
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+}
+
+.idle-screensaver-overlay .forms-kiosk-footer-brand .powered-by-company-main {
+  display: block;
+  font-size: clamp(16px, 1.1vw, 20px);
+  font-weight: 800;
+  letter-spacing: 0.01em;
+  color: #10a88d;
+  text-transform: uppercase;
+  line-height: 1;
+}
+
+.idle-screensaver-overlay .forms-kiosk-footer-brand .powered-by-company-suffix {
+  display: block;
+  font-size: clamp(13px, 0.9vw, 16px);
+  font-weight: 800;
+  letter-spacing: 0.02em;
+  color: #8a8f98;
+  text-transform: uppercase;
+  line-height: 1.1;
+}
+
+.idle-screensaver-overlay .kiosk-footer-help {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  color: #08265d;
+}
+
+.idle-screensaver-overlay .kiosk-footer-help-icon {
+  color: #0b3b89;
+  flex: 0 0 auto;
+}
+
+.idle-screensaver-overlay .kiosk-footer-help-copy {
+  display: flex;
+  flex-direction: column;
+}
+
+.idle-screensaver-overlay .kiosk-footer-help-copy small {
+  display: block;
+  font-size: clamp(11px, 0.76vw, 13px);
+  color: #24436f;
+}
+
+.idle-screensaver-overlay .kiosk-footer-help-copy strong {
+  font-size: clamp(16px, 1.1vw, 20px);
+  font-weight: 750;
+  color: #102c65;
 }
 
 .settings-modal-card {

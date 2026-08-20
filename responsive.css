@@ -2477,7 +2477,7 @@ td {
 
 /* Professional form picker typography and sizing */
 .customer-shell:has(.template-selection-stage) {
-  --forms-font: "Inter", "Segoe UI", Arial, sans-serif;
+  --forms-font: "Poppins", "Segoe UI", Arial, sans-serif;
   --forms-ink: #0f2b5c;
   --forms-muted: #52647e;
 }
@@ -2717,7 +2717,7 @@ td {
   --preview-blue-dark: #08265f;
   --preview-border: #d8e6f8;
   --preview-card: #ffffff;
-  --preview-font: "Inter", "Segoe UI", Arial, sans-serif;
+  --preview-font: "Poppins", "Segoe UI", Arial, sans-serif;
   --preview-ink: #08245a;
   --preview-muted: #5b6f91;
   --preview-soft: #f3f7fc;
@@ -6360,7 +6360,7 @@ td {
 /* Customer-wide typography polish to match the clean policy/contact screen style. */
 .customer-shell,
 .customer-shell :where(button, input, select, textarea, h1, h2, h3, h4, h5, h6, p, span, strong, small, label, a, div) {
-  font-family: "Inter", "Segoe UI", "Nirmala UI", Arial, sans-serif !important;
+  font-family: "Poppins", "Segoe UI", "Nirmala UI", Arial, sans-serif !important;
   letter-spacing: 0 !important;
 }
 
@@ -6498,7 +6498,7 @@ td {
 .customer-shell .forms-kiosk-footer strong,
 .customer-shell .forms-kiosk-footer small,
 .customer-shell .forms-kiosk-footer button {
-  font-family: "Inter", "Segoe UI", "Nirmala UI", Arial, sans-serif !important;
+  font-family: "Poppins", "Segoe UI", "Nirmala UI", Arial, sans-serif !important;
 }
 
 @media (max-width: 820px) {
@@ -6523,7 +6523,7 @@ td {
 /* Forms kiosk screen: professional, readable kiosk typography. */
 .customer-shell.forms-reference-shell {
   color: #12233f !important;
-  font-family: "Inter", "Segoe UI", Arial, sans-serif !important;
+  font-family: "Poppins", "Segoe UI", Arial, sans-serif !important;
   font-size: 15px !important;
 }
 
@@ -6575,7 +6575,7 @@ td {
 
 .customer-shell.forms-reference-shell .forms-v2-back-btn,
 .customer-shell.forms-reference-shell .forms-v2-compact-list .forms-v2-back-btn {
-  font-family: "Inter", "Segoe UI", Arial, sans-serif !important;
+  font-family: "Poppins", "Segoe UI", Arial, sans-serif !important;
   font-size: 17px !important;
   font-weight: 700 !important;
   height: 56px !important;
@@ -6593,13 +6593,13 @@ td {
 
 .customer-shell.forms-reference-shell .forms-v2-search-input,
 .customer-shell.forms-reference-shell .forms-v2-compact-list .forms-v2-search-input {
-  font-family: "Inter", "Segoe UI", Arial, sans-serif !important;
+  font-family: "Poppins", "Segoe UI", Arial, sans-serif !important;
   font-size: 20px !important;
   font-weight: 500 !important;
 }
 
 .customer-shell.forms-reference-shell .forms-v2-search-summary strong {
-  font-family: "Inter", "Segoe UI", Arial, sans-serif !important;
+  font-family: "Poppins", "Segoe UI", Arial, sans-serif !important;
   font-size: 21px !important;
   font-weight: 750 !important;
   line-height: 1.05 !important;
@@ -6607,7 +6607,7 @@ td {
 }
 
 .customer-shell.forms-reference-shell .forms-v2-search-summary span {
-  font-family: "Inter", "Segoe UI", Arial, sans-serif !important;
+  font-family: "Poppins", "Segoe UI", Arial, sans-serif !important;
   font-size: 14px !important;
   font-weight: 600 !important;
   line-height: 1.1 !important;
@@ -6624,7 +6624,7 @@ td {
 .customer-shell.forms-reference-shell .forms-v2-card-content h3,
 .customer-shell.forms-reference-shell .forms-v2-compact-list .forms-v2-card-content h3 {
   color: #092650 !important;
-  font-family: "Inter", "Segoe UI", Arial, sans-serif !important;
+  font-family: "Poppins", "Segoe UI", Arial, sans-serif !important;
   font-size: 18px !important;
   font-weight: 750 !important;
   line-height: 1.12 !important;
@@ -6633,7 +6633,7 @@ td {
 .customer-shell.forms-reference-shell .forms-v2-card-content p,
 .customer-shell.forms-reference-shell .forms-v2-compact-list .forms-v2-card-content p {
   color: #334a6b !important;
-  font-family: "Inter", "Segoe UI", Arial, sans-serif !important;
+  font-family: "Poppins", "Segoe UI", Arial, sans-serif !important;
   font-size: 13px !important;
   font-weight: 500 !important;
   line-height: 1.28 !important;
@@ -6643,27 +6643,27 @@ td {
 .customer-shell.forms-reference-shell .tag-meta,
 .customer-shell.forms-reference-shell .forms-v2-compact-list .tag-dept,
 .customer-shell.forms-reference-shell .forms-v2-compact-list .tag-meta {
-  font-family: "Inter", "Segoe UI", Arial, sans-serif !important;
+  font-family: "Poppins", "Segoe UI", Arial, sans-serif !important;
   font-size: 12px !important;
   font-weight: 700 !important;
 }
 
 .customer-shell.forms-reference-shell .forms-v2-price strong,
 .customer-shell.forms-reference-shell .forms-v2-compact-list .forms-v2-price strong {
-  font-family: "Inter", "Segoe UI", Arial, sans-serif !important;
+  font-family: "Poppins", "Segoe UI", Arial, sans-serif !important;
   font-size: 21px !important;
   font-weight: 800 !important;
 }
 
 .customer-shell.forms-reference-shell .forms-v2-price span {
-  font-family: "Inter", "Segoe UI", Arial, sans-serif !important;
+  font-family: "Poppins", "Segoe UI", Arial, sans-serif !important;
   font-size: 13px !important;
   font-weight: 600 !important;
 }
 
 .customer-shell.forms-reference-shell .forms-v2-btn,
 .customer-shell.forms-reference-shell .forms-v2-compact-list .forms-v2-btn {
-  font-family: "Inter", "Segoe UI", Arial, sans-serif !important;
+  font-family: "Poppins", "Segoe UI", Arial, sans-serif !important;
   font-size: 17px !important;
   font-weight: 700 !important;
 }
@@ -6683,7 +6683,7 @@ td {
 .customer-shell:has(.preview-stage) .preview-right-sidebar,
 .customer-shell:has(.preview-stage) .preview-side-card,
 .customer-shell:has(.preview-stage) .preview-control-actions button {
-  font-family: "Inter", "Segoe UI", Arial, sans-serif !important;
+  font-family: "Poppins", "Segoe UI", Arial, sans-serif !important;
 }
 
 .customer-shell:has(.preview-stage) .preview-info-list span,
@@ -7442,7 +7442,7 @@ td {
 
 /* Final customer home polish: professional kiosk sizing and simpler typography. */
 .customer-shell.classic-home-shell {
-  --home-font: "Inter", "Segoe UI", Arial, sans-serif;
+  --home-font: "Poppins", "Segoe UI", Arial, sans-serif;
   background: #edf4fb !important;
   color: #071d47 !important;
   font-family: var(--home-font) !important;
@@ -7654,7 +7654,7 @@ td {
 
 .customer-shell.classic-home-shell .customer-footer:not(.nmc-kiosk-footer),
 .customer-shell .customer-footer:not(.nmc-kiosk-footer) {
-  font-family: var(--home-font, "Inter", "Segoe UI", Arial, sans-serif) !important;
+  font-family: var(--home-font, "Poppins", "Segoe UI", Arial, sans-serif) !important;
   min-height: clamp(50px, 5.8vh, 62px) !important;
 }
 
@@ -7664,7 +7664,7 @@ td {
 .customer-shell .customer-footer:not(.nmc-kiosk-footer) .powered-by-label,
 .customer-shell .customer-footer:not(.nmc-kiosk-footer) .powered-by-company,
 .customer-shell .customer-footer:not(.nmc-kiosk-footer) .footer-link {
-  font-family: var(--home-font, "Inter", "Segoe UI", Arial, sans-serif) !important;
+  font-family: var(--home-font, "Poppins", "Segoe UI", Arial, sans-serif) !important;
   letter-spacing: 0 !important;
 }
 
@@ -7839,7 +7839,7 @@ td {
 .customer-shell:has(.preview-stage) .multi-preview-item header strong,
 .customer-shell:has(.preview-stage) .multi-preview-item footer strong {
   color: #071d47;
-  font-family: "Inter", "Segoe UI", Arial, sans-serif;
+  font-family: "Poppins", "Segoe UI", Arial, sans-serif;
   font-size: 13px;
   font-weight: 850;
   line-height: 1.15;
@@ -7853,7 +7853,7 @@ td {
 .customer-shell:has(.preview-stage) .multi-preview-item footer span {
   color: #536783;
   flex: 0 0 auto;
-  font-family: "Inter", "Segoe UI", Arial, sans-serif;
+  font-family: "Poppins", "Segoe UI", Arial, sans-serif;
   font-size: 11px;
   font-weight: 750;
   line-height: 1.1;
@@ -8090,7 +8090,7 @@ td {
 .customer-shell.app-shell .forms-kiosk-footer-brand small {
   color: #1f63d8 !important;
   display: block !important;
-  font-family: "Inter", "Segoe UI", Arial, sans-serif !important;
+  font-family: "Poppins", "Segoe UI", Arial, sans-serif !important;
   font-size: clamp(13px, 0.9vw, 16px) !important;
   font-weight: 750 !important;
   letter-spacing: 0 !important;
@@ -8103,7 +8103,7 @@ td {
 .customer-shell.app-shell .forms-kiosk-footer-brand strong {
   color: #08265d !important;
   display: block !important;
-  font-family: "Inter", "Segoe UI", Arial, sans-serif !important;
+  font-family: "Poppins", "Segoe UI", Arial, sans-serif !important;
   font-size: clamp(18px, 1.25vw, 24px) !important;
   font-weight: 850 !important;
   letter-spacing: 0 !important;
@@ -8284,7 +8284,7 @@ td {
 
 .customer-shell.classic-home-shell .custom-home-header h1 {
   color: #071d47 !important;
-  font-family: "Inter", "Segoe UI", Arial, sans-serif !important;
+  font-family: "Poppins", "Segoe UI", Arial, sans-serif !important;
   font-size: clamp(34px, 3.3vh, 42px) !important;
   font-weight: 850 !important;
   letter-spacing: 0 !important;
@@ -9203,7 +9203,7 @@ body,
 
 #app .customer-shell > .standard-kiosk-topbar .brand-title {
   color: #ffffff !important;
-  font-family: var(--font-primary, "Noto Sans", Arial, sans-serif) !important;
+  font-family: var(--font-primary, "Poppins", "Noto Sans", Arial, sans-serif) !important;
   font-size: clamp(25px, 1.7vw, 32px) !important;
   font-weight: 700 !important;
   letter-spacing: 0 !important;
@@ -9215,7 +9215,7 @@ body,
 #app .customer-shell > .standard-kiosk-topbar .brand-subtitle {
   color: rgba(255, 255, 255, 0.86) !important;
   display: block !important;
-  font-family: var(--font-primary, "Noto Sans", Arial, sans-serif) !important;
+  font-family: var(--font-primary, "Poppins", "Noto Sans", Arial, sans-serif) !important;
   font-size: clamp(16px, 1vw, 19px) !important;
   font-weight: 500 !important;
   line-height: 1.15 !important;
@@ -9257,7 +9257,7 @@ body,
 
 #app .customer-shell > .standard-kiosk-topbar .time-text {
   color: #172033 !important;
-  font-family: var(--font-primary, "Noto Sans", Arial, sans-serif) !important;
+  font-family: var(--font-primary, "Poppins", "Noto Sans", Arial, sans-serif) !important;
   font-size: clamp(17px, 1.1vw, 21px) !important;
   font-weight: 700 !important;
   letter-spacing: 0 !important;
@@ -9266,7 +9266,7 @@ body,
 
 #app .customer-shell > .standard-kiosk-topbar .date-text {
   color: #4d596e !important;
-  font-family: var(--font-primary, "Noto Sans", Arial, sans-serif) !important;
+  font-family: var(--font-primary, "Poppins", "Noto Sans", Arial, sans-serif) !important;
   font-size: clamp(12px, 0.8vw, 14px) !important;
   font-weight: 500 !important;
   line-height: 1.05 !important;
@@ -9320,7 +9320,7 @@ body,
 #app .customer-shell.app-shell .forms-kiosk-footer-brand .powered-by-company-main {
   color: #10a88d !important;
   display: block !important;
-  font-family: var(--font-primary, "Noto Sans", Arial, sans-serif) !important;
+  font-family: var(--font-primary, "Poppins", "Noto Sans", Arial, sans-serif) !important;
   font-size: clamp(18px, 1.2vw, 24px) !important;
   font-weight: 800 !important;
   letter-spacing: 0.01em !important;
@@ -9333,7 +9333,7 @@ body,
 #app .customer-shell.app-shell .forms-kiosk-footer-brand .powered-by-company-suffix {
   color: #8a8f98 !important;
   display: block !important;
-  font-family: var(--font-primary, "Noto Sans", Arial, sans-serif) !important;
+  font-family: var(--font-primary, "Poppins", "Noto Sans", Arial, sans-serif) !important;
   font-size: clamp(15px, 1vw, 20px) !important;
   font-weight: 800 !important;
   letter-spacing: 0.02em !important;
@@ -9371,7 +9371,7 @@ body,
 #app .customer-shell.app-shell .kiosk-footer-help-copy small {
   color: #24436f !important;
   display: block !important;
-  font-family: var(--font-primary, "Noto Sans", Arial, sans-serif) !important;
+  font-family: var(--font-primary, "Poppins", "Noto Sans", Arial, sans-serif) !important;
   font-size: clamp(11px, 0.76vw, 14px) !important;
   font-weight: 500 !important;
   letter-spacing: 0 !important;
@@ -9382,7 +9382,7 @@ body,
 #app .customer-shell.app-shell .kiosk-footer-help-copy strong {
   color: #102c65 !important;
   display: block !important;
-  font-family: var(--font-primary, "Noto Sans", Arial, sans-serif) !important;
+  font-family: var(--font-primary, "Poppins", "Noto Sans", Arial, sans-serif) !important;
   font-size: clamp(18px, 1.22vw, 24px) !important;
   font-weight: 750 !important;
   letter-spacing: 0 !important;
@@ -9391,7 +9391,7 @@ body,
 
 #app .customer-shell.app-shell .kiosk-footer-help-note {
   color: #102c65 !important;
-  font-family: var(--font-primary, "Noto Sans", Arial, sans-serif) !important;
+  font-family: var(--font-primary, "Poppins", "Noto Sans", Arial, sans-serif) !important;
   font-size: clamp(11px, 0.72vw, 13px) !important;
   font-weight: 650 !important;
 }
@@ -9469,7 +9469,7 @@ body,
 }
 
 #app .customer-shell .kiosk-language-button[lang="en"] {
-  font-family: var(--font-primary, "Noto Sans", Arial, sans-serif) !important;
+  font-family: var(--font-primary, "Poppins", "Noto Sans", Arial, sans-serif) !important;
 }
 
 #app .customer-shell .kiosk-language-button[lang="hi"],
