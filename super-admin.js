@@ -3723,7 +3723,13 @@ function renderAnalyticsKioskLineChart() {
     forms: demoFormsByIndex[idx % demoFormsByIndex.length]
   }));
 
-  const maxVal = Math.max(250, ...list.map((i) => i.rev));
+  // No artificial floor here - a hardcoded minimum of 250 used to force
+  // every chart onto that same scale even when actual revenue was much
+  // smaller (e.g. a real max of 32), squeezing the real line into a flat-
+  // looking sliver near the bottom. analyticsNiceAxis() already produces a
+  // sensible small axis (max 5, step 1) when every value is 0, so no floor
+  // is needed to avoid a degenerate chart either.
+  const maxVal = Math.max(0, ...list.map((i) => i.rev));
   const padding = { top: 25, right: 30, bottom: 42, left: 68 };
   const width = 920;
   const height = 290;
@@ -3740,6 +3746,15 @@ function renderAnalyticsKioskLineChart() {
     label: item.label
   }));
 
+  // Catmull-Rom-derived tangents (below) can overshoot past a sharp
+  // drop/rise between two consecutive points - e.g. a real point sequence
+  // like 175 -> 0 -> 0 curves through a control point pulled below 0,
+  // visibly dipping the line under the zero baseline even though revenue
+  // itself never goes negative. Clamp control points to the chart's actual
+  // 0..yMax range so the curve can't draw outside what the data supports.
+  const chartBaselineY = padding.top + chartH;
+  const chartTopY = padding.top;
+
   const createSmoothPath = (pts) => {
     if (!pts || !pts.length) return "";
     if (pts.length === 1) return `M ${pts[0].x} ${pts[0].y}`;
@@ -3753,9 +3768,9 @@ function renderAnalyticsKioskLineChart() {
       const p3 = pts[Math.min(pts.length - 1, i + 2)];
 
       const cp1x = p1.x + (p2.x - p0.x) / 6;
-      const cp1y = p1.y + (p2.y - p0.y) / 6;
+      const cp1y = Math.min(chartBaselineY, Math.max(chartTopY, p1.y + (p2.y - p0.y) / 6));
       const cp2x = p2.x - (p3.x - p1.x) / 6;
-      const cp2y = p2.y - (p3.y - p1.y) / 6;
+      const cp2y = Math.min(chartBaselineY, Math.max(chartTopY, p2.y - (p3.y - p1.y) / 6));
 
       path += ` C ${cp1x.toFixed(1)} ${cp1y.toFixed(1)}, ${cp2x.toFixed(1)} ${cp2y.toFixed(1)}, ${p2.x.toFixed(1)} ${p2.y.toFixed(1)}`;
     }
