@@ -424,6 +424,7 @@ const CUSTOMER_CLEAN_TRANSLATIONS = {
     "Quick Print": "जल्दी प्रिंट",
     "Fast service": "तेज़ सेवा",
     "Start": "शुरू करें",
+    "Tap to Start": "शुरू करें",
     "Home": "होम",
     "Search forms by name, department or keyword...": "नाम, विभाग या शब्द से फॉर्म खोजें...",
     "B/W per page": "B/W प्रति पेज",
@@ -584,6 +585,7 @@ const CUSTOMER_CLEAN_TRANSLATIONS = {
     "Quick Print": "जलद प्रिंट",
     "Fast service": "जलद सेवा",
     "Start": "सुरू करा",
+    "Tap to Start": "सुरू करा",
     "Home": "होम",
     "Search forms by name, department or keyword...": "नाव, विभाग किंवा शब्दाने फॉर्म शोधा...",
     "B/W per page": "B/W प्रति पान",
@@ -1759,7 +1761,7 @@ const state = {
     start: new Date(new Date().setHours(0, 0, 0, 0)).toISOString().split('T')[0],
     end: new Date().toISOString().split('T')[0]
   },
-  alertFilter: { search: "", category: "all", status: "all", kioskId: "all" },
+  alertFilter: { search: "", category: "all", status: "all", kioskId: "all", from: "", to: "" },
   reportTab: "revenue",
   step: 0,
   selectedService: null,
@@ -6013,26 +6015,51 @@ function renderIdleScreensaver() {
     ? `<video src="${escapeHtml(idleScreensaver.videoUrl)}" autoplay loop muted playsinline></video>`
     : `<img src="${escapeHtml(idleScreensaver.imageUrls[state.idleScreensaverIndex % idleScreensaver.imageUrls.length])}" alt="" draggable="false" data-no-visual-search />`;
 
-  // Header/footer reuse the real customer page's brand mark, brand copy, and
-  // footer render functions verbatim so the logo/title/footer text stay in
-  // sync with the live page - but with fresh, self-contained CSS (see
-  // styles.css .idle-screensaver-*) instead of relying on the real page's
-  // .customer-shell-scoped rules, since this root has no .customer-shell
-  // ancestor and those rules would silently not apply here. Deliberately
-  // NOT reusing the full topbar (has a live clock with duplicate
-  // getElementById-by-id lookups that would freeze) or the printer-status
-  // badge / language switcher (stale snapshot only, and would fire both a
-  // language switch and a dismiss on the same tap since this whole overlay
-  // is one big click target).
+  // Header uses the exact same brand/topbar-actions markup and class names
+  // as the real customer home screen's header (renderCustomerTopbarClassicHome
+  // in app.js), and styles.css/.idle-screensaver-header mirrors the canonical
+  // "shared customer header" values from responsive.css
+  // (#app .customer-shell > .standard-kiosk-topbar) property-for-property, so
+  // logo size, title/subtitle sizing, gaps, and colors match exactly. It's a
+  // deliberate copy rather than reusing that #app-anchored selector directly,
+  // since this DOM root sits outside #app on purpose (see showIdleScreensaver
+  // - a separate root keeps the video/slideshow from restarting on every
+  // #app re-render). The clock uses its own idle-screensaver-scoped classes
+  // alongside the real time-text/date-text classes (not id="kiosk-time"/
+  // "kiosk-date") so updateKioskClock()'s getElementById lookups keep
+  // resolving to the real topbar's clock only - see the idle-clock branch
+  // added there. The language switcher is wired with its own local,
+  // stopPropagation-guarded click listener below instead of relying on the
+  // global delegated handler (this root lives outside #app), so a tap on it
+  // can never also fire the overlay dismiss handler.
+  const now = new Date();
+  // While offline the CTA can't actually start a job (see dismissIdleScreensaver's
+  // offline guard), so it's styled black-and-white instead of its normal blue
+  // gradient/glow - a quick visual cue that tapping won't do anything right now,
+  // matching the same Online/Offline badge shown in the real page's header.
+  const isOffline = state.internetOnline === false;
   root.innerHTML = `
-    <div class="idle-screensaver-overlay" data-idle-screensaver-dismiss>
+    <div class="idle-screensaver-overlay ${isOffline ? "is-offline" : ""}" data-idle-screensaver-dismiss>
       <header class="idle-screensaver-header">
-        ${renderCustomerBrandMark("idle-screensaver-brand-mark", "Printing Kiosk")}
-        ${renderCustomerBrandCopy("idle-screensaver-brand-copy", "Printing Kiosk", "idle-screensaver-brand-title", "idle-screensaver-brand-subtitle")}
+        <div class="brand nmc-kiosk-brand">
+          ${renderCustomerBrandMark("brand-mark nmc-kiosk-mark", "Printing Kiosk")}
+          ${renderCustomerBrandCopy("classic-home-brand-copy", "Printing Kiosk")}
+        </div>
+        <div class="topbar-actions">
+          ${renderCustomerPrinterStatusBadge()}
+          ${renderCustomerLanguageControl()}
+          <div class="timer-widget" aria-label="Current date and time">
+            ${uiIcon("clock", 18)}
+            <div class="time-container">
+              <div class="time-text idle-screensaver-time">${escapeHtml(now.toLocaleTimeString("en-US", { hour: "2-digit", minute: "2-digit", second: "2-digit", hour12: true }))}</div>
+              <div class="date-text idle-screensaver-date">${escapeHtml(now.toLocaleDateString("en-US", { weekday: "short", day: "2-digit", month: "short", year: "numeric" }))}</div>
+            </div>
+          </div>
+        </div>
       </header>
       <div class="idle-screensaver-body">
         <button type="button" class="idle-screensaver-cta" tabindex="-1">
-          <span>Tap to Start</span>
+          <span>${escapeHtml(customerTranslateText("Tap to Start"))}</span>
           ${uiIcon("arrow-right", 22)}
         </button>
         <div class="idle-screensaver-media">${media}</div>
@@ -6041,6 +6068,15 @@ function renderIdleScreensaver() {
     </div>
   `;
   root.querySelector("[data-idle-screensaver-dismiss]")?.addEventListener("click", dismissIdleScreensaver);
+  root.querySelectorAll("[data-customer-language-button]").forEach((button) => {
+    button.addEventListener("click", (event) => {
+      event.stopPropagation();
+      const nextLanguage = button.dataset.customerLanguageButton;
+      state.customerLanguage = CUSTOMER_LANGUAGES.has(nextLanguage) ? nextLanguage : "en";
+      storeCustomerLanguage();
+      renderIdleScreensaver();
+    });
+  });
 }
 
 function showIdleScreensaver() {
@@ -6075,6 +6111,12 @@ function hideIdleScreensaver() {
 }
 
 function dismissIdleScreensaver() {
+  // Offline kiosks can't actually process a job (no config fetch, no upload,
+  // no payment) - keep the idle slideshow/video playing instead of letting a
+  // tap through to a flow that would just fail once it loads. The slideshow
+  // rotation timer (see showIdleScreensaver) is untouched, so images/video
+  // keep cycling normally; only the tap-to-dismiss action is blocked.
+  if (state.internetOnline === false) return;
   hideIdleScreensaver();
   scheduleCustomerInactivityTimer();
 }
@@ -6315,26 +6357,38 @@ function render() {
 }
 
 function updateKioskClock() {
-  const timeEl = document.getElementById("kiosk-time");
-  const dateEl = document.getElementById("kiosk-date");
-
-  if (!timeEl || !dateEl) {
-    return;
-  }
-
   const now = new Date();
-  timeEl.textContent = now.toLocaleTimeString("en-US", {
+  const timeText = now.toLocaleTimeString("en-US", {
     hour: "2-digit",
     minute: "2-digit",
     second: "2-digit",
     hour12: true
   });
-  dateEl.textContent = now.toLocaleDateString("en-US", {
+  const dateText = now.toLocaleDateString("en-US", {
     weekday: "short",
     day: "2-digit",
     month: "short",
     year: "numeric"
   });
+
+  const timeEl = document.getElementById("kiosk-time");
+  const dateEl = document.getElementById("kiosk-date");
+  if (timeEl && dateEl) {
+    timeEl.textContent = timeText;
+    dateEl.textContent = dateText;
+  }
+
+  // The idle screensaver renders its own clock with class-scoped elements
+  // (see renderIdleScreensaver()) rather than the id="kiosk-time"/"kiosk-date"
+  // pair above, since getElementById would only ever resolve to the first
+  // match in the DOM and leave a duplicate frozen. Updated here via class
+  // selectors so it ticks every second like the real topbar's clock.
+  const idleTimeEl = document.querySelector(".idle-screensaver-time");
+  const idleDateEl = document.querySelector(".idle-screensaver-date");
+  if (idleTimeEl && idleDateEl) {
+    idleTimeEl.textContent = timeText;
+    idleDateEl.textContent = dateText;
+  }
 }
 
 function tickThankYouHomeCountdown() {
@@ -8342,6 +8396,15 @@ function initInternetStatusIpc() {
     state.internetCheckedAt = status.checkedAt || new Date().toISOString();
 
     if (wasOnline === state.internetOnline) return; // No visible change — skip the rerender.
+
+    // The idle screensaver renders into its own root outside #app (see
+    // renderIdleScreensaver), so the render() call below never touches it -
+    // without this it would keep showing the wrong online/offline look
+    // until the next unrelated re-render (image rotation, language switch).
+    if (state.showIdleScreensaver) {
+      renderIdleScreensaver();
+    }
+
     if (state.mode === "customer" && (state.step === 2 || state.step >= 4)) return;
 
     render();
@@ -9295,6 +9358,24 @@ function kioskPrinterHealthAlerts(kiosk = {}) {
     }];
   }
 
+  // The kiosk PC itself is online (heartbeat is fine) but the backend's own
+  // computed printerReady flag says no usable printer is connected/ready,
+  // and none of the specific hardware checks above happened to fire (e.g.
+  // there's simply no printer plugged in at all, so paper/toner/door flags
+  // are all "Unknown" rather than a concrete fault). Without this, that case
+  // fell through to zero alerts and the kiosk looked fully healthy.
+  if (alerts.length === 0 && kiosk.printerReady === false) {
+    return [{
+      title: `${kioskId} - Printer Not Connected`,
+      detail: `${kiosk.printerErrorMessage || "No printer is connected or ready on this kiosk."}`,
+      tone: "bad",
+      source: "printer",
+      category: "queue",
+      kioskId,
+      lastUpdated: (printerHealth && printerHealth.lastUpdated) || kiosk.lastOnline || ""
+    }];
+  }
+
   return alerts;
 }
 
@@ -9306,9 +9387,10 @@ function adminOperationalAlerts() {
 }
 
 window.updateAlertFilter = (field, value) => {
-  if (!state.alertFilter) state.alertFilter = { search: "", category: "all", status: "all", kioskId: "all" };
+  if (!state.alertFilter) state.alertFilter = { search: "", category: "all", status: "all", kioskId: "all", from: "", to: "" };
   state.alertFilter[field] = value;
-  renderAdminApp();
+  state.adminPagination["alert-logs"] = 1;
+  render();
 };
 
 function adminAllAlertRecords() {
@@ -9338,12 +9420,30 @@ function adminAllAlertRecords() {
   return combined;
 }
 
+function alertLogMatchesDateRange(log, from, to) {
+  const timestamp = new Date(log.createdAt || 0).getTime();
+  if (!Number.isFinite(timestamp) || Number.isNaN(timestamp)) return !from && !to;
+
+  if (from) {
+    const fromTime = new Date(`${from}T00:00:00`).getTime();
+    if (!Number.isNaN(fromTime) && timestamp < fromTime) return false;
+  }
+
+  if (to) {
+    const toTime = new Date(`${to}T23:59:59.999`).getTime();
+    if (!Number.isNaN(toTime) && timestamp > toTime) return false;
+  }
+
+  return true;
+}
+
 function filteredAlertLogs() {
   const allLogs = adminAllAlertRecords();
-  const filter = state.alertFilter || { search: "", category: "all", status: "all", kioskId: "all" };
+  const filter = state.alertFilter || { search: "", category: "all", status: "all", kioskId: "all", from: "", to: "" };
   const searchLower = (filter.search || "").trim().toLowerCase();
 
   return allLogs.filter(log => {
+    if (!alertLogMatchesDateRange(log, filter.from, filter.to)) return false;
     if (filter.category && filter.category !== "all") {
       const cat = (log.category || "").toLowerCase();
       const target = filter.category.toLowerCase();
@@ -9378,13 +9478,16 @@ window.downloadAlertsReportPDF = async function () {
   const doc = new jsPDF();
   const pageWidth = doc.internal.pageSize.getWidth();
   const filtered = filteredAlertLogs();
-  const filter = state.alertFilter || { search: "", category: "all", status: "all", kioskId: "all" };
+  const filter = state.alertFilter || { search: "", category: "all", status: "all", kioskId: "all", from: "", to: "" };
 
   const clientName = state.adminAccount?.name || state.adminAccount?.email || "Client";
   const clientLogoUrl = state.adminAccount?.logoUrl || "";
   const kioskLabel = filter.kioskId && filter.kioskId !== "all" ? filter.kioskId : "All Assigned Kiosks";
   const categoryLabel = filter.category && filter.category !== "all" ? filter.category.toUpperCase() : "All Categories";
   const statusLabel = filter.status && filter.status !== "all" ? filter.status.toUpperCase() : "All Statuses";
+  const dateRangeLabel = filter.from || filter.to
+    ? `${filter.from ? formatDateTime(`${filter.from}T00:00:00`).split(",")[0] : "Start"} - ${filter.to ? formatDateTime(`${filter.to}T00:00:00`).split(",")[0] : "Today"}`
+    : "All Dates";
 
   const logoMaxWidth = 32;
   const logoMaxHeight = 24;
@@ -9432,11 +9535,13 @@ window.downloadAlertsReportPDF = async function () {
   doc.setFontSize(10.5);
   doc.setTextColor(100);
   doc.text(`Kiosk ID: ${kioskLabel} | Category: ${categoryLabel} | Status: ${statusLabel}`, pageWidth / 2, headerY, { align: "center" });
+  headerY += 6;
+  doc.text(`Date Range: ${dateRangeLabel}`, pageWidth / 2, headerY, { align: "center" });
+  headerY += 6;
   if (filter.search) {
-    doc.text(`Search: "${filter.search}" | Generated: ${formatDateTime(new Date().toISOString())}`, pageWidth / 2, headerY + 6, { align: "center" });
-    headerY += 6;
+    doc.text(`Search: "${filter.search}" | Generated: ${formatDateTime(new Date().toISOString())}`, pageWidth / 2, headerY, { align: "center" });
   } else {
-    doc.text(`Generated: ${formatDateTime(new Date().toISOString())}`, pageWidth / 2, headerY + 6, { align: "center" });
+    doc.text(`Generated: ${formatDateTime(new Date().toISOString())}`, pageWidth / 2, headerY, { align: "center" });
   }
   doc.setTextColor(0);
 
@@ -9493,8 +9598,9 @@ window.downloadAlertsReportPDF = async function () {
 
 function renderAdminAlertLogsTable() {
   const allLogs = adminAllAlertRecords();
-  const filter = state.alertFilter || { search: "", category: "all", status: "all", kioskId: "all" };
+  const filter = state.alertFilter || { search: "", category: "all", status: "all", kioskId: "all", from: "", to: "" };
   const filtered = filteredAlertLogs();
+  const page = adminPaginated(filtered, "alert-logs");
 
   const rows = filtered.map(log => {
     const isResolved = log.status === 'resolved';
@@ -9527,7 +9633,6 @@ function renderAdminAlertLogsTable() {
           </div>
         </div>
         <div style="display: flex; align-items: center; gap: 12px;">
-          <span style="font-size: 13px; font-weight: 600; color: #6366f1; background: #eef2ff; padding: 6px 14px; border-radius: 20px;">${filtered.length} Record${filtered.length === 1 ? "" : "s"}</span>
           <button class="export-alerts-btn" onclick="window.downloadAlertsReportPDF()">
             ${uiIcon("download", 16)} Alerts PDF
           </button>
@@ -9535,18 +9640,18 @@ function renderAdminAlertLogsTable() {
       </div>
 
       <!-- Clean Filter Toolbar -->
-      <div style="margin-bottom: 24px; display: grid; grid-template-columns: 2fr 1fr 1fr 1fr; gap: 16px; align-items: center;">
-        <div style="position: relative; width: 100%;">
+      <div style="margin-bottom: 24px; display: flex; flex-wrap: wrap; gap: 16px; align-items: center;">
+        <div style="position: relative; flex: 2 1 260px;">
           <input type="text" placeholder="Search alerts by kiosk, title, or details..."
-                 value="${escapeHtml(filter.search)}" 
-                 oninput="window.updateAlertFilter('search', this.value)" 
-                 style="width: 100%; padding: 11px 14px 11px 40px; border-radius: 12px; border: 1px solid #cbd5e1; font-size: 13.5px; background: #ffffff; color: #0f172a; outline: none;">
+                 value="${escapeHtml(filter.search)}"
+                 oninput="window.updateAlertFilter('search', this.value)"
+                 style="width: 100%; padding: 11px 14px 11px 40px; border-radius: 12px; border: 1px solid #cbd5e1; font-size: 13.5px; background: #ffffff; color: #0f172a; outline: none; box-sizing: border-box;">
           <span style="position: absolute; left: 14px; top: 50%; transform: translateY(-50%); color: #94a3b8; display: flex; align-items: center;">
             ${uiIcon("search", 16)}
           </span>
         </div>
-        
-        <select onchange="window.updateAlertFilter('category', this.value)" style="width: 100%; padding: 11px 14px; border-radius: 12px; border: 1px solid #cbd5e1; font-size: 13.5px; background: #ffffff; color: #0f172a;">
+
+        <select onchange="window.updateAlertFilter('category', this.value)" style="flex: 1 1 160px; padding: 11px 14px; border-radius: 12px; border: 1px solid #cbd5e1; font-size: 13.5px; background: #ffffff; color: #0f172a;">
           <option value="all" ${filter.category === "all" ? "selected" : ""}>All Categories</option>
           <option value="paper" ${filter.category === "paper" ? "selected" : ""}>Paper / Jam</option>
           <option value="toner" ${filter.category === "toner" ? "selected" : ""}>Toner Level</option>
@@ -9555,16 +9660,36 @@ function renderAdminAlertLogsTable() {
           <option value="service" ${filter.category === "service" ? "selected" : ""}>Service Required</option>
         </select>
 
-        <select onchange="window.updateAlertFilter('status', this.value)" style="width: 100%; padding: 11px 14px; border-radius: 12px; border: 1px solid #cbd5e1; font-size: 13.5px; background: #ffffff; color: #0f172a;">
+        <select onchange="window.updateAlertFilter('status', this.value)" style="flex: 1 1 160px; padding: 11px 14px; border-radius: 12px; border: 1px solid #cbd5e1; font-size: 13.5px; background: #ffffff; color: #0f172a;">
           <option value="all" ${filter.status === "all" ? "selected" : ""}>All Statuses</option>
           <option value="active" ${filter.status === "active" ? "selected" : ""}>Active / Open</option>
           <option value="resolved" ${filter.status === "resolved" ? "selected" : ""}>Resolved</option>
         </select>
-        
-        <select onchange="window.updateAlertFilter('kioskId', this.value)" style="width: 100%; padding: 11px 14px; border-radius: 12px; border: 1px solid #cbd5e1; font-size: 13.5px; background: #ffffff; color: #0f172a;">
+
+        <select onchange="window.updateAlertFilter('kioskId', this.value)" style="flex: 1 1 160px; padding: 11px 14px; border-radius: 12px; border: 1px solid #cbd5e1; font-size: 13.5px; background: #ffffff; color: #0f172a;">
           <option value="all" ${filter.kioskId === "all" ? "selected" : ""}>All Kiosks</option>
           ${uniqueKiosks.map(k => `<option value="${escapeHtml(k)}" ${filter.kioskId === k ? "selected" : ""}>${escapeHtml(k)}</option>`).join("")}
         </select>
+
+        <div style="flex: 2 1 280px; display: flex; gap: 12px; align-items: flex-end;">
+          <label style="flex: 1 1 0; display: flex; flex-direction: column; gap: 4px; font-size: 11.5px; font-weight: 600; color: #64748b;">
+            From
+            <input type="date" value="${escapeHtml(filter.from)}" max="${escapeHtml(filter.to || "")}"
+                   onchange="window.updateAlertFilter('from', this.value)"
+                   style="width: 100%; padding: 10px 12px; border-radius: 12px; border: 1px solid #cbd5e1; font-size: 13.5px; background: #ffffff; color: #0f172a; box-sizing: border-box;" />
+          </label>
+
+          <label style="flex: 1 1 0; display: flex; flex-direction: column; gap: 4px; font-size: 11.5px; font-weight: 600; color: #64748b;">
+            To
+            <input type="date" value="${escapeHtml(filter.to)}" min="${escapeHtml(filter.from || "")}"
+                   onchange="window.updateAlertFilter('to', this.value)"
+                   style="width: 100%; padding: 10px 12px; border-radius: 12px; border: 1px solid #cbd5e1; font-size: 13.5px; background: #ffffff; color: #0f172a; box-sizing: border-box;" />
+          </label>
+
+          ${(filter.from || filter.to) ? `
+            <button type="button" onclick="window.updateAlertFilter('from', ''); window.updateAlertFilter('to', '');" style="flex: 0 0 auto; padding: 10px 16px; border-radius: 12px; border: 1px solid #cbd5e1; background: #f8fafc; color: #475569; font-size: 13px; font-weight: 600; cursor: pointer;">Clear</button>
+          ` : ""}
+        </div>
       </div>
 
       <!-- Modern Custom Table -->
@@ -9580,7 +9705,7 @@ function renderAdminAlertLogsTable() {
             </tr>
           </thead>
           <tbody>
-            ${filtered.length ? filtered.map((log, index) => {
+            ${page.items.length ? page.items.map((log, index) => {
               const isResolved = log.status === 'resolved';
               const badgeStyle = isResolved
                 ? 'background: #f0fdf4; color: #16a34a; border: 1px solid #bbf7d0;'
@@ -9612,6 +9737,7 @@ function renderAdminAlertLogsTable() {
           </tbody>
         </table>
       </div>
+      ${renderAdminPagination("alert-logs", page)}
     </section>
   `;
 }
@@ -11153,7 +11279,13 @@ function renderAdminAnalyticsFormSellingBarChart({ forPrint = false } = {}) {
   });
 
   const maxVal = Math.max(30, ...dataList.map((d) => d.forms));
-  const padding = { top: 60, right: 30, bottom: 42, left: 68 };
+  // Bar-top labels: name of the month's top-selling form + its count,
+  // printed directly above that month's bar. Only the single top form is
+  // shown (not all of topForms) - stacking multiple names above one bar is
+  // what caused overlapping/truncated labels before (see git history), and
+  // one label per bar never collides with its neighbors. padding.top is
+  // sized to fit this two-line label above the tallest bar.
+  const padding = { top: 46, right: 30, bottom: 42, left: 68 };
   const width = 920;
   // Print gets a taller canvas than the on-screen widget - once scaled down
   // to fit the PDF page width, the old fixed 300 left the chart a short,
@@ -11164,7 +11296,11 @@ function renderAdminAnalyticsFormSellingBarChart({ forPrint = false } = {}) {
   const { ticks: yTicks, max: yMax } = adminAnalyticsYTicks(maxVal, padding, chartH);
   const groupW = chartW / dataList.length;
   const barW = Math.min(26, Math.max(8, groupW * 0.48));
-  const truncate = (text, max) => (text.length > max ? `${text.slice(0, max - 1)}…` : text);
+  const barLabelMaxChars = Math.max(8, Math.floor(groupW / 5.4));
+  const truncateBarLabel = (name) => {
+    const text = String(name || "");
+    return text.length > barLabelMaxChars ? `${text.slice(0, barLabelMaxChars - 1)}…` : text;
+  };
 
   return `
     ${forPrint ? "" : `<div style="width: 100%; overflow-x: auto;">`}
@@ -11177,7 +11313,7 @@ function renderAdminAnalyticsFormSellingBarChart({ forPrint = false } = {}) {
         .form-bar-group:hover .form-bar-purple { filter: brightness(1.12) drop-shadow(0 4px 10px rgba(139, 92, 246, 0.45)); }
       </style>
       `}
-      <svg viewBox="0 0 ${width} ${height}" style="width: 100%; ${forPrint ? "" : "min-width: 700px;"} height: auto; font-family: var(--font-sans, system-ui, -apple-system, sans-serif);">
+      <svg viewBox="0 0 ${width} ${height}" style="width: 100%; ${forPrint ? "" : "min-width: 500px;"} height: auto; font-family: var(--font-sans, system-ui, -apple-system, sans-serif);">
         <!-- Dashed Horizontal Gridlines & Y-Axis Scale -->
         ${yTicks.map((t) => `
           ${t.value > 0 ? `<line x1="${padding.left}" y1="${t.y.toFixed(1)}" x2="${width - padding.right}" y2="${t.y.toFixed(1)}" stroke="#f1f5f9" stroke-dasharray="3,3" />` : ""}
@@ -11207,23 +11343,31 @@ function renderAdminAnalyticsFormSellingBarChart({ forPrint = false } = {}) {
           const tooltipX = Math.min(width - padding.right - tooltipW, Math.max(padding.left, groupX - tooltipW / 2));
           const tooltipY = Math.max(padding.top - 25, barY - (topForms.length * 13 + 36));
 
+          // On-bar label: the month's top-selling form's name + its own count,
+          // pinned directly above that bar (never above its neighbors - only
+          // one form per bar is shown, see the padding.top comment above).
+          // Clamped to y=16 so an unusually tall bar's label can't run off
+          // the top edge of the chart.
+          const topForm = topForms[0];
+          const countY = Math.max(16, barY - 6);
+          const nameY = countY - 13;
+
           return `
             <!-- Month tick mark -->
             <line x1="${groupX.toFixed(1)}" y1="${(padding.top + chartH).toFixed(1)}" x2="${groupX.toFixed(1)}" y2="${(padding.top + chartH + 5).toFixed(1)}" stroke="#94a3b8" stroke-width="1.5" />
 
             <g class="form-bar-group">
-              <!-- Top Form Names & Counts stacked above bar (matching screenshot) -->
-              ${topForms.map((f, rank) => {
-                const lineY = barY - 8 - (topForms.length - 1 - rank) * 13;
-                return `<text x="${groupX.toFixed(1)}" y="${lineY.toFixed(1)}" font-size="9.5" font-weight="700" fill="#8b5cf6" text-anchor="middle">${escapeHtml(truncate(f.name, 14))} • ${f.count}</text>`;
-              }).join("")}
-
               <rect x="${(groupX - groupW / 2).toFixed(1)}" y="${padding.top}" width="${groupW.toFixed(1)}" height="${chartH}" fill="transparent" />
               <rect class="form-bar-purple" x="${barX.toFixed(1)}" y="${barY.toFixed(1)}" width="${barW.toFixed(1)}" height="${Math.max(0, barH).toFixed(1)}" rx="6" fill="#8b5cf6" />
               <text x="${groupX.toFixed(1)}" y="${(padding.top + chartH + 20).toFixed(1)}" font-size="12" font-weight="500" fill="#64748b" text-anchor="middle">${item.label}</text>
 
+              ${topForm ? `
+              <text x="${groupX.toFixed(1)}" y="${nameY.toFixed(1)}" font-size="9.5" font-weight="600" fill="#64748b" text-anchor="middle">${escapeHtml(truncateBarLabel(topForm.name))}</text>
+              <text x="${groupX.toFixed(1)}" y="${countY.toFixed(1)}" font-size="11.5" font-weight="800" fill="#7c3aed" text-anchor="middle">${topForm.count}</text>
+              ` : ""}
+
               ${forPrint ? "" : `
-              <!-- Interactive Floating Dark Tooltip -->
+              <!-- Interactive Floating Dark Tooltip (still carries per-month top-form detail on hover) -->
               <g class="form-hover-tooltip" transform="translate(${tooltipX.toFixed(1)}, ${tooltipY.toFixed(1)})">
                 <rect width="${tooltipW}" height="28" rx="4" fill="#0f172a" stroke="#334155" stroke-width="1" filter="drop-shadow(0 4px 12px rgba(0,0,0,0.3))" />
                 <text x="${tooltipW / 2}" y="18" font-size="10.5" font-weight="500" fill="#ffffff" text-anchor="middle">${escapeHtml(tooltipText)}</text>
@@ -13175,19 +13319,25 @@ function renderKioskManagementTable() {
             <th>Project</th>
             <th>Branch</th>
             <th>Status</th>
+            <th>Printer</th>
             <th>Setup Code</th>
             ${canManage ? "<th>Actions</th>" : ""}
           </tr>
         </thead>
         <tbody>
           ${kiosks.length ? kiosks.map((kiosk) => {
+            const hasHealthData = kiosk.printerHealth && typeof kiosk.printerHealth === "object";
+            const printerBadge = !hasHealthData
+              ? `<span class="badge">Unknown</span>`
+              : `<span class="badge ${kiosk.printerReady === true ? "good" : "bad"}" title="${escapeHtml(kiosk.printerErrorMessage || "")}">${kiosk.printerReady === true ? "Ready" : "Not connected"}</span>`;
             return `
             <tr>
               <td>${escapeHtml(kiosk.kioskId || "")}</td>
               <td>${escapeHtml(kiosk.name || "")}</td>
               <td>${escapeHtml(kiosk.projectId || "")}</td>
               <td>${escapeHtml(kiosk.branch || "")}</td>
-              <td>${escapeHtml(kiosk.status || "Unknown")}</td>
+              <td><span class="badge ${kiosk.status === "online" ? "good" : "bad"}">${escapeHtml(kiosk.status || "Unknown")}</span></td>
+              <td>${printerBadge}</td>
               <td>${escapeHtml(kiosk.setupCode || "")}</td>
               ${canManage ? `
               <td>
@@ -13199,7 +13349,7 @@ function renderKioskManagementTable() {
             </tr>
           `;
           }).join("") : `
-            <tr><td colspan="${canManage ? 7 : 6}">No kiosks are assigned to this account.</td></tr>
+            <tr><td colspan="${canManage ? 8 : 7}">No kiosks are assigned to this account.</td></tr>
           `}
         </tbody>
       </table>

@@ -131,7 +131,9 @@ const state = {
     search: "",
     category: "all",
     status: "all",
-    kioskId: "all"
+    kioskId: "all",
+    from: "",
+    to: ""
   },
   pagination: {},
   selectedClientId: "",
@@ -231,7 +233,7 @@ const collections = {
     title: "Kiosk Management",
     subtitle: "Create kiosks under a project. Kiosk creation is available only to super admins.",
     key: "kioskId",
-    columns: ["projectId", "kioskId", "name", "branch"],
+    columns: ["projectId", "kioskId", "name", "branch", "status", "printerReady"],
     fields: [
       { key: "kioskId", label: "Kiosk ID", required: true },
       { key: "setupCode", label: "Mini PC Setup Code", required: true },
@@ -1377,6 +1379,24 @@ function kioskPrinterHealthAlerts(kiosk = {}) {
     }];
   }
 
+  // The kiosk PC itself is online (heartbeat is fine) but the backend's own
+  // computed printerReady flag says no usable printer is connected/ready,
+  // and none of the specific hardware checks above happened to fire (e.g.
+  // there's simply no printer plugged in at all, so paper/toner/door flags
+  // are all "Unknown" rather than a concrete fault). Without this, that case
+  // fell through to zero alerts and the kiosk looked fully healthy.
+  if (alerts.length === 0 && kiosk.printerReady === false) {
+    return [{
+      title: `${kioskId} - Printer Not Connected`,
+      detail: `${kiosk.printerErrorMessage || "No printer is connected or ready on this kiosk."}`,
+      tone: "bad",
+      source: "printer",
+      category: "queue",
+      kioskId,
+      lastUpdated: (printerHealth && printerHealth.lastUpdated) || kiosk.lastOnline || ""
+    }];
+  }
+
   return alerts;
 }
 
@@ -1970,12 +1990,30 @@ function superAdminAllAlertRecords() {
   return combined;
 }
 
+function alertLogMatchesDateRange(log, from, to) {
+  const timestamp = new Date(log.createdAt || 0).getTime();
+  if (!Number.isFinite(timestamp) || Number.isNaN(timestamp)) return !from && !to;
+
+  if (from) {
+    const fromTime = new Date(`${from}T00:00:00`).getTime();
+    if (!Number.isNaN(fromTime) && timestamp < fromTime) return false;
+  }
+
+  if (to) {
+    const toTime = new Date(`${to}T23:59:59.999`).getTime();
+    if (!Number.isNaN(toTime) && timestamp > toTime) return false;
+  }
+
+  return true;
+}
+
 function filteredAlertLogs() {
   const allLogs = superAdminAllAlertRecords();
-  const filter = state.alertFilter || { search: "", category: "all", status: "all", kioskId: "all" };
+  const filter = state.alertFilter || { search: "", category: "all", status: "all", kioskId: "all", from: "", to: "" };
   const searchLower = (filter.search || "").trim().toLowerCase();
 
   return allLogs.filter(log => {
+    if (!alertLogMatchesDateRange(log, filter.from, filter.to)) return false;
     if (filter.category && filter.category !== "all") {
       const cat = (log.category || "").toLowerCase();
       const target = filter.category.toLowerCase();
@@ -2010,7 +2048,7 @@ window.downloadAlertsReportPDF = async function () {
   const doc = new jsPDF();
   const pageWidth = doc.internal.pageSize.getWidth();
   const filtered = filteredAlertLogs();
-  const filter = state.alertFilter || { search: "", category: "all", status: "all", kioskId: "all" };
+  const filter = state.alertFilter || { search: "", category: "all", status: "all", kioskId: "all", from: "", to: "" };
 
   const clients = data("kioskAdmins") || [];
   let selectedClient = null;
@@ -2023,6 +2061,9 @@ window.downloadAlertsReportPDF = async function () {
   const kioskLabel = filter.kioskId && filter.kioskId !== "all" ? filter.kioskId : "All Kiosks";
   const categoryLabel = filter.category && filter.category !== "all" ? filter.category.toUpperCase() : "All Categories";
   const statusLabel = filter.status && filter.status !== "all" ? filter.status.toUpperCase() : "All Statuses";
+  const dateRangeLabel = filter.from || filter.to
+    ? `${filter.from ? formatDateTime(`${filter.from}T00:00:00`).split(",")[0] : "Start"} - ${filter.to ? formatDateTime(`${filter.to}T00:00:00`).split(",")[0] : "Today"}`
+    : "All Dates";
 
   const logoMaxWidth = 32;
   const logoMaxHeight = 24;
@@ -2070,11 +2111,13 @@ window.downloadAlertsReportPDF = async function () {
   doc.setFontSize(10.5);
   doc.setTextColor(100);
   doc.text(`Kiosk ID: ${kioskLabel} | Category: ${categoryLabel} | Status: ${statusLabel}`, pageWidth / 2, headerY, { align: "center" });
+  headerY += 6;
+  doc.text(`Date Range: ${dateRangeLabel}`, pageWidth / 2, headerY, { align: "center" });
+  headerY += 6;
   if (filter.search) {
-    doc.text(`Search: "${filter.search}" | Generated: ${formatDateTime(new Date().toISOString())}`, pageWidth / 2, headerY + 6, { align: "center" });
-    headerY += 6;
+    doc.text(`Search: "${filter.search}" | Generated: ${formatDateTime(new Date().toISOString())}`, pageWidth / 2, headerY, { align: "center" });
   } else {
-    doc.text(`Generated: ${formatDateTime(new Date().toISOString())}`, pageWidth / 2, headerY + 6, { align: "center" });
+    doc.text(`Generated: ${formatDateTime(new Date().toISOString())}`, pageWidth / 2, headerY, { align: "center" });
   }
   doc.setTextColor(0);
 
@@ -2131,8 +2174,9 @@ window.downloadAlertsReportPDF = async function () {
 
 function renderAlertLogsTable() {
   const allLogs = superAdminAllAlertRecords();
-  const filter = state.alertFilter || { search: "", category: "all", status: "all", kioskId: "all" };
+  const filter = state.alertFilter || { search: "", category: "all", status: "all", kioskId: "all", from: "", to: "" };
   const filtered = filteredAlertLogs();
+  const page = paginated(filtered, "alert-logs");
 
   const uniqueKiosks = [...new Set(allLogs.map(l => l.kioskId).filter(Boolean))];
 
@@ -2149,7 +2193,6 @@ function renderAlertLogsTable() {
           </div>
         </div>
         <div style="display: flex; align-items: center; gap: 12px;">
-          <span style="font-size: 13px; font-weight: 600; color: #6366f1; background: #eef2ff; padding: 6px 14px; border-radius: 20px;">${filtered.length} Record${filtered.length === 1 ? "" : "s"}</span>
           <button class="export-alerts-btn" onclick="window.downloadAlertsReportPDF()">
             ${uiIcon("download", 16)} Alerts PDF
           </button>
@@ -2157,18 +2200,18 @@ function renderAlertLogsTable() {
       </div>
 
       <!-- Clean Filter Toolbar -->
-      <div style="margin-bottom: 24px; display: grid; grid-template-columns: 2fr 1fr 1fr 1fr; gap: 16px; align-items: center;">
-        <div style="position: relative; width: 100%;">
+      <div style="margin-bottom: 24px; display: flex; flex-wrap: wrap; gap: 16px; align-items: center;">
+        <div style="position: relative; flex: 2 1 260px;">
           <input type="text" placeholder="Search alerts by kiosk, title, or details..."
-                 value="${escapeHtml(filter.search)}" 
-                 oninput="window.updateAlertFilter('search', this.value)" 
-                 style="width: 100%; padding: 11px 14px 11px 40px; border-radius: 12px; border: 1px solid #cbd5e1; font-size: 13.5px; background: #ffffff; color: #0f172a; outline: none;">
+                 value="${escapeHtml(filter.search)}"
+                 oninput="window.updateAlertFilter('search', this.value)"
+                 style="width: 100%; padding: 11px 14px 11px 40px; border-radius: 12px; border: 1px solid #cbd5e1; font-size: 13.5px; background: #ffffff; color: #0f172a; outline: none; box-sizing: border-box;">
           <span style="position: absolute; left: 14px; top: 50%; transform: translateY(-50%); color: #94a3b8; display: flex; align-items: center;">
             ${uiIcon("search", 16)}
           </span>
         </div>
-        
-        <select onchange="window.updateAlertFilter('category', this.value)" style="width: 100%; padding: 11px 14px; border-radius: 12px; border: 1px solid #cbd5e1; font-size: 13.5px; background: #ffffff; color: #0f172a;">
+
+        <select onchange="window.updateAlertFilter('category', this.value)" style="flex: 1 1 160px; padding: 11px 14px; border-radius: 12px; border: 1px solid #cbd5e1; font-size: 13.5px; background: #ffffff; color: #0f172a;">
           <option value="all" ${filter.category === "all" ? "selected" : ""}>All Categories</option>
           <option value="paper" ${filter.category === "paper" ? "selected" : ""}>Paper / Jam</option>
           <option value="toner" ${filter.category === "toner" ? "selected" : ""}>Toner Level</option>
@@ -2177,16 +2220,36 @@ function renderAlertLogsTable() {
           <option value="service" ${filter.category === "service" ? "selected" : ""}>Service Required</option>
         </select>
 
-        <select onchange="window.updateAlertFilter('status', this.value)" style="width: 100%; padding: 11px 14px; border-radius: 12px; border: 1px solid #cbd5e1; font-size: 13.5px; background: #ffffff; color: #0f172a;">
+        <select onchange="window.updateAlertFilter('status', this.value)" style="flex: 1 1 160px; padding: 11px 14px; border-radius: 12px; border: 1px solid #cbd5e1; font-size: 13.5px; background: #ffffff; color: #0f172a;">
           <option value="all" ${filter.status === "all" ? "selected" : ""}>All Statuses</option>
           <option value="active" ${filter.status === "active" ? "selected" : ""}>Active / Open</option>
           <option value="resolved" ${filter.status === "resolved" ? "selected" : ""}>Resolved</option>
         </select>
-        
-        <select onchange="window.updateAlertFilter('kioskId', this.value)" style="width: 100%; padding: 11px 14px; border-radius: 12px; border: 1px solid #cbd5e1; font-size: 13.5px; background: #ffffff; color: #0f172a;">
+
+        <select onchange="window.updateAlertFilter('kioskId', this.value)" style="flex: 1 1 160px; padding: 11px 14px; border-radius: 12px; border: 1px solid #cbd5e1; font-size: 13.5px; background: #ffffff; color: #0f172a;">
           <option value="all" ${filter.kioskId === "all" ? "selected" : ""}>All Kiosks</option>
           ${uniqueKiosks.map(k => `<option value="${escapeHtml(k)}" ${filter.kioskId === k ? "selected" : ""}>${escapeHtml(k)}</option>`).join("")}
         </select>
+
+        <div style="flex: 2 1 280px; display: flex; gap: 12px; align-items: flex-end;">
+          <label style="flex: 1 1 0; display: flex; flex-direction: column; gap: 4px; font-size: 11.5px; font-weight: 600; color: #64748b;">
+            From
+            <input type="date" value="${escapeHtml(filter.from)}" max="${escapeHtml(filter.to || "")}"
+                   onchange="window.updateAlertFilter('from', this.value)"
+                   style="width: 100%; padding: 10px 12px; border-radius: 12px; border: 1px solid #cbd5e1; font-size: 13.5px; background: #ffffff; color: #0f172a; box-sizing: border-box;" />
+          </label>
+
+          <label style="flex: 1 1 0; display: flex; flex-direction: column; gap: 4px; font-size: 11.5px; font-weight: 600; color: #64748b;">
+            To
+            <input type="date" value="${escapeHtml(filter.to)}" min="${escapeHtml(filter.from || "")}"
+                   onchange="window.updateAlertFilter('to', this.value)"
+                   style="width: 100%; padding: 10px 12px; border-radius: 12px; border: 1px solid #cbd5e1; font-size: 13.5px; background: #ffffff; color: #0f172a; box-sizing: border-box;" />
+          </label>
+
+          ${(filter.from || filter.to) ? `
+            <button type="button" onclick="window.updateAlertFilter('from', ''); window.updateAlertFilter('to', '');" style="flex: 0 0 auto; padding: 10px 16px; border-radius: 12px; border: 1px solid #cbd5e1; background: #f8fafc; color: #475569; font-size: 13px; font-weight: 600; cursor: pointer;">Clear</button>
+          ` : ""}
+        </div>
       </div>
 
       <!-- Modern Custom Table -->
@@ -2202,7 +2265,7 @@ function renderAlertLogsTable() {
             </tr>
           </thead>
           <tbody>
-            ${filtered.length ? filtered.map((log, index) => {
+            ${page.items.length ? page.items.map((log, index) => {
               const isResolved = log.status === 'resolved';
               const badgeStyle = isResolved
                 ? 'background: #f0fdf4; color: #16a34a; border: 1px solid #bbf7d0;'
@@ -2234,6 +2297,7 @@ function renderAlertLogsTable() {
           </tbody>
         </table>
       </div>
+      ${renderPagination("alert-logs", page)}
     </section>
   `;
 }
@@ -3483,7 +3547,13 @@ function renderAnalyticsFormSellingBarChart({ forPrint = false } = {}) {
   });
 
   const maxVal = Math.max(30, ...dataList.map((d) => d.forms));
-  const padding = { top: 60, right: 30, bottom: 42, left: 68 };
+  // Bar-top labels: name of the month's top-selling form + its count,
+  // printed directly above that month's bar. Only the single top form is
+  // shown (not all of topForms) - stacking multiple names above one bar is
+  // what caused overlapping/truncated labels before (see git history), and
+  // one label per bar never collides with its neighbors. padding.top is
+  // sized to fit this two-line label above the tallest bar.
+  const padding = { top: 46, right: 30, bottom: 42, left: 68 };
   const width = 920;
   // Print gets a taller canvas than the on-screen widget - once scaled down
   // to fit the PDF page width, the old fixed 300 left the chart a short,
@@ -3494,7 +3564,11 @@ function renderAnalyticsFormSellingBarChart({ forPrint = false } = {}) {
   const { ticks: yTicks, max: yMax } = analyticsYTicks(maxVal, padding, chartH);
   const groupW = chartW / dataList.length;
   const barW = Math.min(26, Math.max(8, groupW * 0.48));
-  const truncate = (text, max) => (text.length > max ? `${text.slice(0, max - 1)}…` : text);
+  const barLabelMaxChars = Math.max(8, Math.floor(groupW / 5.4));
+  const truncateBarLabel = (name) => {
+    const text = String(name || "");
+    return text.length > barLabelMaxChars ? `${text.slice(0, barLabelMaxChars - 1)}…` : text;
+  };
 
   return `
     ${forPrint ? "" : `<div style="width: 100%; overflow-x: auto;">`}
@@ -3507,7 +3581,7 @@ function renderAnalyticsFormSellingBarChart({ forPrint = false } = {}) {
         .form-bar-group:hover .form-bar-purple { filter: brightness(1.12) drop-shadow(0 4px 10px rgba(139, 92, 246, 0.45)); }
       </style>
       `}
-      <svg viewBox="0 0 ${width} ${height}" style="width: 100%; ${forPrint ? "" : "min-width: 700px;"} height: auto; font-family: var(--font-sans, system-ui, -apple-system, sans-serif);">
+      <svg viewBox="0 0 ${width} ${height}" style="width: 100%; ${forPrint ? "" : "min-width: 500px;"} height: auto; font-family: var(--font-sans, system-ui, -apple-system, sans-serif);">
         <!-- Dashed Horizontal Gridlines & Y-Axis Scale -->
         ${yTicks.map((t) => `
           ${t.value > 0 ? `<line x1="${padding.left}" y1="${t.y.toFixed(1)}" x2="${width - padding.right}" y2="${t.y.toFixed(1)}" stroke="#f1f5f9" stroke-dasharray="3,3" />` : ""}
@@ -3537,23 +3611,31 @@ function renderAnalyticsFormSellingBarChart({ forPrint = false } = {}) {
           const tooltipX = Math.min(width - padding.right - tooltipW, Math.max(padding.left, groupX - tooltipW / 2));
           const tooltipY = Math.max(padding.top - 25, barY - (topForms.length * 13 + 36));
 
+          // On-bar label: the month's top-selling form's name + its own count,
+          // pinned directly above that bar (never above its neighbors - only
+          // one form per bar is shown, see the padding.top comment above).
+          // Clamped to y=16 so an unusually tall bar's label can't run off
+          // the top edge of the chart.
+          const topForm = topForms[0];
+          const countY = Math.max(16, barY - 6);
+          const nameY = countY - 13;
+
           return `
             <!-- Month tick mark -->
             <line x1="${groupX.toFixed(1)}" y1="${(padding.top + chartH).toFixed(1)}" x2="${groupX.toFixed(1)}" y2="${(padding.top + chartH + 5).toFixed(1)}" stroke="#94a3b8" stroke-width="1.5" />
 
             <g class="form-bar-group">
-              <!-- Top Form Names & Counts stacked above bar (matching screenshot) -->
-              ${topForms.map((f, rank) => {
-                const lineY = barY - 8 - (topForms.length - 1 - rank) * 13;
-                return `<text x="${groupX.toFixed(1)}" y="${lineY.toFixed(1)}" font-size="9.5" font-weight="700" fill="#8b5cf6" text-anchor="middle">${escapeHtml(truncate(f.name, 14))} • ${f.count}</text>`;
-              }).join("")}
-
               <rect x="${(groupX - groupW / 2).toFixed(1)}" y="${padding.top}" width="${groupW.toFixed(1)}" height="${chartH}" fill="transparent" />
               <rect class="form-bar-purple" x="${barX.toFixed(1)}" y="${barY.toFixed(1)}" width="${barW.toFixed(1)}" height="${Math.max(0, barH).toFixed(1)}" rx="6" fill="#8b5cf6" />
               <text x="${groupX.toFixed(1)}" y="${(padding.top + chartH + 20).toFixed(1)}" font-size="12" font-weight="500" fill="#64748b" text-anchor="middle">${item.label}</text>
 
+              ${topForm ? `
+              <text x="${groupX.toFixed(1)}" y="${nameY.toFixed(1)}" font-size="9.5" font-weight="600" fill="#64748b" text-anchor="middle">${escapeHtml(truncateBarLabel(topForm.name))}</text>
+              <text x="${groupX.toFixed(1)}" y="${countY.toFixed(1)}" font-size="11.5" font-weight="800" fill="#7c3aed" text-anchor="middle">${topForm.count}</text>
+              ` : ""}
+
               ${forPrint ? "" : `
-              <!-- Interactive Floating Dark Tooltip -->
+              <!-- Interactive Floating Dark Tooltip (still carries per-month top-form detail on hover) -->
               <g class="form-hover-tooltip" transform="translate(${tooltipX.toFixed(1)}, ${tooltipY.toFixed(1)})">
                 <rect width="${tooltipW}" height="28" rx="4" fill="#0f172a" stroke="#334155" stroke-width="1" filter="drop-shadow(0 4px 12px rgba(0,0,0,0.3))" />
                 <text x="${tooltipW / 2}" y="18" font-size="10.5" font-weight="500" fill="#ffffff" text-anchor="middle">${escapeHtml(tooltipText)}</text>
@@ -4640,10 +4722,14 @@ function renderProjectNode(project, hierarchy) {
 }
 
 function renderKioskNode(kiosk) {
+  // kioskPrinterHealthAlerts() now always returns an alert whenever the
+  // printer isn't ready - whether from a specific hardware fault, a
+  // completely absent printer, or the kiosk PC itself being unreachable -
+  // so an empty alert list here reliably means everything is actually fine.
   const printerAlerts = kioskPrinterHealthAlerts(kiosk);
   const printerErrorBadge = printerAlerts.length
     ? `<span class="badge bad" title="${escapeHtml(printerAlerts.map(a => a.title).join(', '))}">${printerAlerts.length} printer alert${printerAlerts.length > 1 ? "s" : ""}</span>`
-    : (kiosk.status === "online" ? `<span class="badge good">Online</span>` : `<span class="badge bad">Offline</span>`);
+    : `<span class="badge good">Online</span>`;
 
   return `
     <div class="hierarchy-node">
@@ -5138,7 +5224,7 @@ function formatCell(collection, column, row) {
     }
     const isReady = row.printerReady === true;
     const color = isReady ? "#10b981" : "#ef4444";
-    const label = isReady ? "Ready" : (row.printerErrorMessage || "Not connected");
+    const label = isReady ? "Ready" : "Not connected";
     return `<div style="display: flex; align-items: center; gap: 6px;" title="${escapeHtml(row.printerErrorMessage || "")}"><span style="width: 8px; height: 8px; border-radius: 50%; background-color: ${color}; flex-shrink: 0;"></span><span>${escapeHtml(label)}</span></div>`;
   }
   if (collection === "kioskAdmins" && column === "kioskTitle") return escapeHtml(clientKioskTitle(row) || "Not set");
