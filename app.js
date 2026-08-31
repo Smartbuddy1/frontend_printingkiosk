@@ -4358,12 +4358,19 @@ function createTemplateFile(template) {
     const staticPreviewUrl = documentType === "pdf" && templateHasStaticPdfPreview({ ...template, imageUrl })
       ? imageUrl.replace(/\.pdf$/i, ".png")
       : "";
+    // Prefer the kiosk's own locally-cached copy of this exact file when the
+    // local agent has one (see resolveLocalTemplateMedia()) - avoids relying
+    // on a live fetch to the remote backend for preview/print, which is what
+    // was failing when the internet connection was flaky even though the
+    // template list itself had already loaded. Falls straight back to the
+    // original remote imageUrl, unchanged, whenever no local copy is known.
+    const effectivePreviewUrl = template.localImageUrl || imageUrl;
     return {
       name: `${template.id}.${documentType === "pdf" ? "pdf" : "png"}`,
       type: documentType === "pdf" ? "PDF" : "PNG",
       pages: templatePageCount({ ...template, imageUrl }),
       previewKind: documentType === "pdf" ? "pdf" : "image",
-      previewUrl: imageUrl,
+      previewUrl: effectivePreviewUrl,
       staticPreviewUrl,
       source: localizedTitle,
       serviceId: service?.id || state.selectedService || "",
@@ -4861,10 +4868,16 @@ async function refreshKioskConfig({ rerender = true, force = false } = {}) {
       }
     }
 
-    return applyServiceConfig(payload, {
+    const applied = applyServiceConfig(payload, {
       rerender,
       source: force ? "manual" : "backend"
     });
+    // The config JSON succeeding doesn't guarantee a later live fetch of a
+    // customer-selected template file will also succeed on a flaky
+    // connection - check for a local cached copy either way, not just on
+    // the failure path below (see resolveLocalTemplateMedia() for why).
+    resolveLocalTemplateMedia();
+    return applied;
   } catch (error) {
     if (DEMO_KIOSK_MODE && state.mode === "customer") {
       applyDemoKioskConfig({ rerender });
@@ -4879,6 +4892,7 @@ async function refreshKioskConfig({ rerender = true, force = false } = {}) {
     // there's still something to resolve against here.
     resolveLocalIdleScreensaverMedia();
     resolveLocalClientBrandIdentity();
+    resolveLocalTemplateMedia();
     // Silently ignore backend config network errors to avoid confusing users
     return false;
   }
@@ -5987,6 +6001,57 @@ async function resolveLocalClientBrandIdentity() {
   } catch {
     // Local agent unreachable or nothing cached yet - keep whatever's
     // already in state.clientBrand.
+  } finally {
+    window.clearTimeout(timeoutId);
+  }
+}
+
+// Same idea as resolveLocalIdleScreensaverMedia() above, but for admin-
+// uploaded template documents (blank government forms etc.) instead of
+// idle-screensaver media. Sets template.localImageUrl in place on the
+// current `services` array wherever the local agent already has that exact
+// template's file cached (see local-agent/printerAgent.js syncIdleMediaOnce()
+// and its /local/form-cache route) - createTemplateFile() prefers this over
+// the remote imageUrl when present, for both on-screen preview and the file
+// the actual print job downloads.
+// Unlike resolveLocalIdleScreensaverMedia(), this is also called after a
+// SUCCESSFUL config fetch (see refreshKioskConfig): the small config JSON
+// succeeding doesn't guarantee a later live fetch of the customer's chosen
+// template file (often a much larger PDF) will also succeed on the same
+// flaky connection - that gap is exactly what was reported ("kiosk gets the
+// form, but the preview doesn't load"). Any failure (agent unreachable,
+// nothing cached yet) is swallowed and every template just keeps using its
+// existing remote imageUrl exactly as before this feature - there is no
+// error state, only an optional upgrade to a faster/offline copy.
+async function resolveLocalTemplateMedia() {
+  const controller = new AbortController();
+  const timeoutId = window.setTimeout(() => controller.abort(), IDLE_MEDIA_LOCAL_CHECK_TIMEOUT_MS);
+
+  try {
+    const local = await fetchJson(`${LOCAL_AGENT_URL}/local/form-cache`, {
+      cache: "no-store",
+      signal: controller.signal
+    });
+
+    const items = Array.isArray(local?.items) ? local.items : [];
+    if (!items.length) return;
+
+    const localUrlByRemoteUrl = new Map(
+      items
+        .filter((item) => item?.remoteUrl && item?.localUrl)
+        .map((item) => [item.remoteUrl, item.localUrl])
+    );
+    if (!localUrlByRemoteUrl.size) return;
+
+    services.forEach((service) => {
+      (service.templates || []).forEach((template) => {
+        const localUrl = localUrlByRemoteUrl.get(template.imageUrl || "");
+        if (localUrl) template.localImageUrl = localUrl;
+      });
+    });
+  } catch {
+    // Local agent unreachable or nothing cached yet - every template keeps
+    // using its remote imageUrl.
   } finally {
     window.clearTimeout(timeoutId);
   }

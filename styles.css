@@ -459,6 +459,13 @@ body {
   line-height: 1.5;
 }
 
+/* Kiosk touchscreens have no mouse cursor to show; hide it on the
+   customer-facing screen only. Admin/super-admin views (body.admin-mode)
+   keep the normal cursor since they're operated with a mouse/trackpad. */
+body:not(.admin-mode) {
+  cursor: none;
+}
+
 .hindi,
 .marathi,
 .devanagari,
@@ -8311,7 +8318,9 @@ tbody tr:hover {
 }
 
 .compact-template-list {
-  gap: 8px;
+  gap: 10px 12px;
+  grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+  align-items: start;
 }
 
 .compact-template-card {
