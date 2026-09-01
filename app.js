@@ -4487,8 +4487,17 @@ function startUploadPolling() {
   checkMobileUpload();
 }
 
+// Guards checkMobileUpload against re-entrancy: the per-file validation
+// below (pdf.js page counting, paper-sufficiency) can easily take longer
+// than the 1800ms poll interval, and without this flag a second overlapping
+// tick would start re-processing the very same "uploaded" session while the
+// first was still mid-flight - whichever run finished second could still
+// reject and regenerate the QR/session even after the first had already
+// accepted the files and moved the customer on to Step 2.
+let mobileUploadProcessing = false;
+
 async function checkMobileUpload() {
-  if (!state.uploadSession?.token) return;
+  if (!state.uploadSession?.token || mobileUploadProcessing) return;
 
   try {
     const response = await fetch(`${BACKEND_URL}/api/mobile-upload/${state.uploadSession.token}/status`);
@@ -4501,7 +4510,18 @@ async function checkMobileUpload() {
       ...session
     };
 
-    if (session.status === "uploaded" && (session.files?.length || session.file)) {
+    if (session.status !== "uploaded" || !(session.files?.length || session.file)) {
+      render();
+      return;
+    }
+
+    // Stop polling the moment we know this session is ready, before the
+    // slow validation below runs - otherwise the next tick can fire while
+    // we're still validating this same batch (see mobileUploadProcessing).
+    mobileUploadProcessing = true;
+    stopUploadPolling();
+
+    try {
       const receivedFiles = (session.files?.length ? session.files : [session.file])
         .slice(0, MAX_FILES_PER_JOB)
         .map(createReceivedFileRecord);
@@ -4533,16 +4553,14 @@ async function checkMobileUpload() {
         return;
       }
 
-      stopUploadPolling();
       clearCurrentFile();
       setJobFiles(receivedFiles.map((result) => result.file));
       state.uploadError = "";
       state.step = 2;
       render();
-      return;
+    } finally {
+      mobileUploadProcessing = false;
     }
-
-    render();
   } catch (error) {
     // Silently ignore temporary network blips during polling so the QR code stays visible
     // and no confusing error messages are shown to the user.
