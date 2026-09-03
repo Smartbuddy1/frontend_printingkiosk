@@ -5337,6 +5337,21 @@ async function checkKioskPaymentStatus({ rerender = true } = {}) {
     return true;
   }
 
+  // The QR/order on screen already failed on the phone (see the payment.failed
+  // reporting in startMobileRazorpayPayment) - the customer scanning the same
+  // code again would only hit "payment not found"/an already-closed order, so
+  // get a fresh one on screen automatically instead of leaving the dead QR up.
+  if (payload.paymentStatus === "Payment Failed" && state.step === 3 && state.paymentStatus === "Waiting") {
+    stopPaymentPolling();
+    state.paymentStatus = "Creating";
+    state.paymentStatusMessage = "That payment attempt failed. Getting a new QR code...";
+    state.paymentError = "";
+    state.paymentOrder = null;
+    render();
+    startRazorpayPayment();
+    return true;
+  }
+
   if (rerender && state.paymentStatus === "Waiting") {
     render();
   }
@@ -5468,6 +5483,23 @@ async function startMobileRazorpayPayment() {
       state.mobilePayment.status = "Failed";
       state.mobilePayment.error = response.error?.description || response.error?.reason || "Razorpay payment failed.";
       render();
+
+      // Tell the backend so the kiosk's own payment poll (checkKioskPaymentStatus)
+      // can notice and put up a fresh QR - without this, job.paymentStatus never
+      // leaves "Payment Pending" (that only otherwise happens via a Razorpay
+      // webhook, which most kiosks don't have configured), so the kiosk just
+      // kept showing the same already-spent QR/order indefinitely.
+      fetch(`${BACKEND_URL}/api/payment/failed`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          jobId: state.mobilePayment.job?.jobId || state.mobilePayment.payment?.jobId || state.mobilePayment.paymentId || "",
+          razorpay_order_id: checkout.orderId,
+          reason: response.error?.description || response.error?.reason || ""
+        })
+      }).catch(() => {
+        // Best-effort - the customer still sees the failure locally either way.
+      });
     });
 
     razorpay.open();
