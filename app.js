@@ -41,6 +41,13 @@ const PRINTER_OFFLINE_ACTION_SECONDS = 15;
 const PRINT_FAILURE_AUTO_HOME_SECONDS = 120;
 const IDLE_SCREENSAVER_IMAGE_SECONDS = 6;
 const IDLE_MEDIA_LOCAL_CHECK_TIMEOUT_MS = 2500;
+// Unlike the status-poll fetch in checkMobileUpload() (which just retries
+// silently on its own 1.8s interval), this session-creation call only ever
+// runs once when the customer lands on the QR screen - with no timeout, a
+// single slow/dropped request left the "Getting QR ready" spinner stuck
+// indefinitely instead of resolving or failing.
+const MOBILE_UPLOAD_SESSION_TIMEOUT_MS = 6000;
+const MOBILE_UPLOAD_SESSION_MAX_ATTEMPTS = 2;
 const CUSTOMER_INACTIVITY_TIMEOUTS = Object.freeze({
   uploadQr: 3 * 60 * 1000,
   governmentFormsList: 90 * 1000,
@@ -4451,30 +4458,42 @@ async function startMobileUploadSession() {
   };
   render();
 
-  try {
-    const response = await fetch(`${BACKEND_URL}/api/mobile-upload/session`);
+  for (let attempt = 1; attempt <= MOBILE_UPLOAD_SESSION_MAX_ATTEMPTS; attempt += 1) {
+    const controller = new AbortController();
+    const timeoutId = window.setTimeout(() => controller.abort(), MOBILE_UPLOAD_SESSION_TIMEOUT_MS);
 
-    if (!response.ok) {
-      throw new Error("Upload service unavailable.");
+    try {
+      const response = await fetch(`${BACKEND_URL}/api/mobile-upload/session`, {
+        signal: controller.signal
+      });
+
+      if (!response.ok) {
+        throw new Error("Upload service unavailable.");
+      }
+
+      const payload = await response.json();
+      state.uploadSession = {
+        ...payload,
+        uploadUrl: publicMobileUploadUrl(payload.token),
+        status: "waiting"
+      };
+      render();
+      startUploadPolling();
+      return;
+    } catch (error) {
+      if (attempt < MOBILE_UPLOAD_SESSION_MAX_ATTEMPTS) continue;
+
+      state.uploadSession = {
+        token: "",
+        uploadUrl: publicMobileUploadUrl(),
+        qrSvg: "",
+        status: "offline",
+        error: "Mobile upload service is not running. Start backend or restart the kiosk app."
+      };
+      render();
+    } finally {
+      window.clearTimeout(timeoutId);
     }
-
-    const payload = await response.json();
-    state.uploadSession = {
-      ...payload,
-      uploadUrl: publicMobileUploadUrl(payload.token),
-      status: "waiting"
-    };
-    render();
-    startUploadPolling();
-  } catch (error) {
-    state.uploadSession = {
-      token: "",
-      uploadUrl: publicMobileUploadUrl(),
-      qrSvg: "",
-      status: "offline",
-      error: "Mobile upload service is not running. Start backend or restart the kiosk app."
-    };
-    render();
   }
 }
 
@@ -6376,6 +6395,11 @@ function render() {
   const mainEl = document.querySelector(".admin-main, .main, .content");
   const scrollTop = mainEl ? mainEl.scrollTop : 0;
   const winScrollY = window.scrollY || window.pageYOffset || 0;
+  // The step-1 forms search/list grid scrolls independently of .admin-main/.main/.content
+  // above, so a background poll (e.g. printer status) that triggers a full render() while
+  // the customer is scrolled down would otherwise snap the list back to the top.
+  const formsGridEl = document.querySelector("[data-forms-list-grid]");
+  const formsGridScrollTop = formsGridEl ? formsGridEl.scrollTop : 0;
 
   if (window.morphdom && app.firstElementChild && state.mode === "admin" && state.adminAuthed) {
     try {
@@ -6410,7 +6434,10 @@ function render() {
   if (winScrollY > 0) {
     window.scrollTo(window.scrollX, winScrollY);
   }
-
+  const newFormsGridEl = document.querySelector("[data-forms-list-grid]");
+  if (newFormsGridEl && formsGridScrollTop > 0) {
+    newFormsGridEl.scrollTop = formsGridScrollTop;
+  }
   try {
     if (state.mode === "customer" && state.step !== undefined) {
       sessionStorage.setItem("kioskCustomerState", JSON.stringify({
