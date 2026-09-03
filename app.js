@@ -3955,22 +3955,43 @@ function handleCustomerPrinterIssue(issue, { resetFlow = false, recordFailure = 
 function handleCustomerPrinterStateAfterRefresh() {
   if (state.mode !== "customer" || DEMO_KIOSK_MODE) return;
 
+  // The idle screensaver's Online/Offline badge (renderCustomerPrinterStatusBadge)
+  // lives in its own DOM root outside #app (see showIdleScreensaver), so the
+  // render() calls below never reach it - it only gets asked to redraw itself
+  // on the specific triggers in renderIdleScreensaver's callers (image rotation,
+  // language switch, the internet-monitor IPC). A printer/backend connectivity
+  // change detected here otherwise never reaches it, and with a video or
+  // single-image idle screensaver (no periodic rotation) there's nothing else
+  // to self-correct it - it stays frozen showing whatever it looked like when
+  // the screensaver first appeared, for as long as it's up.
+  //
+  // Compared against state.customerPrinterNotice (the stored value from the
+  // *previous* refresh), not a fresh customerPrinterBlockIssue() call - by
+  // this point state.printer/state.printerHealth have already been updated
+  // by the caller (refreshPrinterStatus/the health IPC), so a live call here
+  // would just reflect the same new state on both sides of the comparison.
+  const wasBlocked = Boolean(customerInternetBlockStatus() || state.customerPrinterNotice);
+
   const issue = customerPrinterBlockIssue({ includeAgentFallback: true });
   if (!issue) {
     state.customerPrinterNotice = null;
     state.lastAlertedPrinterIssue = null;
+  } else if (issue.kind === "checking") {
     return;
+  } else {
+    state.customerPrinterNotice = {
+      tone: issue.tone || "error",
+      kind: issue.kind || "printer",
+      title: issue.title || "Printer offline",
+      detail: issue.detail || "Printer is offline. Please contact staff."
+    };
+    state.lastAlertedPrinterIssue = state.customerPrinterNotice.kind;
   }
 
-  if (issue.kind === "checking") return;
-
-  state.customerPrinterNotice = {
-    tone: issue.tone || "error",
-    kind: issue.kind || "printer",
-    title: issue.title || "Printer offline",
-    detail: issue.detail || "Printer is offline. Please contact staff."
-  };
-  state.lastAlertedPrinterIssue = state.customerPrinterNotice.kind;
+  const isBlockedNow = Boolean(customerInternetBlockStatus() || state.customerPrinterNotice);
+  if (state.showIdleScreensaver && wasBlocked !== isBlockedNow) {
+    renderIdleScreensaver();
+  }
 }
 
 function nextJobId() {
