@@ -10407,7 +10407,13 @@ function dashboardMetrics() {
   const kiosks = state.adminData.kiosks || [];
   const projects = state.adminData.projects || [];
   const activeKiosks = dashboard.activeKiosks ?? kiosks.filter((kiosk) => kiosk.status === "online").length;
-  const todaysTransactions = adminTransactionRecords().filter((record) => isTransactionToday(record.dateValue));
+  // Only successful payments count as a "transaction" here - otherwise a
+  // Pending/Failed attempt's amount gets added on top of the actual paid
+  // amount, so this tile's total silently drifts above Net Revenue (which
+  // is Payment-Success-only, see /api/admin/revenue).
+  const todaysTransactions = adminTransactionRecords()
+    .filter((record) => isTransactionToday(record.dateValue))
+    .filter((record) => transactionMatchesStatus(record, "success"));
   const todaysAmount = todaysTransactions.reduce((sum, record) => sum + (Number(record.amount) || 0), 0);
 
   return [
@@ -10919,9 +10925,13 @@ window.downloadRevenueReportPDF = async function () {
   const { jsPDF } = window.jspdf;
   const doc = new jsPDF();
   const pageWidth = doc.internal.pageSize.getWidth();
+  // Success-only, same reasoning as dashboardMetrics(): including
+  // Pending/Failed attempts here would make the PDF's grand total larger
+  // than the Net Revenue tile it's supposed to be reporting on.
   const records = adminTransactionRecords().filter((record) => {
     if (!transactionMatchesDateRange(record, filter.start, filter.end)) return false;
     if (filter.kioskId && String(record.kiosk || "").toUpperCase() !== filter.kioskId.toUpperCase()) return false;
+    if (!transactionMatchesStatus(record, "success")) return false;
     return true;
   });
   const logoMaxWidth = 32;

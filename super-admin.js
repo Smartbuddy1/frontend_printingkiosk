@@ -2913,7 +2913,11 @@ window.downloadRevenueReportPDF = async function () {
   const doc = new jsPDF();
   const pageWidth = doc.internal.pageSize.getWidth();
   const allRecords = superAdminTransactionRecords();
-  const records = allRecords.filter(revenueRecordMatchesFilter);
+  // Success-only: revenueRecordMatchesFilter() doesn't check status, so
+  // without this the PDF's grand total includes Pending/Failed attempts
+  // and ends up larger than the dashboard's Net Revenue tile (which is
+  // Payment-Success-only, see superAdminSummary() on the backend).
+  const records = allRecords.filter(revenueRecordMatchesFilter).filter((record) => transactionMatchesStatus(record, "success"));
   const logoMaxWidth = 32;
   const logoMaxHeight = 24;
   const companyLogoMaxWidth = 50;
