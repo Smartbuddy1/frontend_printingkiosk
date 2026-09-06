@@ -3017,9 +3017,23 @@ window.downloadFormPrintReportPDF = async function () {
   const endObj = new Date(filter.end);
   endObj.setHours(23, 59, 59, 999);
 
+  // jsPDF's built-in Helvetica font cannot render Unicode (Devanagari / Marathi).
+  // pdfSafeText keeps any ASCII prefix (e.g. leading number) and replaces the
+  // non-Latin portion with a bracketed note so the PDF stays readable.
+  function pdfSafeText(str) {
+    if (!str) return "";
+    if (/[^\u0000-\u024F\u1E00-\u1EFF]/.test(str)) {
+      const asciiPrefix = (str.match(/^[\x20-\x7E]+/) || [""])[0].trim();
+      const numMatch = str.match(/^(\d+)/);
+      const prefix = asciiPrefix || (numMatch ? numMatch[1] : "");
+      return prefix ? `${prefix} [Local Language Name]` : "[Local Language Name]";
+    }
+    return str;
+  }
+
   const tableData = calculateFormSellingReport().map(row => [
     row.kioskId || "Unknown",
-    row.templateName || "Unknown Form",
+    pdfSafeText(row.templateName || "Unknown Form"),
     row.printCount || 0,
     money(row.revenue || 0)
   ]);
