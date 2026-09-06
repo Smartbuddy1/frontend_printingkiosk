@@ -3017,16 +3017,36 @@ window.downloadFormPrintReportPDF = async function () {
   const endObj = new Date(filter.end);
   endObj.setHours(23, 59, 59, 999);
 
-  // jsPDF's built-in Helvetica font cannot render Unicode (Devanagari / Marathi).
-  // pdfSafeText keeps any ASCII prefix (e.g. leading number) and replaces the
-  // non-Latin portion with a bracketed note so the PDF stays readable.
   function pdfSafeText(str) {
     if (!str) return "";
+    
     if (/[^\u0000-\u024F\u1E00-\u1EFF]/.test(str)) {
-      const asciiPrefix = (str.match(/^[\x20-\x7E]+/) || [""])[0].trim();
-      const numMatch = str.match(/^(\d+)/);
-      const prefix = asciiPrefix || (numMatch ? numMatch[1] : "");
-      return prefix ? `${prefix} [Local Language Name]` : "[Local Language Name]";
+      const devanagariMap = {
+        'अ':'a', 'आ':'aa', 'इ':'i', 'ई':'ee', 'उ':'u', 'ऊ':'oo', 'ऋ':'ru', 'ए':'e', 'ऐ':'ai', 'ओ':'o', 'औ':'au',
+        'क':'k', 'ख':'kh', 'ग':'g', 'घ':'gh', 'ङ':'ng',
+        'च':'ch', 'छ':'chh', 'ज':'j', 'झ':'jh', 'ञ':'ny',
+        'ट':'t', 'ठ':'th', 'ड':'d', 'ढ':'dh', 'ण':'n',
+        'त':'t', 'थ':'th', 'द':'d', 'ध':'dh', 'न':'n',
+        'प':'p', 'फ':'ph', 'ब':'b', 'भ':'bh', 'म':'m',
+        'य':'y', 'र':'r', 'ल':'l', 'व':'v', 'श':'sh', 'ष':'sh', 'स':'s', 'ह':'h', 'ळ':'l', 'क्ष':'ksh', 'ज्ञ':'dny',
+        'ा':'a', 'ि':'i', 'ी':'ee', 'ु':'u', 'ू':'oo', 'ृ':'ru', 'े':'e', 'ै':'ai', 'ो':'o', 'ौ':'au', 'ं':'n', 'ः':'h',
+        '्':''
+      };
+      
+      let transliterated = "";
+      for (let i = 0; i < str.length; i++) {
+        const char = str[i];
+        if (devanagariMap[char] !== undefined) {
+          transliterated += devanagariMap[char];
+        } else {
+          transliterated += char;
+        }
+      }
+      
+      transliterated = transliterated.replace(/\s+/g, ' ').trim();
+      transliterated = transliterated.split(' ').map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(' ');
+      
+      return transliterated;
     }
     return str;
   }

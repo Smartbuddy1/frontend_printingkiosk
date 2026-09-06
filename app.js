@@ -11031,14 +11031,37 @@ window.downloadFormPrintReportPDF = async function () {
   // readable without embedding a large Unicode font file.
   function pdfSafeText(str) {
     if (!str) return "";
+    
     // Check if the string has any non-Latin characters
     if (/[^\u0000-\u024F\u1E00-\u1EFF]/.test(str)) {
-      // Keep any leading ASCII portion (numbers, spaces, Latin letters)
-      const asciiPrefix = (str.match(/^[\x20-\x7E]+/) || [""])[0].trim();
-      // Try to extract a meaningful ID/number from the start
-      const numMatch = str.match(/^(\d+)/);
-      const prefix = asciiPrefix || (numMatch ? numMatch[1] : "");
-      return prefix ? `${prefix} [Local Language Name]` : "[Local Language Name]";
+      // Basic transliteration for Devanagari (Marathi)
+      const devanagariMap = {
+        'अ':'a', 'आ':'aa', 'इ':'i', 'ई':'ee', 'उ':'u', 'ऊ':'oo', 'ऋ':'ru', 'ए':'e', 'ऐ':'ai', 'ओ':'o', 'औ':'au',
+        'क':'k', 'ख':'kh', 'ग':'g', 'घ':'gh', 'ङ':'ng',
+        'च':'ch', 'छ':'chh', 'ज':'j', 'झ':'jh', 'ञ':'ny',
+        'ट':'t', 'ठ':'th', 'ड':'d', 'ढ':'dh', 'ण':'n',
+        'त':'t', 'थ':'th', 'द':'d', 'ध':'dh', 'न':'n',
+        'प':'p', 'फ':'ph', 'ब':'b', 'भ':'bh', 'म':'m',
+        'य':'y', 'र':'r', 'ल':'l', 'व':'v', 'श':'sh', 'ष':'sh', 'स':'s', 'ह':'h', 'ळ':'l', 'क्ष':'ksh', 'ज्ञ':'dny',
+        'ा':'a', 'ि':'i', 'ी':'ee', 'ु':'u', 'ू':'oo', 'ृ':'ru', 'े':'e', 'ै':'ai', 'ो':'o', 'ौ':'au', 'ं':'n', 'ः':'h',
+        '्':''
+      };
+      
+      let transliterated = "";
+      for (let i = 0; i < str.length; i++) {
+        const char = str[i];
+        if (devanagariMap[char] !== undefined) {
+          transliterated += devanagariMap[char];
+        } else {
+          transliterated += char; // Keep English letters, numbers, spaces
+        }
+      }
+      
+      // Clean up multiple spaces and capitalize words
+      transliterated = transliterated.replace(/\s+/g, ' ').trim();
+      transliterated = transliterated.split(' ').map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(' ');
+      
+      return transliterated;
     }
     return str;
   }
