@@ -3017,23 +3017,37 @@ window.downloadFormPrintReportPDF = async function () {
   const endObj = new Date(filter.end);
   endObj.setHours(23, 59, 59, 999);
 
-  // jsPDF's built-in Helvetica font cannot render Unicode (Devanagari / Marathi).
-  // pdfSafeText keeps any ASCII prefix (e.g. leading number) and replaces the
-  // non-Latin portion with a bracketed note so the PDF stays readable.
-  function pdfSafeText(str) {
-    if (!str) return "";
-    if (/[^\u0000-\u024F\u1E00-\u1EFF]/.test(str)) {
-      const asciiPrefix = (str.match(/^[\x20-\x7E]+/) || [""])[0].trim();
-      const numMatch = str.match(/^(\d+)/);
-      const prefix = asciiPrefix || (numMatch ? numMatch[1] : "");
-      return prefix ? `${prefix} [Local Language Name]` : "[Local Language Name]";
+  // Load Devanagari font to support Marathi characters
+  async function addDevanagariFont(pdfDoc) {
+    try {
+      const fontUrl = "../assets/fonts/NotoSansDevanagari-Regular.ttf";
+      const response = await fetch(fontUrl);
+      if (!response.ok) return false;
+      const buffer = await response.arrayBuffer();
+      
+      let binary = '';
+      const bytes = new Uint8Array(buffer);
+      const len = bytes.byteLength;
+      for (let i = 0; i < len; i++) {
+        binary += String.fromCharCode(bytes[i]);
+      }
+      const base64 = window.btoa(binary);
+      
+      pdfDoc.addFileToVFS('NotoSansDevanagari-Regular.ttf', base64);
+      pdfDoc.addFont('NotoSansDevanagari-Regular.ttf', 'NotoSansDevanagari', 'normal');
+      pdfDoc.setFont('NotoSansDevanagari');
+      return true;
+    } catch (e) {
+      console.error("Failed to load Devanagari font for PDF", e);
+      return false;
     }
-    return str;
   }
+
+  const hasDevanagariFont = await addDevanagariFont(doc);
 
   const tableData = calculateFormSellingReport().map(row => [
     row.kioskId || "Unknown",
-    pdfSafeText(row.templateName || "Unknown Form"),
+    row.templateName || "Unknown Form",
     row.printCount || 0,
     money(row.revenue || 0)
   ]);
@@ -3089,17 +3103,24 @@ window.downloadFormPrintReportPDF = async function () {
   doc.setLineWidth(0.6);
   doc.line(14, dividerY, pageWidth - 14, dividerY);
 
+  const tableStyles = {
+    0: { halign: 'center', fontStyle: 'bold' },
+    1: { halign: 'left' },
+    2: { halign: 'center' },
+    3: { halign: 'right' }
+  };
+  
+  if (hasDevanagariFont) {
+    tableStyles[1].font = 'NotoSansDevanagari';
+  }
+
   doc.autoTable({
     startY: dividerY + 8,
     head: [['KIOSK ID', 'FORMS', 'PRINTS', 'REVENUE']],
     body: tableData,
     theme: 'grid',
-    columnStyles: {
-      0: { halign: 'center', fontStyle: 'bold' },
-      1: { halign: 'left' },
-      2: { halign: 'center' },
-      3: { halign: 'right' }
-    },
+    columnStyles: tableStyles,
+    styles: hasDevanagariFont ? { font: 'NotoSansDevanagari' } : {},
     ...PDF_TABLE_STYLE
   });
 
