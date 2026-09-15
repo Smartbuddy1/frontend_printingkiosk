@@ -13534,17 +13534,12 @@ function renderKioskManagementTable() {
             <th>Project</th>
             <th>Branch</th>
             <th>Status</th>
-            <th>Printer</th>
             <th>Setup Code</th>
             ${canManage ? "<th>Actions</th>" : ""}
           </tr>
         </thead>
         <tbody>
           ${kiosks.length ? kiosks.map((kiosk) => {
-            const hasHealthData = kiosk.printerHealth && typeof kiosk.printerHealth === "object";
-            const printerBadge = !hasHealthData
-              ? `<span class="badge">Unknown</span>`
-              : `<span class="badge ${kiosk.printerReady === true ? "good" : "bad"}" title="${escapeHtml(kiosk.printerErrorMessage || "")}">${kiosk.printerReady === true ? "Ready" : "Not connected"}</span>`;
             return `
             <tr>
               <td>${escapeHtml(kiosk.kioskId || "")}</td>
@@ -13552,7 +13547,6 @@ function renderKioskManagementTable() {
               <td>${escapeHtml(kiosk.projectId || "")}</td>
               <td>${escapeHtml(kiosk.branch || "")}</td>
               <td><span class="badge ${kiosk.status === "online" ? "good" : "bad"}">${escapeHtml(kiosk.status || "Unknown")}</span></td>
-              <td>${printerBadge}</td>
               <td>${escapeHtml(kiosk.setupCode || "")}</td>
               ${canManage ? `
               <td>
@@ -13564,7 +13558,7 @@ function renderKioskManagementTable() {
             </tr>
           `;
           }).join("") : `
-            <tr><td colspan="${canManage ? 8 : 7}">No kiosks are assigned to this account.</td></tr>
+            <tr><td colspan="${canManage ? 7 : 6}">No kiosks are assigned to this account.</td></tr>
           `}
         </tbody>
       </table>

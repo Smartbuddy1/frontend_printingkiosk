@@ -233,7 +233,7 @@ const collections = {
     title: "Kiosk Management",
     subtitle: "Create kiosks under a project. Kiosk creation is available only to super admins.",
     key: "kioskId",
-    columns: ["projectId", "kioskId", "name", "branch", "status", "printerReady"],
+    columns: ["projectId", "kioskId", "name", "branch", "status"],
     fields: [
       { key: "kioskId", label: "Kiosk ID", required: true },
       { key: "setupCode", label: "Mini PC Setup Code", required: true },
