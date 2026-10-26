@@ -54,9 +54,14 @@ const CUSTOMER_INACTIVITY_TIMEOUTS = Object.freeze({
   formDetails: 2 * 60 * 1000,
   documentPreview: 2 * 60 * 1000,
   printSettings: 90 * 1000,
-  payment: 5 * 60 * 1000,
+  payment: 3 * 60 * 1000,
+  paidFailure: 2 * 60 * 1000,
   error: 30 * 1000,
-  privacyPolicy: 90 * 1000
+  privacyPolicy: 90 * 1000,
+  digilockerPair: 3 * 60 * 1000,
+  digilockerReceive: 2 * 60 * 1000,
+  digilockerReady: 2 * 60 * 1000,
+  digilockerDone: 15 * 1000
 });
 const CUSTOMER_ACTIVITY_EVENTS = ["pointerdown", "keydown", "wheel", "touchstart", "input", "change"];
 const UNASSIGNED_KIOSK_ID = "UNASSIGNED-KIOSK";
@@ -6003,6 +6008,8 @@ function stopCustomerInactivityTimer() {
     state.customerInactivityTimer = null;
   }
   state.customerInactivityTimerKey = "";
+  state.customerInactivityDeadline = 0;
+  document.getElementById("customer-idle-notice")?.remove();
 }
 
 function paymentVerificationInProgress() {
@@ -6285,7 +6292,12 @@ function customerInactivityScreenKey() {
     return "privacyPolicy";
   }
 
+  if (window.DigilockerUI?.isActive()) {
+    return window.DigilockerUI.inactivityScreenKey();
+  }
+
   if (state.printError || state.paymentError || state.uploadError) {
+    if (state.printError && state.paymentStatus === "Success") return "paidFailure";
     return "error";
   }
 
@@ -6322,16 +6334,10 @@ function customerInactivityScreenKey() {
 
 function scheduleCustomerInactivityTimer() {
   const screenKey = customerInactivityScreenKey();
-
-  // render() unconditionally re-arms this timer every time it runs — including
-  // the 5s home-screen config poll, which reruns render() at step 0 whether or
-  // not anything actually changed. For every other screen that's harmless
-  // (nothing polls a rerender there without a real change), but at step 0 it
-  // would keep restarting the homeIdle countdown from full duration forever,
-  // so it could never reach zero. Skip the restart only when homeIdle is
-  // already counting down; genuine activity clears customerInactivityTimerKey
-  // first (see noteCustomerActivity) so it still fully re-arms the countdown.
-  if (screenKey === "homeIdle" && screenKey === state.customerInactivityTimerKey && state.customerInactivityTimer) {
+  // Background rendering/polling must never count as customer activity.
+  // Keep the same absolute deadline on every screen, including preview.
+  if (screenKey && screenKey === state.customerInactivityTimerKey && state.customerInactivityDeadline) {
+    checkCustomerInactivityDeadline();
     return;
   }
 
@@ -6344,31 +6350,70 @@ function scheduleCustomerInactivityTimer() {
   if (!timeoutMs) {
     return;
   }
+  const featureDeadline = window.DigilockerUI?.isActive()
+    ? window.DigilockerUI.inactivityDeadline?.() : null;
+  state.customerInactivityDeadline = Math.min(Date.now() + timeoutMs, featureDeadline || Infinity);
+  state.customerInactivityTimer = window.setTimeout(checkCustomerInactivityDeadline, Math.max(0, state.customerInactivityDeadline - Date.now()));
+  updateCustomerIdleNotice();
+}
 
-  state.customerInactivityTimer = window.setTimeout(() => {
-    state.customerInactivityTimer = null;
-    state.customerInactivityTimerKey = "";
-    const firedScreenKey = customerInactivityScreenKey();
+function updateCustomerIdleNotice() {
+  const key = state.customerInactivityTimerKey;
+  if (!key || key === "homeIdle" || !state.customerInactivityDeadline) {
+    document.getElementById("customer-idle-notice")?.remove();
+    return;
+  }
+  // DigiLocker renders this same deadline inline; never show a second clock.
+  const inlineClock = document.querySelector("[data-digilocker-countdown]");
+  if (inlineClock && window.DigilockerUI?.isActive()) {
+    document.getElementById("customer-idle-notice")?.remove();
+    const seconds = Math.max(0, Math.ceil((state.customerInactivityDeadline - Date.now()) / 1000));
+    inlineClock.textContent = `${String(Math.floor(seconds / 60)).padStart(2, "0")}:${String(seconds % 60).padStart(2, "0")}`;
+    return;
+  }
+  let notice = document.getElementById("customer-idle-notice");
+  if (!notice) {
+    notice = document.createElement("aside");
+    notice.id = "customer-idle-notice";
+    notice.className = "customer-idle-notice";
+    notice.setAttribute("aria-label", "Session inactivity timeout");
+    notice.innerHTML = '<span>Session resets in <strong data-idle-seconds></strong></span><button type="button">Keep working</button>';
+    notice.querySelector("button").addEventListener("click", noteCustomerActivity);
+    document.body.appendChild(notice);
+  }
+  const seconds = Math.max(0, Math.ceil((state.customerInactivityDeadline - Date.now()) / 1000));
+  notice.querySelector("[data-idle-seconds]").textContent = `${String(Math.floor(seconds / 60)).padStart(2, "0")}:${String(seconds % 60).padStart(2, "0")}`;
+  notice.classList.toggle("is-urgent", seconds <= 15);
+}
 
-    if (!firedScreenKey) {
-      return;
-    }
-
-    if (firedScreenKey === "homeIdle") {
-      showIdleScreensaver();
-      return;
-    }
-
+function checkCustomerInactivityDeadline() {
+  const key = state.customerInactivityTimerKey;
+  if (!key || !state.customerInactivityDeadline) return false;
+  if (customerInactivityScreenKey() !== key) {
+    scheduleCustomerInactivityTimer();
+    return false;
+  }
+  if (Date.now() < state.customerInactivityDeadline) {
+    updateCustomerIdleNotice();
+    return false;
+  }
+  stopCustomerInactivityTimer();
+  if (key === "homeIdle") showIdleScreensaver();
+  else {
     resetCustomer();
     render();
     refreshPrinterStatus();
-  }, timeoutMs);
+  }
+  return true;
 }
 
 function noteCustomerActivity(event) {
   if (isMobilePaymentEntry || state.mode !== "customer") {
     return;
   }
+
+  // A touch after returning to an expired background tab must not revive files.
+  if (checkCustomerInactivityDeadline()) return;
 
   if (state.showIdleScreensaver) {
     if (event?.type === "keydown") {
@@ -6401,6 +6446,8 @@ function bindCustomerInactivityEvents() {
     window.addEventListener(eventName, noteCustomerActivity, { capture: true, passive: true });
   });
   customerInactivityEventsBound = true;
+  document.addEventListener("visibilitychange", checkCustomerInactivityDeadline);
+  window.addEventListener("pageshow", checkCustomerInactivityDeadline);
 }
 
 function setPrivacyPolicyVisible(visible, page = "privacy") {
@@ -6495,6 +6542,7 @@ function render() {
     if (state.mode === "customer" && state.step !== undefined) {
       sessionStorage.setItem("kioskCustomerState", JSON.stringify({
         step: state.step,
+        documentSource: window.DigilockerUI?.isActive() ? "digilocker" : null,
         selectedService: state.selectedService,
         selectedTemplate: state.selectedTemplate
       }));
@@ -7358,7 +7406,7 @@ function renderServicesStep() {
         <h1>Printing Kiosk</h1>
       </div>
       ${renderCustomerServiceStatusBanner(serviceBlockStatus)}
-      
+
       <div class="premium-services-grid ${serviceGridClass}" data-service-count="${totalServiceCards}">
         ${availableServices.length
           ? availableServices.map((service, index) => renderAdditionalPremiumServiceCard(service, index, printerReady, serviceBlockStatus)).join("")
@@ -11031,7 +11079,7 @@ window.downloadFormPrintReportPDF = async function () {
   // readable without embedding a large Unicode font file.
   function pdfSafeText(str) {
     if (!str) return "";
-    
+
     // Check if the string has any non-Latin characters
     if (/[^\u0000-\u024F\u1E00-\u1EFF]/.test(str)) {
       // Basic transliteration for Devanagari (Marathi)
@@ -11046,7 +11094,7 @@ window.downloadFormPrintReportPDF = async function () {
         'ा':'a', 'ि':'i', 'ी':'ee', 'ु':'u', 'ू':'oo', 'ृ':'ru', 'े':'e', 'ै':'ai', 'ो':'o', 'ौ':'au', 'ं':'n', 'ः':'h',
         '्':''
       };
-      
+
       let transliterated = "";
       for (let i = 0; i < str.length; i++) {
         const char = str[i];
@@ -11056,11 +11104,11 @@ window.downloadFormPrintReportPDF = async function () {
           transliterated += char; // Keep English letters, numbers, spaces
         }
       }
-      
+
       // Clean up multiple spaces and capitalize words
       transliterated = transliterated.replace(/\s+/g, ' ').trim();
       transliterated = transliterated.split(' ').map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(' ');
-      
+
       return transliterated;
     }
     return str;
@@ -11176,11 +11224,11 @@ function adminAnalyticsBuckets(start, end, basis) {
   let cursor;
   let last;
   let guard = 0;
-  
+
   if (basis === "daily") {
     cursor = new Date(start.getFullYear(), start.getMonth(), start.getDate());
     last = new Date(end.getFullYear(), end.getMonth(), end.getDate());
-    
+
     while (cursor <= last && guard < 400) {
       buckets.push({
         key: `${cursor.getFullYear()}-${cursor.getMonth() + 1}-${cursor.getDate()}`,
@@ -11196,11 +11244,11 @@ function adminAnalyticsBuckets(start, end, basis) {
     cursor.setDate(cursor.getDate() - cursor.getDay());
     last = new Date(end.getFullYear(), end.getMonth(), end.getDate());
     last.setDate(last.getDate() - last.getDay());
-    
+
     while (cursor <= last && guard < 60) {
       const weekEnd = new Date(cursor);
       weekEnd.setDate(weekEnd.getDate() + 6);
-      
+
       buckets.push({
         key: `${cursor.getFullYear()}-${cursor.getMonth() + 1}-${cursor.getDate()}`,
         label: `${cursor.toLocaleString("en-US", { month: "short", day: "numeric" })} - ${weekEnd.toLocaleString("en-US", { month: "short", day: "numeric" })}`,
@@ -12332,7 +12380,7 @@ function calculateFormSellingReport() {
 
 function renderFormSellingTable() {
   const tableData = calculateFormSellingReport();
-  
+
   const rows = tableData.map(item => `
       <div class="rt-row form-selling-row">
         <div class="rt-cell"><strong>${escapeHtml(item.kioskId)}</strong></div>
@@ -12366,7 +12414,7 @@ function renderFormSellingTable() {
 function renderKioskSalesChart() {
   const stats = state.adminData.dailyStats || [];
   const kioskSales = {};
-  
+
   const startObj = new Date(state.revenueFilter.start);
   startObj.setHours(0,0,0,0);
   const endObj = new Date(state.revenueFilter.end);
@@ -12392,16 +12440,16 @@ function renderKioskSalesChart() {
 
   const sorted = Object.entries(kioskSales).sort((a, b) => b[1] - a[1]);
   const colors = ["#8b5cf6", "#3b82f6", "#10b981", "#f59e0b", "#ef4444", "#64748b", "#ec4899", "#14b8a6"];
-  
+
   let conicStops = [];
   let currentPercentage = 0;
-  
+
   const legendHtml = sorted.map(([name, amount], i) => {
     const color = colors[i % colors.length];
     const percentage = (amount / total) * 100;
     conicStops.push(`${color} ${currentPercentage}% ${currentPercentage + percentage}%`);
     currentPercentage += percentage;
-    
+
     return `
       <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px; font-size: 0.9em;">
         <div style="display: flex; align-items: center; gap: 8px;">
@@ -12434,7 +12482,7 @@ function renderRecentTransactionsTable() {
     const status = /success|completed/i.test(job.payment || "") ? "Settled" : "Pending";
     const statusClass = status === "Settled" ? "status-settled" : "status-pending";
     const fileName = job.fileName || job.file || "Document";
-    
+
     return `
       <div class="rt-row" style="grid-template-columns: 1fr 2fr 1fr 1fr 0.5fr;">
         <div class="rt-cell">#${job.id.substring(0,5).toUpperCase()}</div>
@@ -12474,7 +12522,7 @@ function renderRevenueDeskChart(series) {
     const y = padding.top + chartHeight - ((item.amount / maxAmount) * chartHeight);
     return { ...item, x, y };
   });
-  
+
   // Create a smooth bezier curve (Cubic) instead of jagged lines
   let path = `M ${points[0]?.x.toFixed(1)} ${points[0]?.y.toFixed(1)}`;
   for (let i = 0; i < points.length - 1; i++) {
@@ -12488,7 +12536,7 @@ function renderRevenueDeskChart(series) {
   }
 
   const fillPath = `${path} L ${points.at(-1)?.x.toFixed(1) || padding.left} ${padding.top + chartHeight} L ${points[0]?.x.toFixed(1) || padding.left} ${padding.top + chartHeight} Z`;
-  
+
   // Format days for bottom axis (Sat, Sun, Mon...)
   const dayNames = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
   const axisLabels = points.map((point, index) => {
@@ -15071,7 +15119,10 @@ try {
   const savedState = sessionStorage.getItem("kioskCustomerState");
   if (savedState) {
     const parsed = JSON.parse(savedState);
-    if (parsed.step !== undefined && parsed.step > 0 && parsed.selectedService) {
+    if (window.DigilockerUI?.restoreCustomerState(parsed)) {
+      state.step = 1;
+      state.selectedService = parsed.selectedService || null;
+    } else if (parsed.step !== undefined && parsed.step > 0 && parsed.selectedService) {
       state.step = parsed.step;
       state.selectedService = parsed.selectedService;
       if (parsed.selectedTemplate) state.selectedTemplate = parsed.selectedTemplate;
@@ -15111,6 +15162,7 @@ if (!isMobilePaymentEntry && state.adminAuthed) {
 }
 
 setInterval(updateKioskClock, 1000);
+setInterval(checkCustomerInactivityDeadline, 1000);
 setInterval(tickThankYouHomeCountdown, 1000);
 setInterval(tickPrinterOfflineWatchdog, 1000);
 

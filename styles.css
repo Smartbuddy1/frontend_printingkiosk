@@ -17144,3 +17144,11 @@ body.admin-mode *,
   font-family: Cambria, "Nirmala UI", "Mangal", Georgia, "Times New Roman", serif !important;
 }
 
+
+/* Customer inactivity notice is outside the rerendered application tree. */
+.customer-idle-notice { position:fixed; right:20px; bottom:42px; z-index:100001; display:flex; align-items:center; gap:16px; max-width:calc(100vw - 32px); padding:10px 12px 10px 16px; border:1px solid #d6dee8; border-radius:14px; background:#fff; color:#334155; box-shadow:0 5px 22px #0f172a16; font:14px/1.4 Arial,sans-serif; }
+.customer-idle-notice strong {font-variant-numeric:tabular-nums;white-space:nowrap}
+.customer-idle-notice button {border:0;border-radius:9px;padding:10px 14px;background:#edf2f8;color:#183459;font:600 14px Arial,sans-serif;cursor:pointer;min-height:40px}
+.customer-idle-notice.is-urgent {border-color:#e9b23b;background:#fff8e7}
+.customer-idle-notice button:focus-visible {outline:3px solid #2563eb;outline-offset:2px}
+@media(max-width:600px){.customer-idle-notice{left:12px;right:12px;bottom:48px;justify-content:space-between;font-size:12px;gap:8px}.customer-idle-notice button{font-size:12px}}
