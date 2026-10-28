@@ -1601,7 +1601,6 @@ const DEFAULT_KIOSK_CUSTOMER_SETTINGS = Object.freeze({
   pageRange: true
 });
 const KIOSK_CUSTOMER_OPTION_FIELDS = Object.freeze([
-  ["digilocker", "DigiLocker"],
   ["bw", "B/W printing"],
   ["color", "Color printing"],
   ["copies", "Copies"],
@@ -2937,9 +2936,9 @@ function normalizeServicesConfig(value) {
     const hasSavedTemplates = Array.isArray(service?.templates) && service.templates.length > 0;
     const hasDefaultTemplates = (Array.isArray(fallback.templates) && fallback.templates.length > 0) ||
       (Array.isArray(formTemplates[id]) && formTemplates[id].length > 0);
-    const explicitMode = service?.mode === "template" || service?.mode === "upload";
+    const explicitMode = ["template", "upload", "digilocker"].includes(service?.mode);
     const mode = explicitMode
-      ? (service.mode === "template" ? "template" : "upload")
+      ? service.mode
       : (hasDefaultTemplates ? "template" : "upload");
     return {
       id,

@@ -11,8 +11,8 @@
   const t = key => (config.translations[state.customerLanguage] || config.translations.en)[key] || (config.translations[state.customerLanguage] || config.translations.en).generic;
   const h = value => String(value ?? "").replace(/[&<>"']/g, ch => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[ch]));
   function redraw() { render(); }
-  function normalService() { return customerServices().find(s => s.id === "print" && !isFormTemplateService(s.id)) || customerServices().find(s => !isFormTemplateService(s.id)); }
-  function kioskPermitted() { return config.preview === true || state.kioskCustomerSettings?.digilocker === true; }
+  function normalService() { const available = customerServices().filter(s => s.mode !== "digilocker" && !isFormTemplateService(s.id)); return available.find(s => s.id === "print") || available[0]; }
+  function kioskPermitted() { return config.preview === true || (Array.isArray(services) && services.some(s => s.mode === "digilocker" && serviceAvailableForKiosk(s))); }
   async function request(suffix, options = {}, current = session) {
     if (!current) throw new Error("SESSION_ENDED");
     const response = await fetch(apiUrl(`/api/digilocker/sessions/${current.sessionId}/${suffix}`), {
@@ -107,7 +107,7 @@
   }
   async function start() {
     if (!kioskPermitted()) return;
-    const service = normalService(); if (!service || !printerReadyForCustomerFlow()) return;
+    const service = serviceDefinition(); if (!service || !normalService() || !printerReadyForCustomerFlow()) return;
     cancel(); const epoch = generation;
     clearCurrentFile(); stopUploadPolling(); stopPaymentPolling();
     state.selectedService = service.id; applyServicePrintDefaults(service); state.step = 1; state.activeJobId = null;
@@ -154,6 +154,45 @@
     if (state.mode !== "customer" || !normalService() || !kioskPermitted()) return "";
     return `<button type="button" class="dl-launch" data-digilocker="start" ${printerReadyForCustomerFlow()?"":"disabled"} aria-label="Print from DigiLocker"><img src="${h(config.assetBase || "/")}assets/digilocker-official.svg" alt="DigiLocker" width="220" height="44"></button>`;
   }
+  function serviceAvailable() {
+    const assignedService = Array.isArray(services)
+      && services.some((service) => service.mode === "digilocker" && serviceAvailableForKiosk(service));
+    const hasUploadService = Array.isArray(services)
+      && services.some((service) => service.mode !== "digilocker" && serviceAvailableForKiosk(service) && !isFormTemplateService(service.id));
+    return Boolean(config.enabled && state.mode === "customer" && hasUploadService && (assignedService || config.preview === true));
+  }
+  function serviceDefinition() {
+    const assignedService = Array.isArray(services)
+      ? services.find((service) => service.mode === "digilocker" && serviceAvailableForKiosk(service))
+      : null;
+    return assignedService || (config.preview === true ? {
+      id: "digilocker",
+      title: t("title"),
+      description: t("launchDescription"),
+      mode: "digilocker",
+      enabled: true,
+      projectIds: [],
+      kioskIds: [],
+      pricing: { bw: 0, color: 0 }
+    } : null);
+  }
+  function renderServiceCard(service, printerReady, serviceBlockStatus) {
+    if (!serviceAvailable()) return "";
+    const blocked = !printerReady;
+    const logo = `${h(config.assetBase || "/")}assets/digilocker-official.svg`;
+    const icon = uiIcon("system", 28);
+    return `<div class="premium-service-card premium-service-card-extra card-blue dl-service-card ${blocked ? "is-service-blocked" : ""}" data-digilocker="service" aria-disabled="${blocked ? "true" : "false"}" style="cursor:${blocked ? "not-allowed" : "pointer"}">
+      <div class="premium-card-header"><div class="premium-icon-box bg-blue" aria-hidden="true">${icon}</div><div class="premium-header-text"><h2>${h(service.title || t("title"))}</h2><p>${h(service.description || t("launchDescription"))}</p></div></div>
+      <div class="premium-illustration dl-service-illustration" aria-hidden="true"><img src="${logo}" alt="" /></div>
+      <div class="premium-features bg-light-blue">
+        <div class="premium-feature"><span class="dl-service-feature-icon">${uiIcon("pages", 20)}</span><div><strong>Documents</strong><span>Use phone QR</span></div></div>
+        <div class="premium-feature border-left"><span class="dl-service-feature-icon">${uiIcon("system", 20)}</span><div><strong>Secure access</strong><span>Sign in on your phone</span></div></div>
+        <div class="premium-feature border-left"><span class="dl-service-feature-icon">${uiIcon("clock", 20)}</span><div><strong>Quick Print</strong><span>Fast service</span></div></div>
+      </div>
+      <button class="premium-btn bg-blue" data-digilocker="service" ${blocked ? "disabled" : ""}>Start <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="5" y1="12" x2="19" y2="12"></line><polyline points="12 5 19 12 12 19"></polyline></svg></button>
+      ${blocked && serviceBlockStatus ? `<p class="premium-service-block-message">${h(serviceBlockStatus.title)}</p>` : ""}
+    </div>`;
+  }
   function inactivityDeadline() {
     return session && ["CREATED", "PHONE_CONNECTED"].includes(phase) ? session.pairExpiresAt : null;
   }
@@ -197,13 +236,13 @@
     document.addEventListener("click",event=>{
       const target=event.target.closest("[data-digilocker]");if(!target)return;event.preventDefault();event.stopPropagation();
       const action=target.dataset.digilocker;
-      if(action==="start"||action==="refresh")void start();
+      if(action==="start"||action==="service"||action==="refresh")void start();
       if(action==="confirm")confirm();
       if(action==="home"){resetCustomer();redraw();void refreshPrinterStatus();}
     },true);
     window.addEventListener("pagehide",cancel);
   }
-  window.DigilockerUI={attach,cancel,restoreCustomerState,beforeClear:()=>{if(handedOff)cancel();},isActive:()=>active,inactivityScreenKey,inactivityDeadline,render:screen,renderButton,aroundPrint,
+  window.DigilockerUI={attach,cancel,restoreCustomerState,beforeClear:()=>{if(handedOff)cancel();},isActive:()=>active,inactivityScreenKey,inactivityDeadline,render:screen,renderButton,serviceAvailable,serviceDefinition,renderServiceCard,aroundPrint,
     printOptions:file=>owned.has(file)?{digilockerTransient:true}:{},
     mockPaymentMarkup:()=>`<div class="dl-mock-payment"><strong>${h(t("paymentMock"))}</strong><p>${h(t("paymentMockNote"))}</p></div>`
   };

@@ -28,9 +28,11 @@ The frontend contains no shared server secret. Keep the companion backend servic
 disabled until the provider credentials and scope configuration have been approved
 and the real flow and printer-agent integration have been validated.
 
-In Super Admin > Kiosks > Edit, tick **DigiLocker** under Kiosk Customer Print
-Options and save to offer it on that kiosk. Untick it to hide the customer button
-and block new DigiLocker sessions. The default is unchecked. Each kiosk has its
-own setting; existing B/W, colour and other print options are preserved.
-The backend and hosted DigiLocker service must also include this per-kiosk update.
-The website must be configured for the correct kiosk ID to use that kiosk's setting.
+In Super Admin > Kiosks, use **Add DigiLocker** for the kiosk (or **Manage DigiLocker**
+if one is already assigned). The service editor's Enabled setting and kiosk assignment
+control whether the customer card is offered. The standalone DigiLocker checkbox has
+been removed from Kiosk Edit. Existing B/W, colour and other print options are unchanged.
+The backend sends the assigned service in the kiosk configuration and derives the legacy
+`customerSettings.digilocker` value for the hosted callback's compatibility check. The
+website must use the correct kiosk ID. Provider approval and credentials are still required
+before real authorization can work.

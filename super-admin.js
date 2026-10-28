@@ -24,7 +24,6 @@ const DEFAULT_KIOSK_CUSTOMER_SETTINGS = Object.freeze({
   pageRange: true
 });
 const KIOSK_CUSTOMER_SETTING_FIELDS = [
-  ["digilocker", "DigiLocker"],
   ["bw", "B/W printing"],
   ["color", "Color printing"],
   ["copies", "Copies"],
@@ -5002,10 +5001,12 @@ function serviceKioskScopeLabel(service, kiosk) {
 
 function renderKioskServicePanel(kiosk, search = "") {
   const kioskMatches = search && JSON.stringify(kiosk).toLowerCase().includes(search);
+  const assignedDigiLocker = servicesForKiosk(kiosk).find((service) => service.mode === "digilocker");
   const kioskServices = servicesForKiosk(kiosk)
     .filter((service) => kioskMatches || serviceMatchesSearch(service, search));
   const formCount = kioskServices.reduce((total, service) => total + (service.templates?.length || 0), 0);
-  const uploadCount = kioskServices.filter((service) => service.mode !== "template").length;
+  const uploadCount = kioskServices.filter((service) => !["template", "digilocker"].includes(service.mode)).length;
+  const digilockerCount = kioskServices.filter((service) => service.mode === "digilocker").length;
   const enabledCount = kioskServices.filter((service) => service.enabled !== false).length;
 
   return `
@@ -5024,12 +5025,17 @@ function renderKioskServicePanel(kiosk, search = "") {
             <span>&bull;</span>
             <span><strong>${uploadCount}</strong> Uploads</span>
             <span>&bull;</span>
+            <span><strong>${digilockerCount}</strong> DigiLocker</span>
+            <span>&bull;</span>
             <span><strong>${enabledCount}</strong> Enabled</span>
           </div>
         </div>
         <div style="display: flex; gap: 8px;">
           <button class="secondary-button small-button" data-kiosk-service-create="${escapeHtml(kiosk.kioskId || "")}">Add Service</button>
           <button class="secondary-button small-button" data-kiosk-form-create="${escapeHtml(kiosk.kioskId || "")}">Add Forms</button>
+          ${assignedDigiLocker
+            ? `<button class="secondary-button small-button" data-kiosk-digilocker-edit="${escapeHtml(assignedDigiLocker.id)}">Manage DigiLocker</button>`
+            : `<button class="secondary-button small-button" data-kiosk-digilocker-create="${escapeHtml(kiosk.kioskId || "")}">Add DigiLocker</button>`}
         </div>
       </div>
       <div class="kiosk-service-modal-list kiosk-service-page-list" style="display: grid; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); gap: 16px;">
@@ -5062,7 +5068,7 @@ function renderKioskScopedServiceRow(service, kiosk) {
         </div>
       </div>
       <div class="simple-service-meta kiosk-service-row-meta" style="margin-top: 16px;">
-        <span>Type <strong>${escapeHtml(service.mode === "template" ? "Forms" : "Upload")}</strong></span>
+        <span>Type <strong>${escapeHtml(service.mode === "template" ? "Forms" : service.mode === "digilocker" ? "DigiLocker" : "Upload")}</strong></span>
         <span>B/W <strong>${escapeHtml(money(rates.bw || 0))}</strong></span>
         <span>Color <strong>${escapeHtml(money(rates.color || 0))}</strong></span>
         <span>Forms <strong>${templates.length}</strong></span>
@@ -5632,7 +5638,11 @@ function renderField(field, draft, disabled = false) {
       <div>
         <label style="display: block; font-size: 13.5px; font-weight: 700; color: #334155; margin-bottom: 8px; font-family: var(--font-serif, 'Playfair Display', Georgia, serif);">${escapeHtml(field.label)}</label>
         <select data-editor-field="${escapeHtml(field.key)}" ${disabled ? "disabled" : ""} style="width: 100%; padding: 11px 16px; border-radius: 12px; border: 1px solid #cbd5e1; font-size: 13.5px; background: #ffffff; color: #0f172a; outline: none; transition: border-color 0.2s ease;">
-          ${(field.options || []).map((option) => `<option value="${escapeHtml(option)}" ${String(value) === String(option) ? "selected" : ""}>${escapeHtml(option)}</option>`).join("")}
+          ${(field.options || []).map((option) => {
+            const optionValue = typeof option === "string" ? option : option.value;
+            const optionLabel = typeof option === "string" ? option : option.label;
+            return `<option value="${escapeHtml(optionValue)}" ${String(value) === String(optionValue) ? "selected" : ""}>${escapeHtml(optionLabel)}</option>`;
+          }).join("")}
         </select>
       </div>
     `;
@@ -5687,12 +5697,17 @@ function renderServiceEditor() {
             <span>Default settings for this service</span>
           </div>
           <div class="settings-grid">
-            ${renderField({ key: "mode", label: "Mode", type: "select", options: ["upload", "template"] }, draft)}
+            ${renderField({ key: "mode", label: "Service Type", type: "select", options: [
+              { value: "upload", label: "Upload & Print" },
+              { value: "template", label: "Government Forms" },
+              { value: "digilocker", label: "DigiLocker" }
+            ] }, draft)}
             ${renderField({ key: "enabled", label: "Enabled", type: "select", options: ["true", "false"] }, { ...draft, enabled: String(draft.enabled !== false) })}
           </div>
         </section>
         ${renderServiceProjectSelector(draft)}
         ${renderServiceKioskSelector(draft)}
+        ${draft.mode === "digilocker" ? `<p class="helper-text">DigiLocker availability is controlled by this service's Enabled setting and kiosk assignment. Provider API credentials are configured separately.</p>` : ""}
         ${draft.mode === "template" ? `<div class="template-editor-section compact-template-section">
           <div class="template-editor-header">
             <div>
@@ -6277,6 +6292,16 @@ async function handleClick(event) {
     return;
   }
 
+  if (button.dataset.kioskDigilockerCreate) {
+    beginCreateServiceForKiosk(button.dataset.kioskDigilockerCreate, "digilocker");
+    return;
+  }
+
+  if (button.dataset.kioskDigilockerEdit) {
+    beginEdit("services", button.dataset.kioskDigilockerEdit);
+    return;
+  }
+
   if (button.dataset.kioskServiceEdit) {
     beginEdit("services", button.dataset.kioskServiceEdit);
     return;
@@ -6672,9 +6697,9 @@ function beginCreateServiceForKiosk(kioskId, mode = "upload") {
   }
 
   const draft = clone(collections.services.defaults());
-  draft.mode = mode === "template" ? "template" : "upload";
-  draft.title = draft.mode === "template" ? "New Form Service" : "New Service";
-  draft.description = draft.mode === "template" ? "Printable forms for this kiosk." : "Customer service.";
+  draft.mode = ["template", "digilocker"].includes(mode) ? mode : "upload";
+  draft.title = draft.mode === "template" ? "New Form Service" : draft.mode === "digilocker" ? "DigiLocker" : "New Service";
+  draft.description = draft.mode === "template" ? "Printable forms for this kiosk." : draft.mode === "digilocker" ? "Choose documents from your DigiLocker and print them here." : "Customer service.";
   draft.projectIds = kiosk.projectId ? [kiosk.projectId] : [];
   draft.kioskIds = [kiosk.kioskId];
   if (draft.mode === "template") {
@@ -6803,7 +6828,7 @@ function updateDraftField(field, value) {
     } else if (field === "defaultPages") {
       draft.defaultPages = Math.max(1, Number(value) || 1);
     } else if (field === "mode") {
-      draft.mode = value === "template" ? "template" : "upload";
+      draft.mode = ["template", "digilocker"].includes(value) ? value : "upload";
       if (draft.mode === "template" && !draft.templates?.length) {
         draft.templates = [{
           id: "blank-form",

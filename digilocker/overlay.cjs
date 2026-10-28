@@ -8,7 +8,14 @@ function appOverlay(source, { preview = false, hosted = false } = {}) {
   // These tiny connections are applied to the HTTP response, never to source files.
   let result = once(source, "function renderCustomerStep() {", "function renderCustomerStep() {\n  if (window.DigilockerUI?.isActive()) return window.DigilockerUI.render();", "screen registry");
   if (!hosted) result = once(result, "const DEMO_KIOSK_MODE =", `const DEMO_KIOSK_MODE = ${preview ? "true" : "false"};\nconst digilockerOriginalDemoSetting =`, "explicit preview mode");
-  result = once(result, '<h1>Printing Kiosk</h1>', '<h1>Printing Kiosk</h1>\n        ${window.DigilockerUI?.renderButton() || ""}', "DigiLocker heading placement");
+  result = once(result,
+    "  return services.filter((service) => serviceAvailableForKiosk(service));",
+    "  const available = services.filter((service) => serviceAvailableForKiosk(service)); if (!available.some((service) => service.mode === \"digilocker\") && window.DigilockerUI?.serviceAvailable()) available.push(window.DigilockerUI.serviceDefinition()); return available;",
+    "DigiLocker service card visibility");
+  result = once(result,
+    "function renderAdditionalPremiumServiceCard(service, index, printerReady, serviceBlockStatus = null) {",
+    "function renderAdditionalPremiumServiceCard(service, index, printerReady, serviceBlockStatus = null) { if (service.mode === \"digilocker\" || service.id === \"digilocker\") return window.DigilockerUI?.renderServiceCard(service, printerReady, serviceBlockStatus) || \"\";",
+    "DigiLocker service card renderer");
   result = once(result, "function resetCustomer() {", "function digilockerOriginalResetCustomer() {", "reset");
   result = once(result, "function clearCurrentFile() {", "function digilockerOriginalClearCurrentFile() {", "clear documents");
   result = once(result, "async function startLocalPrintJob() {", "async function digilockerOriginalStartLocalPrintJob() {", "print entry");
