@@ -9,7 +9,8 @@ const config = {
   publicFrontendUrl: process.env.FRONTEND_PUBLIC_URL || process.env.PUBLIC_FRONTEND_URL || process.env.KIOSK_URL || "",
   localAgentUrl: process.env.FRONTEND_LOCAL_AGENT_URL || "",
   kioskId: process.env.FRONTEND_KIOSK_ID || "",
-  testHooks: process.env.FRONTEND_TEST_HOOKS === "true"
+  testHooks: process.env.FRONTEND_TEST_HOOKS === "true",
+  digilockerEnabled: process.env.FRONTEND_DIGILOCKER_ENABLED === "true"
 };
 
 const skip = new Set([
@@ -18,13 +19,15 @@ const skip = new Set([
   ".env",
   "dist",
   "node_modules",
+  "digilocker",
   "responsive-checks",
   ".vercel",
   "package.json",
   "package-lock.json",
   "build.js",
   "dev-server.js",
-  "vercel.json"
+  "vercel.json",
+  "DIGILOCKER-REVIEW.md", "DIGILOCKER-HOSTED.md"
 ]);
 
 const skipPatterns = [
@@ -77,6 +80,7 @@ function addCacheBusters() {
 
 copyFrontend();
 writeConfig();
+require("./digilocker/build.cjs")(distDir, config);
 addCacheBusters();
 
 console.log(`Built frontend to ${distDir}`);
