@@ -27,3 +27,10 @@ an unavailable message; no mock documents or fake OAuth success are generated.
 The frontend contains no shared server secret. Keep the companion backend service
 disabled until the provider credentials and scope configuration have been approved
 and the real flow and printer-agent integration have been validated.
+
+In Super Admin > Kiosks > Edit, tick **DigiLocker** under Kiosk Customer Print
+Options and save to offer it on that kiosk. Untick it to hide the customer button
+and block new DigiLocker sessions. The default is unchecked. Each kiosk has its
+own setting; existing B/W, colour and other print options are preserved.
+The backend and hosted DigiLocker service must also include this per-kiosk update.
+The website must be configured for the correct kiosk ID to use that kiosk's setting.

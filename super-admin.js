@@ -15,6 +15,7 @@ const REAL_BACKEND_URL = (runtimeConfig.get("backendUrl") || frontendConfig.back
 const ADMIN_SESSION_KEY = "printingKioskAdminSession";
 const UNASSIGNED_KIOSK_ID = "UNASSIGNED-KIOSK";
 const DEFAULT_KIOSK_CUSTOMER_SETTINGS = Object.freeze({
+  digilocker: false,
   bw: true,
   color: true,
   copies: true,
@@ -23,6 +24,7 @@ const DEFAULT_KIOSK_CUSTOMER_SETTINGS = Object.freeze({
   pageRange: true
 });
 const KIOSK_CUSTOMER_SETTING_FIELDS = [
+  ["digilocker", "DigiLocker"],
   ["bw", "B/W printing"],
   ["color", "Color printing"],
   ["copies", "Copies"],
@@ -617,7 +619,7 @@ function normalizeKioskCustomerSettings(settings = {}) {
     ...(settings && typeof settings === "object" ? settings : {})
   };
   const normalized = Object.fromEntries(
-    Object.keys(DEFAULT_KIOSK_CUSTOMER_SETTINGS).map((key) => [key, source[key] !== false])
+    Object.keys(DEFAULT_KIOSK_CUSTOMER_SETTINGS).map((key) => [key, key === "digilocker" ? source[key] === true : source[key] !== false])
   );
 
   if (!normalized.bw && !normalized.color) {

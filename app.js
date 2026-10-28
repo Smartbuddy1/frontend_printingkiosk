@@ -1591,6 +1591,7 @@ const allowedUploadExtensions = ["PDF", "DOC", "DOCX", "JPG", "JPEG", "PNG"];
 const customerUploadExtensions = ["PDF", "JPG", "JPEG", "PNG"];
 const PRINT_PAPER_SIZES = ["A4"];
 const DEFAULT_KIOSK_CUSTOMER_SETTINGS = Object.freeze({
+  digilocker: false,
   bw: true,
   color: true,
   copies: true,
@@ -1600,6 +1601,7 @@ const DEFAULT_KIOSK_CUSTOMER_SETTINGS = Object.freeze({
   pageRange: true
 });
 const KIOSK_CUSTOMER_OPTION_FIELDS = Object.freeze([
+  ["digilocker", "DigiLocker"],
   ["bw", "B/W printing"],
   ["color", "Color printing"],
   ["copies", "Copies"],
@@ -2799,7 +2801,7 @@ function normalizeKioskCustomerSettings(settings = {}) {
     ...(settings && typeof settings === "object" ? settings : {})
   };
   const normalized = Object.fromEntries(
-    Object.keys(DEFAULT_KIOSK_CUSTOMER_SETTINGS).map((key) => [key, source[key] !== false])
+    Object.keys(DEFAULT_KIOSK_CUSTOMER_SETTINGS).map((key) => [key, key === "digilocker" ? source[key] === true : source[key] !== false])
   );
 
   if (!normalized.bw && !normalized.color) {
