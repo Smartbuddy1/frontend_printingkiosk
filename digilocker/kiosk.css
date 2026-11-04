@@ -49,3 +49,216 @@ body .dl-preview-banner {
     width:100% !important;
   }
 }
+
+/* DigiLocker customer journey refresh */
+#app .customer-shell .dl-stage {
+  display: block !important;
+  background: #fff;
+  border: 1px solid #e3e8f2;
+  border-radius: 22px;
+  box-shadow: 0 18px 55px rgba(35, 50, 84, .08);
+  box-sizing: border-box;
+  margin: 20px auto;
+  max-height: calc(100dvh - 40px);
+  max-width: 1120px;
+  overflow: auto;
+  padding: clamp(18px, 3vw, 34px) !important;
+  width: min(1120px, calc(100vw - 36px));
+}
+#app .customer-shell .dl-page-head { align-items: center; border-bottom: 1px solid #e9edf5; display: flex; gap: 16px; justify-content: space-between; padding-bottom: 20px; }
+#app .customer-shell .dl-brand-lockup { align-items: center; display: flex; gap: 18px; min-width: 0; }
+#app .customer-shell .dl-brand-lockup img { background: #fff; border: 1px solid #e9e5f3; border-radius: 12px; height: 52px; object-fit: contain; padding: 6px 9px; width: 188px; }
+#app .customer-shell .dl-brand-lockup > div > span { color: #6d7487; display: block; font-size: 12px; font-weight: 650; letter-spacing: .04em; text-transform: uppercase; }
+#app .customer-shell .dl-brand-lockup h1 { color: #20273a; font-size: clamp(22px, 3vw, 30px); line-height: 1.2; margin: 4px 0 0; }
+#app .customer-shell .dl-session-badge { align-items: center; background: #eff8f2; border: 1px solid #d6ebdc; border-radius: 999px; color: #287045; display: inline-flex; flex: 0 0 auto; font-size: 12px; font-weight: 700; gap: 8px; padding: 9px 13px; }
+#app .customer-shell .dl-session-badge i { background: #39a361; border-radius: 50%; height: 7px; width: 7px; }
+#app .customer-shell .dl-progress { gap: 8px; margin: 22px 0; }
+#app .customer-shell .dl-progress li { background: #f7f8fb; border: 1px solid #e8ebf2; border-radius: 12px; color: #778095; font-size: 13px; font-weight: 600; min-height: 52px; padding: 8px 12px; }
+#app .customer-shell .dl-progress li span { background: #e8ebf2; color: #677087; height: 30px; width: 30px; }
+#app .customer-shell .dl-progress li b { font-weight: 700; }
+#app .customer-shell .dl-progress li.is-current { background: #f4f0ff; border-color: #d7cbff; color: #573eaa; }
+#app .customer-shell .dl-progress li.is-current span { background: #654dbe; color: #fff; }
+#app .customer-shell .dl-progress li.is-complete { background: #f0f8f2; border-color: #d6ebdc; color: #287045; }
+#app .customer-shell .dl-progress li.is-complete span { background: #3b9b60; color: #fff; }
+#app .customer-shell .dl-content { background: transparent; border: 0; min-height: 0; padding: 0; }
+#app .customer-shell .dl-pair { align-items: stretch; background: #f7f8fc; border: 1px solid #e6e9f1; border-radius: 18px; gap: clamp(20px, 4vw, 44px); padding: clamp(16px, 3vw, 28px); }
+#app .customer-shell .dl-qr { align-items: center; border: 1px solid #e7eaf2; box-shadow: 0 10px 28px rgba(34, 48, 79, .09); display: flex; flex: 0 1 340px; justify-content: center; min-width: 250px; padding: 12px; }
+#app .customer-shell .dl-qr svg { max-width: 100%; }
+#app .customer-shell .dl-pair > div:last-child { align-self: center; max-width: 460px; }
+#app .customer-shell .dl-pair h2 { color: #252c40; font-size: clamp(20px, 2.4vw, 26px); line-height: 1.35; margin: 14px 0 10px; }
+#app .customer-shell .dl-pair p { color: #5f687d; line-height: 1.6; }
+#app .customer-shell .dl-countdown { align-items: center; background: #fff; border: 1px solid #e5e8f0; border-radius: 12px; display: inline-flex; gap: 12px; margin: 22px 0 0; padding: 9px 12px; }
+#app .customer-shell .dl-countdown strong { background: #f0edff; color: #5744a7; font-size: 18px; padding: 6px 10px; }
+#app .customer-shell .dl-files { margin: 16px auto; max-width: 780px; }
+#app .customer-shell .dl-files li { align-items: center; border-color: #e5e9f1; box-shadow: 0 3px 12px rgba(34, 48, 79, .04); }
+#app .customer-shell .dl-files li span { color: #293247; font-weight: 650; }
+#app .customer-shell .dl-files li strong { color: #5d4aaa; }
+#app .customer-shell .dl-privacy { background: #eff8f2; border: 1px solid #d7ebdd; color: #286c42; line-height: 1.55; margin: 18px auto; max-width: 740px; }
+#app .customer-shell .dl-ready-card { margin: 4px auto; max-width: 820px; text-align: center; }
+#app .customer-shell .dl-ready-card h2 { color: #252c40; font-size: 26px; margin: 8px 0; }
+#app .customer-shell .dl-ready-card > .primary-button { margin-top: 8px; min-width: min(100%, 300px); }
+#app .customer-shell .dl-actions { align-items: center; border-top: 1px solid #e9edf5; display: flex; gap: 10px; justify-content: flex-end; margin-top: 22px; padding-top: 16px; }
+#app .customer-shell .dl-actions button { min-height: 44px; }
+#app .customer-shell .dl-footer-note { align-items: center; color: #7a8294; display: flex; font-size: 12px; gap: 7px; justify-content: center; margin: 16px 0 0; }
+#app .customer-shell .dl-footer-note span { color: #596caf; font-size: 16px; }
+#app .customer-shell .dl-starting-card,
+#app .customer-shell .dl-result-card { align-items: center; background: #f7f8fc; border: 1px solid #e6e9f1; border-radius: 18px; display: flex; flex-direction: column; justify-content: center; min-height: 250px; padding: 30px; text-align: center; }
+#app .customer-shell .dl-starting-card p { color: #536078; font-size: 16px; font-weight: 650; }
+#app .customer-shell .dl-state-spinner { animation: dl-spin .9s linear infinite; border: 3px solid #e2ddf8; border-radius: 50%; border-top-color: #6654bd; height: 30px; width: 30px; }
+#app .customer-shell .dl-result-card .dl-result { align-items: center; background: #eaf6ee; border: 1px solid #d1e9d8; border-radius: 50%; color: #27804a; display: flex; font-size: 26px; height: 56px; justify-content: center; width: 56px; }
+#app .customer-shell .dl-result-card h2 { color: #293147; font-size: 22px; margin: 16px 0 0; }
+@keyframes dl-spin { to { transform: rotate(360deg); } }
+@media(max-width:800px) {
+  #app .customer-shell .dl-page-head { align-items: flex-start; flex-direction: column; }
+  #app .customer-shell .dl-session-badge { align-self: flex-start; }
+  #app .customer-shell .dl-brand-lockup { align-items: flex-start; flex-direction: column; gap: 10px; }
+  #app .customer-shell .dl-progress { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  #app .customer-shell .dl-progress li { align-items: center; }
+  #app .customer-shell .dl-pair { align-items: center; flex-direction: column; }
+  #app .customer-shell .dl-qr { flex: 0 1 auto; min-width: 0; width: min(100%, 340px); }
+  #app .customer-shell .dl-pair > div:last-child { max-width: none; width: 100%; }
+}
+@media(max-height:760px) and (min-width:801px) {
+  #app .customer-shell .dl-stage { margin-block: 8px; max-height: calc(100dvh - 16px); padding-block: 16px !important; }
+  #app .customer-shell .dl-progress { margin-block: 12px; }
+  #app .customer-shell .dl-qr { max-width: 270px; }
+}
+#app .customer-shell .dl-pair-layout { align-items: stretch; background: #f7f8fc; border: 1px solid #e6e9f1; border-radius: 18px; display: grid; gap: clamp(20px, 4vw, 44px); grid-template-columns: minmax(260px, 340px) minmax(0, 1fr); padding: clamp(16px, 3vw, 28px); }
+#app .customer-shell .dl-qr-card { align-content: start; background: #fff; border: 1px solid #e7eaf2; border-radius: 16px; box-shadow: 0 10px 28px rgba(34, 48, 79, .08); display: grid; gap: 10px; justify-items: center; padding: 16px; }
+#app .customer-shell .dl-card-kicker { color: #6754b5; display: block; font-size: 11px; font-weight: 750; letter-spacing: .09em; text-transform: uppercase; }
+#app .customer-shell .dl-qr-card .dl-qr { border: 0; border-radius: 8px; box-shadow: none; flex: none; min-width: 0; padding: 0; width: 100%; }
+#app .customer-shell .dl-qr-card > p { color: #5e687e; font-size: 13px; font-weight: 650; margin: 0; }
+#app .customer-shell .dl-qr-card .dl-countdown { margin: 4px 0 0; }
+#app .customer-shell .dl-instructions-card { align-self: center; min-width: 0; }
+#app .customer-shell .dl-instructions-card h2 { color: #252c40; font-size: clamp(20px, 2.4vw, 26px); line-height: 1.35; margin: 14px 0; }
+#app .customer-shell .dl-state-pill { align-items: center; background: #f0edff; border: 1px solid #ded7fb; border-radius: 999px; color: #5844a8; display: inline-flex; font-size: 12px; font-weight: 700; gap: 8px; padding: 7px 11px; }
+#app .customer-shell .dl-state-pill i { background: #705dc2; border-radius: 50%; height: 7px; width: 7px; }
+#app .customer-shell .dl-step-list { display: grid; gap: 10px; margin: 20px 0; }
+#app .customer-shell .dl-step { align-items: center; background: #fff; border: 1px solid #e7eaf2; border-radius: 12px; display: flex; gap: 12px; padding: 11px 13px; }
+#app .customer-shell .dl-step > span { align-items: center; background: #f0edff; border-radius: 9px; color: #5e4cb0; display: inline-flex; flex: 0 0 30px; font-size: 13px; font-weight: 800; height: 30px; justify-content: center; }
+#app .customer-shell .dl-step p { color: #4f5b71; font-size: 14px; line-height: 1.45; margin: 0; }
+#app .customer-shell .dl-phone-note { align-items: flex-start; background: #eff6ff; border: 1px solid #dbeafe; border-radius: 12px; color: #315b91; display: flex; gap: 10px; padding: 12px 14px; }
+#app .customer-shell .dl-phone-note > span { align-items: center; background: #fff; border-radius: 50%; color: #315b91; display: inline-flex; flex: 0 0 22px; font-weight: 800; height: 22px; justify-content: center; }
+#app .customer-shell .dl-phone-note p { font-size: 13px; line-height: 1.5; margin: 0; }
+#app .customer-shell .dl-ready-card { margin: 4px auto; max-width: 820px; text-align: center; }
+#app .customer-shell .dl-ready-icon { align-items: center; background: #eaf6ee; border: 1px solid #d1e9d8; border-radius: 50%; color: #27804a; display: flex; font-size: 25px; height: 52px; justify-content: center; margin: 0 auto 12px; width: 52px; }
+#app .customer-shell .dl-ready-card h2 { color: #252c40; font-size: 26px; margin: 8px 0; }
+#app .customer-shell .dl-ready-intro { color: #667087; font-size: 14px; margin: 0 auto 14px; }
+#app .customer-shell .dl-file-icon { align-items: center; background: #f1efff; border-radius: 7px; color: #6451b2 !important; display: inline-flex; flex: 0 0 38px; font-size: 10px; font-weight: 800 !important; height: 32px; justify-content: center; }
+#app .customer-shell .dl-files .dl-file-name { flex: 1; min-width: 0; overflow-wrap: anywhere; text-align: left; }
+#app .customer-shell .dl-actions { align-items: center; border-top: 1px solid #e9edf5; display: flex; gap: 10px; justify-content: flex-end; margin-top: 22px; padding-top: 16px; }
+#app .customer-shell .dl-actions button { min-height: 44px; }
+#app .customer-shell .dl-footer-note { align-items: center; color: #7a8294; display: flex; font-size: 12px; gap: 7px; justify-content: center; margin: 16px 0 0; }
+#app .customer-shell .dl-footer-note span { color: #596caf; font-size: 16px; }
+@media(max-width:800px) {
+  #app .customer-shell .dl-pair-layout { grid-template-columns: minmax(0, 1fr); }
+  #app .customer-shell .dl-qr-card { max-width: 360px; width: calc(100% - 32px); }
+}
+
+/* Back stays easy to find throughout the document journey. */
+#app .customer-shell .dl-page-head {
+  position: sticky;
+  top: 0;
+  z-index: 3;
+  background: #fff;
+}
+#app .customer-shell .dl-back {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  flex: 0 0 auto;
+  min-width: 96px;
+  padding: 10px 16px;
+  line-height: 1.5;
+}
+#app .customer-shell .dl-page-head .dl-brand-lockup { flex: 1; }
+@media(max-width:800px) {
+  #app .customer-shell .dl-page-head { flex-direction: row; flex-wrap: wrap; }
+  #app .customer-shell .dl-page-head .dl-brand-lockup { flex-direction: row; flex-wrap: wrap; }
+  #app .customer-shell .dl-page-head .dl-session-badge { display: none; }
+}
+
+/* QR pairing occupies the available kiosk page, including the existing shell. */
+#app .customer-shell .dl-page-head {
+  display: grid;
+  grid-template-columns: 140px minmax(0, 1fr) 140px;
+  gap: 12px;
+  position: static;
+}
+#app .customer-shell .dl-page-head .dl-back { grid-column: 1; grid-row: 1; justify-self: start; }
+#app .customer-shell .dl-page-head .dl-brand-lockup { grid-column: 2; grid-row: 1; justify-content: center; text-align: center; }
+#app .customer-shell .dl-page-head .dl-session-badge { grid-column: 3; grid-row: 1; justify-self: end; }
+#app .customer-shell:has(.dl-pair-screen) .main,
+#app .customer-shell:has(.dl-pair-screen) .content {
+  min-height: 0 !important;
+  overflow: visible !important;
+}
+#app .customer-shell:has(.dl-pair-screen) .content {
+  display: flex !important;
+  align-items: stretch !important;
+  padding: 12px 20px !important;
+}
+#app .customer-shell .dl-stage.dl-pair-screen {
+  display: grid !important;
+  grid-template-rows: auto auto minmax(0, 1fr) auto;
+  gap: 12px;
+  height: 100%;
+  min-height: 0 !important;
+  max-height: 100%;
+  margin: 0 auto;
+  padding: 18px 24px !important;
+  overflow: visible;
+  width: min(1120px, 100%);
+}
+#app .customer-shell .dl-pair-screen .dl-page-head { padding-bottom: 10px; }
+#app .customer-shell .dl-pair-screen .dl-brand-lockup h1 { font-size: clamp(20px, 2.2vw, 30px); line-height: 1.5; margin: 0; }
+#app .customer-shell .dl-pair-screen .dl-brand-lockup > div > span { display: none; }
+#app .customer-shell .dl-pair-screen .dl-progress { grid-template-columns: repeat(4, minmax(0, 1fr)); margin: 0; }
+#app .customer-shell .dl-pair-screen .dl-progress li { min-height: 40px; padding: 5px 8px; line-height: 1.5; }
+#app .customer-shell .dl-pair-screen .dl-content { min-height: 0; display: flex; flex-direction: column; }
+#app .customer-shell .dl-pair-screen .dl-pair-layout {
+  flex: 1;
+  min-height: 0;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1.25fr);
+  gap: 24px;
+  padding: 16px;
+}
+#app .customer-shell .dl-pair-screen .dl-qr-card {
+  min-height: 0;
+  width: auto;
+  max-width: none;
+  grid-template-rows: minmax(0, 1fr) auto;
+  align-content: stretch;
+  gap: 8px;
+  padding: 12px;
+}
+#app .customer-shell .dl-pair-screen .dl-qr-card > .dl-card-kicker,
+#app .customer-shell .dl-pair-screen .dl-qr-card > p { display: none; }
+#app .customer-shell .dl-pair-screen .dl-qr-card .dl-qr { min-height: 0; max-width: none; height: 100%; width: 100%; background: #fff; }
+#app .customer-shell .dl-pair-screen .dl-qr svg { height: 100%; width: 100%; max-height: 340px; }
+#app .customer-shell .dl-pair-screen .dl-countdown { margin: 0; padding: 4px 8px; font-size: 13px; }
+#app .customer-shell .dl-pair-screen .dl-countdown strong { padding: 3px 8px; font-size: 17px; }
+#app .customer-shell .dl-pair-screen .dl-instructions-card h2 { font-size: clamp(18px, 2vw, 25px); line-height: 1.5; margin: 12px 0; }
+#app .customer-shell .dl-pair-screen .dl-phone-note { padding: 10px; }
+#app .customer-shell .dl-pair-screen .dl-footer-note { margin: 0; line-height: 1.5; text-align: center; }
+#app .customer-shell .dl-pair-screen .dl-starting-card { min-height: 0; flex: 1; }
+@media(max-height:700px) {
+  #app .customer-shell:has(.dl-pair-screen) .content { padding: 6px 12px !important; }
+  #app .customer-shell .dl-stage.dl-pair-screen { padding: 10px 16px !important; gap: 6px; }
+  #app .customer-shell .dl-pair-screen .dl-page-head { padding-bottom: 6px; }
+  #app .customer-shell .dl-pair-screen .dl-pair-layout { padding: 8px; gap: 16px; }
+  #app .customer-shell .dl-pair-screen .dl-qr-card { padding: 6px; gap: 4px; }
+  #app .customer-shell .dl-pair-screen .dl-instructions-card h2 { font-size: 17px; margin: 6px 0; }
+  #app .customer-shell .dl-pair-screen .dl-state-pill { padding: 4px 9px; }
+  #app .customer-shell .dl-pair-screen .dl-phone-note { padding: 6px; }
+  #app .customer-shell .dl-pair-screen .dl-phone-note p { font-size: 12px; }
+}
+@media(max-width:900px) {
+  #app .customer-shell .dl-page-head { grid-template-columns: 96px minmax(0, 1fr) 96px; gap: 6px; }
+  #app .customer-shell .dl-page-head .dl-session-badge { display: none; }
+  #app .customer-shell .dl-pair-screen .dl-progress li { font-size: 11px; gap: 5px; }
+  #app .customer-shell .dl-pair-screen .dl-progress li span { width: 24px; height: 24px; }
+}
+
+#app .customer-shell .dl-pair-screen .dl-phone-note > span { line-height: 1; }

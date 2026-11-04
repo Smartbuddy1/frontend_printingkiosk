@@ -4,6 +4,7 @@
   "private": true,
   "scripts": {
     "dev": "node dev-server.js",
-    "build": "node build.js"
+    "build": "node build.js",
+    "build:production": "node build-production.cjs"
   }
 }

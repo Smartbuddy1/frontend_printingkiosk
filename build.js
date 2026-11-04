@@ -25,6 +25,7 @@ const skip = new Set([
   "package.json",
   "package-lock.json",
   "build.js",
+  "build-production.cjs",
   "dev-server.js",
   "vercel.json",
   "DIGILOCKER-REVIEW.md", "DIGILOCKER-HOSTED.md"
@@ -69,6 +70,7 @@ function addCacheBusters() {
       .replace(/\.\/admin-theme\.css(?:\?v=[^"]*)?/g, `./admin-theme.css?v=${buildVersion}`)
       .replace(/\.\/styles\.css(?:\?v=[^"]*)?/g, `./styles.css?v=${buildVersion}`)
       .replace(/\.\/responsive\.css(?:\?v=[^"]*)?/g, `./responsive.css?v=${buildVersion}`)
+      .replace(/\.\/scanner\.(css|js)(?:\?v=[^"]*)?/g, (_, ext) => `./scanner.${ext}?v=${buildVersion}`)
       .replace(/\.\/config\.js(?:\?v=[^"]*)?/g, `./config.js?v=${buildVersion}`)
       .replace(/\.\/ui-icons\.js(?:\?v=[^"]*)?/g, `./ui-icons.js?v=${buildVersion}`)
       .replace(/\.\/app\.js(?:\?v=[^"]*)?/g, `./app.js?v=${buildVersion}`)

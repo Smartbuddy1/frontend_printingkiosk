@@ -17146,9 +17146,141 @@ body.admin-mode *,
 
 
 /* Customer inactivity notice is outside the rerendered application tree. */
-.customer-idle-notice { position:fixed; right:20px; bottom:42px; z-index:100001; display:flex; align-items:center; gap:16px; max-width:calc(100vw - 32px); padding:10px 12px 10px 16px; border:1px solid #d6dee8; border-radius:14px; background:#fff; color:#334155; box-shadow:0 5px 22px #0f172a16; font:14px/1.4 Arial,sans-serif; }
+.customer-idle-notice { position:static; display:flex; flex-wrap:wrap; align-items:center; justify-content:space-between; gap:12px; width:100%; box-sizing:border-box; margin:16px 0 0; padding:10px 14px; border:1px solid #d6dee8; border-radius:12px; background:#f8fafc; color:#334155; font:14px/1.4 Arial,sans-serif; }
+.preview-stage > .customer-idle-notice { margin:0 0 12px; }
 .customer-idle-notice strong {font-variant-numeric:tabular-nums;white-space:nowrap}
 .customer-idle-notice button {border:0;border-radius:9px;padding:10px 14px;background:#edf2f8;color:#183459;font:600 14px Arial,sans-serif;cursor:pointer;min-height:40px}
 .customer-idle-notice.is-urgent {border-color:#e9b23b;background:#fff8e7}
+
+/* Fit the complete uploaded page to the available preview area at 100%.
+   Older paper/viewport minimums must not enlarge content inside this box. */
+#app .customer-shell .preview-stage .preview-workspace > .document-preview.preview-fit {
+  aspect-ratio: auto !important;
+  width: 100% !important;
+  height: 100% !important;
+  min-width: 0 !important;
+  min-height: 0 !important;
+  max-width: 100% !important;
+  max-height: 100% !important;
+  padding: 0 !important;
+  overflow: hidden !important;
+  display: block;
+  box-sizing: border-box;
+}
+#app .preview-fit .preview-media,
+#app .preview-fit .pdf-preview-canvas {
+  position: static !important;
+  display: block !important;
+  width: 100% !important;
+  height: 100% !important;
+  min-width: 0 !important;
+  min-height: 0 !important;
+  max-width: 100% !important;
+  max-height: 100% !important;
+  object-fit: contain !important;
+  object-position: center !important;
+  transform: scale(var(--preview-zoom, 1)) !important;
+  transform-origin: center;
+}
+#app .preview-fit .pdf-preview-shell,
+#app .preview-fit .pdf-preview-page {
+  height: 100%;
+  width: 100%;
+  min-height: 0;
+  overflow: hidden;
+}
+#app .preview-fit.multi-document-preview { overflow: auto !important; }
+/* Neutral workspace around a measured paper sheet, rather than a wide white page. */
+#app .customer-shell .preview-stage .document-preview.preview-fit {
+  background: #e8edf3 !important;
+  border: 0 !important;
+  border-radius: 0 !important;
+  box-shadow: none !important;
+}
+#app .preview-fit .preview-paper-slot {
+  position: relative;
+  width: 100%;
+  height: 100%;
+  min-width: 0;
+  min-height: 0;
+  overflow: hidden;
+}
+#app .preview-fit .print-preview-paper {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  transform: translate(-50%, -50%);
+  background: white;
+  box-shadow: 0 0 0 1px #cbd5e1;
+  overflow: hidden;
+}
+#app .preview-fit .print-preview-content {
+  position: absolute;
+  inset: var(--paper-margin-y) var(--paper-margin-x);
+  min-width: 0;
+  min-height: 0;
+  overflow: hidden;
+}
+#app .preview-fit .multi-preview-stack {
+  min-height: 0;
+  flex: 1;
+  height: 0 !important;
+  grid-auto-rows: minmax(0, 1fr);
+}
+#app .preview-fit .multi-preview-item {
+  min-width: 0;
+  min-height: 0;
+  grid-template-rows: minmax(0, 1fr);
+  transform: none;
+}
+#app .preview-fit .multi-preview-paper {
+  aspect-ratio: auto !important;
+  width: 100% !important;
+  height: 100% !important;
+  min-width: 0;
+  min-height: 0;
+  max-height: 100% !important;
+  box-shadow: none;
+}
+#app .preview-fit .multi-preview-pagination {
+  flex-shrink: 0;
+  margin-top: 8px !important;
+}
+/* Size images before rotation so landscape stays contained, including cards. */
+#app .customer-shell .preview-stage .oriented-image-preview {
+  position: relative;
+  width: 100%;
+  height: 100%;
+  min-width: 0;
+  min-height: 0;
+  overflow: hidden;
+}
+#app .customer-shell .preview-stage .document-preview.preview-fit .oriented-image-preview > .preview-media {
+  position: absolute !important;
+  left: 50% !important;
+  top: 50% !important;
+  width: var(--image-fit-width, 0px) !important;
+  height: var(--image-fit-height, 0px) !important;
+  max-width: none !important;
+  max-height: none !important;
+  min-width: 0 !important;
+  min-height: 0 !important;
+  transform: translate(-50%, -50%) rotate(var(--image-rotation, 0deg)) scale(var(--preview-zoom, 1)) !important;
+}
+#app .customer-shell .preview-stage {
+  display: grid !important;
+  grid-template-columns: minmax(0, 1fr) !important;
+  grid-template-rows: auto minmax(0, 1fr) !important;
+  gap: 8px !important;
+}
+#app .preview-stage > .customer-idle-notice {
+  grid-row: 1;
+  grid-column: 1;
+  height: auto;
+  min-height: 48px;
+  margin: 0;
+  padding: 6px 12px;
+}
+#app .preview-stage > .preview-grid { grid-row: 2; grid-column: 1; }
 .customer-idle-notice button:focus-visible {outline:3px solid #2563eb;outline-offset:2px}
-@media(max-width:600px){.customer-idle-notice{left:12px;right:12px;bottom:48px;justify-content:space-between;font-size:12px;gap:8px}.customer-idle-notice button{font-size:12px}}
+@media(max-width:600px){.customer-idle-notice{font-size:12px;gap:8px}.customer-idle-notice button{font-size:12px}}

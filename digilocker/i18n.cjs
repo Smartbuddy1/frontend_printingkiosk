@@ -1,5 +1,6 @@
 "use strict";
 const en = {
+  back: "Back",
   launchDescription: "Choose documents from your digital locker and print them here.", launchAction: "Choose documents",
   title: "DigiLocker", scan: "Scan", login: "Log in on your phone", choose: "Choose documents", print: "Print",
   heading: "Print from DigiLocker", instructions: "Scan this QR code with your phone. Sign in to DigiLocker and choose the documents you want to print.",
@@ -24,6 +25,7 @@ const en = {
   BUSY: "The kiosk is busy. Please wait a moment and try again.", REVOKE_FAILED: "The connection could not be closed with DigiLocker. Please log out on your phone and start again."
 };
 const hi = {
+  back: "\u0935\u093e\u092a\u0938",
   title:"DigiLocker", scan:"स्कैन करें", login:"फ़ोन पर लॉग इन करें", choose:"दस्तावेज़ चुनें", print:"प्रिंट करें", heading:"DigiLocker से प्रिंट करें",
   instructions:"अपने फ़ोन से यह QR कोड स्कैन करें। DigiLocker में लॉग इन करके प्रिंट करने के लिए दस्तावेज़ चुनें।",
   phoneConnected:"फ़ोन जुड़ गया है। अपने फ़ोन पर आगे बढ़ें।", downloading:"आपके चुने हुए दस्तावेज़ प्राप्त हो रहे हैं…", ready:"आपके दस्तावेज़ तैयार हैं",
@@ -41,6 +43,7 @@ const hi = {
   cleanup:"सुरक्षित रूप से पूरा हो रहा है…", copied:"दस्तावेज़", link:"फ़ोन पेज खोलें", printFailed:"प्रिंट विफल हुआ। दस्तावेज़ हटा दिए गए हैं। फिर शुरू करने से पहले कर्मचारियों से मदद लें।"
 };
 const mr = {
+  back: "\u092e\u093e\u0917\u0947",
   title:"DigiLocker", scan:"स्कॅन करा", login:"फोनवर लॉग इन करा", choose:"कागदपत्रे निवडा", print:"प्रिंट करा", heading:"DigiLocker मधून प्रिंट करा",
   instructions:"तुमच्या फोनने हा QR कोड स्कॅन करा. DigiLocker मध्ये लॉग इन करून प्रिंटसाठी कागदपत्रे निवडा.",
   phoneConnected:"फोन जोडला आहे. फोनवर पुढे जा.", downloading:"निवडलेली कागदपत्रे मिळत आहेत…", ready:"तुमची कागदपत्रे तयार आहेत",
@@ -86,4 +89,7 @@ function translator(language) { const d = dictionaries[language] || en; return k
 Object.assign(dictionaries.en, { DIGILOCKER_KIOSK_DISABLED: "DigiLocker is not enabled for this kiosk. Please use file upload.", DIGILOCKER_KIOSK_UNAVAILABLE: "Cannot check this kiosk's DigiLocker setting. Please try again." });
 Object.assign(dictionaries.hi, { DIGILOCKER_KIOSK_DISABLED: "इस कियोस्क पर DigiLocker चालू नहीं है। कृपया फ़ाइल अपलोड करें।", DIGILOCKER_KIOSK_UNAVAILABLE: "कियोस्क की DigiLocker सेटिंग जाँची नहीं जा सकी। कृपया फिर कोशिश करें।" });
 Object.assign(dictionaries.mr, { DIGILOCKER_KIOSK_DISABLED: "या किऑस्कवर DigiLocker सुरू नाही. कृपया फाइल अपलोड करा.", DIGILOCKER_KIOSK_UNAVAILABLE: "किऑस्कची DigiLocker सेटिंग तपासता आली नाही. कृपया पुन्हा प्रयत्न करा." });
+Object.assign(dictionaries.en, { connectionFailed: "DigiLocker connection could not be opened", confirm: "Continue to preview" });
+Object.assign(dictionaries.hi, { connectionFailed: "DigiLocker कनेक्शन नहीं खुल सका", confirm: "पूर्वावलोकन पर जाएँ" });
+Object.assign(dictionaries.mr, { connectionFailed: "DigiLocker जोडणी उघडता आली नाही", confirm: "पूर्वावलोकनाकडे जा" });
 module.exports = { dictionaries, translator };

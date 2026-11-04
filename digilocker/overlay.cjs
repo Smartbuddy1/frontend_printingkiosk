@@ -10,16 +10,18 @@ function appOverlay(source, { preview = false, hosted = false } = {}) {
   if (!hosted) result = once(result, "const DEMO_KIOSK_MODE =", `const DEMO_KIOSK_MODE = ${preview ? "true" : "false"};\nconst digilockerOriginalDemoSetting =`, "explicit preview mode");
   result = once(result,
     "  return services.filter((service) => serviceAvailableForKiosk(service));",
-    "  const available = services.filter((service) => serviceAvailableForKiosk(service)); if (!available.some((service) => service.mode === \"digilocker\") && window.DigilockerUI?.serviceAvailable()) available.push(window.DigilockerUI.serviceDefinition()); return available;",
+    "  const available = services.filter((service) => serviceAvailableForKiosk(service)); if (!available.some((service) => isDigiLockerService(service)) && window.DigilockerUI?.serviceAvailable()) available.push(window.DigilockerUI.serviceDefinition()); return available;",
     "DigiLocker service card visibility");
   result = once(result,
     "function renderAdditionalPremiumServiceCard(service, index, printerReady, serviceBlockStatus = null) {",
-    "function renderAdditionalPremiumServiceCard(service, index, printerReady, serviceBlockStatus = null) { if (service.mode === \"digilocker\" || service.id === \"digilocker\") return window.DigilockerUI?.renderServiceCard(service, printerReady, serviceBlockStatus) || \"\";",
+    "function renderAdditionalPremiumServiceCard(service, index, printerReady, serviceBlockStatus = null) { if (isDigiLockerService(service)) return window.DigilockerUI?.renderServiceCard(service, printerReady, serviceBlockStatus) || \"\";",
     "DigiLocker service card renderer");
   result = once(result, "function resetCustomer() {", "function digilockerOriginalResetCustomer() {", "reset");
   result = once(result, "function clearCurrentFile() {", "function digilockerOriginalClearCurrentFile() {", "clear documents");
   result = once(result, "async function startLocalPrintJob() {", "async function digilockerOriginalStartLocalPrintJob() {", "print entry");
-  result = once(result, "const printBody = {", "const printBody = {\n        ...window.DigilockerUI?.printOptions(file),", "print options");
+  result = result.includes("function localPrintRequest(file, jobId)") ?
+    once(result, "    jobId, fileName: file.name, pageCount:", "    ...window.DigilockerUI?.printOptions(file),\n    jobId, fileName: file.name, pageCount:", "print options") :
+    once(result, "const printBody = {", "const printBody = {\n        ...window.DigilockerUI?.printOptions(file),", "print options");
   if (preview) result = once(result, "function paymentQrMarkup(paymentUrl) {", "function paymentQrMarkup(paymentUrl) {\n  if (window.DigilockerUI) return window.DigilockerUI.mockPaymentMarkup();", "local mock payment");
   result += `\n// Local DigiLocker hooks; the original functions above are preserved.\nfunction resetCustomer() {\n  window.DigilockerUI?.cancel();\n  return digilockerOriginalResetCustomer();\n}\nasync function startLocalPrintJob() {\n  return window.DigilockerUI ? window.DigilockerUI.aroundPrint(digilockerOriginalStartLocalPrintJob) : digilockerOriginalStartLocalPrintJob();\n}\nwindow.DigilockerUI?.attach();\n`;
   result += '\nfunction clearCurrentFile() { window.DigilockerUI?.beforeClear(); return digilockerOriginalClearCurrentFile(); }\n';

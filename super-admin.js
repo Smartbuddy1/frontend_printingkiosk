@@ -1423,7 +1423,7 @@ function render7DayRevenueChart(series = []) {
         <line x1="30" y1="80" x2="${width - 10}" y2="80" stroke="#f1f5f9" stroke-dasharray="3,3" />
         <line x1="30" y1="130" x2="${width - 10}" y2="130" stroke="#f1f5f9" stroke-dasharray="3,3" />
         <line x1="30" y1="170" x2="${width - 10}" y2="170" stroke="#cbd5e1" />
-        
+
         <text x="10" y="35" font-size="10" fill="#94a3b8">₹${maxValue}</text>
         <text x="10" y="105" font-size="10" fill="#94a3b8">₹${Math.round(maxValue / 2)}</text>
         <text x="10" y="174" font-size="10" fill="#94a3b8">₹0</text>
@@ -2367,7 +2367,7 @@ function renderDashboardRevenuePanel(summary = {}) {
   const peakDayLabel = peakItem.label || "Jul 22";
   const jobs = data("jobs") || [];
   const transactionsCount = jobs.length || series.filter(item => item.value > 0).length || 0;
-  
+
   const trendVal = summary.growth != null ? summary.growth : 18;
   const trendSign = trendVal >= 0 ? "↑" : "↓";
   const trendColor = trendVal >= 0 ? "#10b981" : "#ef4444";
@@ -3020,7 +3020,7 @@ window.downloadFormPrintReportPDF = async function () {
 
   function pdfSafeText(str) {
     if (!str) return "";
-    
+
     if (/[^\u0000-\u024F\u1E00-\u1EFF]/.test(str)) {
       const devanagariMap = {
         'अ':'a', 'आ':'aa', 'इ':'i', 'ई':'ee', 'उ':'u', 'ऊ':'oo', 'ऋ':'ru', 'ए':'e', 'ऐ':'ai', 'ओ':'o', 'औ':'au',
@@ -3033,7 +3033,7 @@ window.downloadFormPrintReportPDF = async function () {
         'ा':'a', 'ि':'i', 'ी':'ee', 'ु':'u', 'ू':'oo', 'ृ':'ru', 'े':'e', 'ै':'ai', 'ो':'o', 'ौ':'au', 'ं':'n', 'ः':'h',
         '्':''
       };
-      
+
       let transliterated = "";
       for (let i = 0; i < str.length; i++) {
         const char = str[i];
@@ -3043,10 +3043,10 @@ window.downloadFormPrintReportPDF = async function () {
           transliterated += char;
         }
       }
-      
+
       transliterated = transliterated.replace(/\s+/g, ' ').trim();
       transliterated = transliterated.split(' ').map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(' ');
-      
+
       return transliterated;
     }
     return str;
@@ -3184,11 +3184,11 @@ function analyticsBuckets(start, end, basis) {
   let cursor;
   let last;
   let guard = 0;
-  
+
   if (basis === "daily") {
     cursor = new Date(start.getFullYear(), start.getMonth(), start.getDate());
     last = new Date(end.getFullYear(), end.getMonth(), end.getDate());
-    
+
     while (cursor <= last && guard < 400) {
       buckets.push({
         key: `${cursor.getFullYear()}-${cursor.getMonth() + 1}-${cursor.getDate()}`,
@@ -3204,11 +3204,11 @@ function analyticsBuckets(start, end, basis) {
     cursor.setDate(cursor.getDate() - cursor.getDay());
     last = new Date(end.getFullYear(), end.getMonth(), end.getDate());
     last.setDate(last.getDate() - last.getDay());
-    
+
     while (cursor <= last && guard < 60) {
       const weekEnd = new Date(cursor);
       weekEnd.setDate(weekEnd.getDate() + 6);
-      
+
       buckets.push({
         key: `${cursor.getFullYear()}-${cursor.getMonth() + 1}-${cursor.getDate()}`,
         label: `${cursor.toLocaleString("en-US", { month: "short", day: "numeric" })} - ${weekEnd.toLocaleString("en-US", { month: "short", day: "numeric" })}`,
@@ -4968,7 +4968,7 @@ function renderKioskServices() {
             </select>
             <input placeholder="Search kiosk, service, form, branch, or project" value="${escapeHtml(state.search)}" data-action-input="search" style="padding: 10px; border: 1px solid var(--border-color, #cbd5e1); border-radius: 6px; background: var(--surface, #ffffff);" />
           </div>
-          
+
           <div style="margin-bottom: 16px; display: flex; justify-content: flex-end; color: #64748b; font-size: 0.9rem;">
             <div><strong>Project totals:</strong> ${projectKiosks.length} kiosk${projectKiosks.length === 1 ? "" : "s"} | ${projectServices.length} service${projectServices.length === 1 ? "" : "s"} | ${formCount} form${formCount === 1 ? "" : "s"}</div>
           </div>
@@ -5005,7 +5005,8 @@ function renderKioskServicePanel(kiosk, search = "") {
   const kioskServices = servicesForKiosk(kiosk)
     .filter((service) => kioskMatches || serviceMatchesSearch(service, search));
   const formCount = kioskServices.reduce((total, service) => total + (service.templates?.length || 0), 0);
-  const uploadCount = kioskServices.filter((service) => !["template", "digilocker"].includes(service.mode)).length;
+  const uploadCount = kioskServices.filter((service) => !["template", "digilocker", "scan"].includes(service.mode)).length;
+  const scanCount = kioskServices.filter((service) => service.mode === "scan").length;
   const digilockerCount = kioskServices.filter((service) => service.mode === "digilocker").length;
   const enabledCount = kioskServices.filter((service) => service.enabled !== false).length;
 
@@ -5024,6 +5025,7 @@ function renderKioskServicePanel(kiosk, search = "") {
             <span><strong>${formCount}</strong> Forms</span>
             <span>&bull;</span>
             <span><strong>${uploadCount}</strong> Uploads</span>
+            <span>&bull;</span><span><strong>${scanCount}</strong> Scan services</span>
             <span>&bull;</span>
             <span><strong>${digilockerCount}</strong> DigiLocker</span>
             <span>&bull;</span>
@@ -5033,11 +5035,20 @@ function renderKioskServicePanel(kiosk, search = "") {
         <div style="display: flex; gap: 8px;">
           <button class="secondary-button small-button" data-kiosk-service-create="${escapeHtml(kiosk.kioskId || "")}">Add Service</button>
           <button class="secondary-button small-button" data-kiosk-form-create="${escapeHtml(kiosk.kioskId || "")}">Add Forms</button>
-          ${assignedDigiLocker
-            ? `<button class="secondary-button small-button" data-kiosk-digilocker-edit="${escapeHtml(assignedDigiLocker.id)}">Manage DigiLocker</button>`
-            : `<button class="secondary-button small-button" data-kiosk-digilocker-create="${escapeHtml(kiosk.kioskId || "")}">Add DigiLocker</button>`}
         </div>
       </div>
+      <section class="dl-admin-setup-card dl-admin-setup-card-compact">
+        <img src="./assets/digilocker-official.svg" alt="DigiLocker" />
+        <div class="dl-admin-setup-copy">
+          <span class="dl-admin-kicker">Per-kiosk setup</span>
+          <strong>${assignedDigiLocker ? "DigiLocker service assigned" : "DigiLocker is not assigned"}</strong>
+          <span>${assignedDigiLocker?.enabled === false ? "The service is currently disabled for this kiosk." : assignedDigiLocker ? "The kiosk option is enabled; live sign-in still needs provider setup." : "Assign the service to show the DigiLocker option to customers."}</span>
+        </div>
+        <span class="dl-admin-status ${assignedDigiLocker?.enabled !== false && assignedDigiLocker ? "is-enabled" : "is-off"}">${assignedDigiLocker?.enabled !== false && assignedDigiLocker ? "Enabled" : "Not enabled"}</span>
+        ${assignedDigiLocker
+          ? `<button class="secondary-button small-button" data-kiosk-digilocker-edit="${escapeHtml(assignedDigiLocker.id)}">Configure</button>`
+          : `<button class="secondary-button small-button" data-kiosk-digilocker-create="${escapeHtml(kiosk.kioskId || "")}">Set up DigiLocker</button>`}
+      </section>
       <div class="kiosk-service-modal-list kiosk-service-page-list" style="display: grid; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); gap: 16px;">
         ${kioskServices.length ? kioskServices.map((service) => renderKioskScopedServiceRow(service, kiosk)).join("") : `
           <div class="empty-note">No services are assigned to this kiosk.</div>
@@ -5068,7 +5079,7 @@ function renderKioskScopedServiceRow(service, kiosk) {
         </div>
       </div>
       <div class="simple-service-meta kiosk-service-row-meta" style="margin-top: 16px;">
-        <span>Type <strong>${escapeHtml(service.mode === "template" ? "Forms" : service.mode === "digilocker" ? "DigiLocker" : "Upload")}</strong></span>
+        <span>Type <strong>${escapeHtml(service.mode === "template" ? "Forms" : service.mode === "digilocker" ? "DigiLocker" : service.mode === "scan" ? "Scan & Print" : "Upload")}</strong></span>
         <span>B/W <strong>${escapeHtml(money(rates.bw || 0))}</strong></span>
         <span>Color <strong>${escapeHtml(money(rates.color || 0))}</strong></span>
         <span>Forms <strong>${templates.length}</strong></span>
@@ -5570,11 +5581,27 @@ window.updateIdleMediaModePreview = function (mode) {
 
 function renderKioskCustomerSettingsEditor(draft) {
   const settings = normalizeKioskCustomerSettings(draft.customerSettings);
+  const kiosk = data("kiosks").find((item) => item.kioskId === draft.kioskId) || draft;
+  const lockerService = kiosk.kioskId ? servicesForKiosk(kiosk).find((service) => service.mode === "digilocker") : null;
+  const lockerEnabled = Boolean(lockerService && lockerService.enabled !== false);
+  const lockerAction = lockerService
+    ? `<button type="button" class="secondary-button small-button" data-kiosk-digilocker-edit="${escapeHtml(lockerService.id)}">Configure service</button>`
+    : `<button type="button" class="secondary-button small-button" data-kiosk-digilocker-create="${escapeHtml(kiosk.kioskId || "")}" ${data("kiosks").some((item) => item.kioskId === kiosk.kioskId) ? "" : "disabled"}>Set up DigiLocker</button>`;
 
   return `
+    <section class="dl-admin-setup-card dl-admin-setup-card-editor">
+      <div class="dl-admin-setup-heading">
+        <img src="./assets/digilocker-official.svg" alt="DigiLocker" />
+        <div><span class="dl-admin-kicker">Per-kiosk setup</span><h2>DigiLocker</h2></div>
+        <span class="dl-admin-status ${lockerEnabled ? "is-enabled" : "is-off"}">${lockerEnabled ? "Enabled" : lockerService ? "Disabled" : "Not assigned"}</span>
+      </div>
+      <p>Assign DigiLocker as a customer service for this kiosk. Customers scan a QR code, choose documents on their phone, then continue with the usual preview and print settings.</p>
+      <div class="dl-admin-provider-note"><span class="dl-admin-status-dot"></span><span><strong>Provider setup pending</strong><small>Approved API credentials are configured separately on the backend. This screen never stores provider secrets.</small></span></div>
+      <div class="dl-admin-setup-action">${lockerAction}<span>${lockerEnabled ? "Use Configure service to turn it off or change its assignment." : "Set up the service and select this kiosk in Kiosk Assignment."}</span></div>
+    </section>
     <section class="kiosk-settings-panel">
       <div class="section-heading">
-        <h2>Kiosk Customer Print Options</h2>
+        <h2>Customer Print Options</h2>
         <span>Unchecked options stay hidden from customers on this kiosk</span>
       </div>
       <div class="kiosk-settings-checks">
@@ -5699,6 +5726,7 @@ function renderServiceEditor() {
           <div class="settings-grid">
             ${renderField({ key: "mode", label: "Service Type", type: "select", options: [
               { value: "upload", label: "Upload & Print" },
+              { value: "scan", label: "Scan & Print (USB / LAN scanner)" },
               { value: "template", label: "Government Forms" },
               { value: "digilocker", label: "DigiLocker" }
             ] }, draft)}
@@ -5707,7 +5735,7 @@ function renderServiceEditor() {
         </section>
         ${renderServiceProjectSelector(draft)}
         ${renderServiceKioskSelector(draft)}
-        ${draft.mode === "digilocker" ? `<p class="helper-text">DigiLocker availability is controlled by this service's Enabled setting and kiosk assignment. Provider API credentials are configured separately.</p>` : ""}
+        ${draft.mode === "digilocker" ? `<section class="dl-admin-setup-card dl-admin-service-setup"><div class="dl-admin-setup-heading"><img src="./assets/digilocker-official.svg" alt="DigiLocker" /><div><span class="dl-admin-kicker">Customer service</span><h2>DigiLocker setup</h2></div><span class="dl-admin-status ${draft.enabled === false ? "is-off" : "is-enabled"}">${draft.enabled === false ? "Disabled" : "Enabled"}</span></div><p>This service appears only on the kiosks selected above. The customer option can be prepared now; live sign-in will remain unavailable until provider credentials are configured.</p><div class="dl-admin-provider-note"><span class="dl-admin-status-dot"></span><span><strong>Provider credentials are pending</strong><small>Set API Setu / DigiLocker credentials on the backend. Do not enter secrets in kiosk or browser settings.</small></span></div></section>` : ""}
         ${draft.mode === "template" ? `<div class="template-editor-section compact-template-section">
           <div class="template-editor-header">
             <div>
@@ -6697,7 +6725,7 @@ function beginCreateServiceForKiosk(kioskId, mode = "upload") {
   }
 
   const draft = clone(collections.services.defaults());
-  draft.mode = ["template", "digilocker"].includes(mode) ? mode : "upload";
+  draft.mode = ["template", "digilocker", "scan"].includes(mode) ? mode : "upload";
   draft.title = draft.mode === "template" ? "New Form Service" : draft.mode === "digilocker" ? "DigiLocker" : "New Service";
   draft.description = draft.mode === "template" ? "Printable forms for this kiosk." : draft.mode === "digilocker" ? "Choose documents from your DigiLocker and print them here." : "Customer service.";
   draft.projectIds = kiosk.projectId ? [kiosk.projectId] : [];
@@ -6828,7 +6856,7 @@ function updateDraftField(field, value) {
     } else if (field === "defaultPages") {
       draft.defaultPages = Math.max(1, Number(value) || 1);
     } else if (field === "mode") {
-      draft.mode = ["template", "digilocker"].includes(value) ? value : "upload";
+      draft.mode = ["template", "digilocker", "scan"].includes(value) ? value : "upload";
       if (draft.mode === "template" && !draft.templates?.length) {
         draft.templates = [{
           id: "blank-form",
