@@ -14,7 +14,10 @@ const HOSTED_PROXY_BACKEND_URL = /^https?:$/.test(window.location.protocol) &&
   ? window.location.origin
   : "";
 const LOCAL_AGENT_URL = runtimeConfig.get("localAgentUrl") || frontendConfig.localAgentUrl || "http://localhost:5077";
-const BACKEND_URL = (runtimeConfig.get("backendUrl") || HOSTED_PROXY_BACKEND_URL || frontendConfig.backendUrl || DEFAULT_BACKEND_URL).replace(/\/+$/, "");
+const configuredBackendUrl = (runtimeConfig.get("backendUrl") || HOSTED_PROXY_BACKEND_URL || frontendConfig.backendUrl || DEFAULT_BACKEND_URL).replace(/\/+$/, "");
+const BACKEND_URL = isMobilePaymentEntry
+  ? mobilePaymentBackendUrl(configuredBackendUrl, new URL(window.location.href))
+  : configuredBackendUrl;
 // WebSocket-specific: HOSTED_PROXY_BACKEND_URL (same-origin, used so plain
 // fetch() calls go through Vercel's /api/* rewrite proxy) does NOT work for
 // WebSocket upgrades - Vercel's rewrites don't proxy the ws:// protocol, so
@@ -5313,6 +5316,21 @@ function registerFreePrintJobInBackground() {
   });
 }
 
+function mobilePaymentBackendUrl(backendUrl, pageUrl) {
+  const backend = parseHttpUrl(backendUrl);
+  if (!backend) return pageUrl.origin;
+  const isLoopback = (host) => host === "localhost" || host.endsWith(".localhost") || /^127\./.test(host) || host === "[::1]" || host === "0.0.0.0";
+  const isPrivate = (host) => isLoopback(host) || /^(10\.|192\.168\.|169\.254\.|172\.(1[6-9]|2\d|3[01])\.)/.test(host) || /^\[(?:f[cd]|fe[89ab])/i.test(host) || host.endsWith(".local");
+  // Phone requests use the public page's /api proxy, never the kiosk's
+  // loopback/private address or an HTTP endpoint on an HTTPS payment page.
+  if ((isLoopback(backend.hostname) && !isLoopback(pageUrl.hostname)) ||
+      (isPrivate(backend.hostname) && !isPrivate(pageUrl.hostname)) ||
+      (pageUrl.protocol === "https:" && backend.protocol !== "https:")) {
+    return pageUrl.origin;
+  }
+  return backendUrl.replace(/\/+$/, "");
+}
+
 function buildMobilePaymentUrl(paymentUrl, paymentId) {
   if (!paymentId) return paymentUrl || "";
 
@@ -5321,13 +5339,13 @@ function buildMobilePaymentUrl(paymentUrl, paymentId) {
     ? new URL(window.location.href)
     : null;
   const fallbackCheckoutUrl = parseHttpUrl(paymentUrl);
-  const url = configuredFrontendUrl || currentFrontendUrl || fallbackCheckoutUrl || new URL(window.location.href);
+  const url = configuredFrontendUrl || fallbackCheckoutUrl || currentFrontendUrl || new URL(window.location.href);
   normalizeIndexPageUrl(url);
   url.search = "";
   url.hash = "";
   url.searchParams.set("mobilePayment", paymentId);
   if (BACKEND_URL) {
-    url.searchParams.set("backendUrl", BACKEND_URL);
+    url.searchParams.set("backendUrl", mobilePaymentBackendUrl(BACKEND_URL, url));
   }
   return url.toString();
 }
