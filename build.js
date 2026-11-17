@@ -26,7 +26,7 @@ const skip = new Set([
   "package-lock.json",
   "build.js",
   "build-production.cjs",
-  "DEPLOY-rc4.md",
+  "DEPLOY-rc4.md", "RELEASE-rc5.md",
   "dev-server.js",
   "vercel.json",
   "DIGILOCKER-REVIEW.md", "DIGILOCKER-HOSTED.md"

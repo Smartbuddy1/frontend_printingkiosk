@@ -7982,7 +7982,7 @@ function renderPreviewStep() {
   const hasMultipleFiles = files.length > 1;
   const previewClass = hasMultipleFiles
     ? "preview-live multi-document-preview"
-    : file?.previewUrl && ["pdf", "image"].includes(file.previewKind)
+    : (file?.previewUrl || file?.staticPreviewUrl) && ["pdf", "image"].includes(file.previewKind)
       ? "preview-live"
       : "preview-document-mode";
   const orientation = normalizeOrientation(state.settings.orientation);
@@ -8179,10 +8179,14 @@ function renderOrientedImagePreview(url, orientation, extraClass = "") {
 }
 
 let previewPaperResizeObserver = null;
+let previewPaperResizeTimer = null;
+let pdfPreviewLayoutRevision = 0;
 
 function hydratePreviewPaper(root) {
   previewPaperResizeObserver?.disconnect();
+  clearTimeout(previewPaperResizeTimer);
   const slots = root.querySelectorAll('.preview-paper-slot');
+  const sizes = new WeakMap();
   const fit = (slot) => {
     const paper = slot.querySelector('.print-preview-paper');
     if (!paper || !slot.isConnected) return;
@@ -8190,6 +8194,29 @@ function hydratePreviewPaper(root) {
     const scale = Math.min(slot.clientWidth / width, slot.clientHeight / height);
     paper.style.width = `${width * scale}px`;
     paper.style.height = `${height * scale}px`;
+    const size = `${slot.clientWidth}x${slot.clientHeight}`;
+    const previous = sizes.get(slot);
+    sizes.set(slot, size);
+    if (previous && previous !== size && slot.querySelector('.pdf-preview-shell')) {
+      // A bitmap fitted to the previous panel must not stretch after resizing.
+      clearTimeout(previewPaperResizeTimer);
+      previewPaperResizeTimer = setTimeout(() => {
+        if (!root.isConnected || state.step !== 2) return;
+        pdfPreviewRenderCache.clear();
+        pdfPreviewLayoutRevision++;
+        // Refresh only the PDF surfaces. A full-page render temporarily removes
+        // the idle notice and changes the available height, causing resize loops.
+        root.querySelectorAll('.pdf-preview-shell').forEach(shell => {
+          const file = jobFiles()[Number(shell.dataset.previewFileIndex)];
+          if (!file) return;
+          shell.outerHTML = renderPdfPreview(file, {
+            orientation: shell.dataset.previewOrientation,
+            pageNumber: Number(shell.dataset.previewPage),
+            zoom: Number(shell.dataset.previewZoom)
+          });
+        });
+      }, 180);
+    }
   };
   previewPaperResizeObserver = new ResizeObserver(entries => entries.forEach(entry => fit(entry.target)));
   slots.forEach(slot => { fit(slot); previewPaperResizeObserver.observe(slot); });
@@ -8226,7 +8253,7 @@ function renderPreviewFileContent(file = activePreviewFile(), options = {}) {
     `;
   }
 
-  if (file.previewKind === "pdf" && file.staticPreviewUrl && (!file.previewUrl || previewPageNumber <= 1)) {
+  if (file.previewKind === "pdf" && file.staticPreviewUrl && !file.previewUrl) {
     resolvePdfPreviewPageCount(file);
     return renderOrientedImagePreview(file.staticPreviewUrl, options.orientation || state.settings.orientation, "static-pdf-preview");
   }
@@ -8248,7 +8275,7 @@ function renderPreviewFileContent(file = activePreviewFile(), options = {}) {
 function pdfPreviewCacheKey(fileKey, pageNumber, previewZoom, requestedOrientation) {
   const deviceScale = Math.round(Math.max(1, window.devicePixelRatio || 1) * 100);
   const viewportSize = `${window.innerWidth || 0}x${window.innerHeight || 0}`;
-  return `${fileKey}|p${pageNumber}|z${Math.round(previewZoom * 100)}|${requestedOrientation}|${deviceScale}|${viewportSize}`;
+  return `${fileKey}|p${pageNumber}|z${Math.round(previewZoom * 100)}|${requestedOrientation}|${deviceScale}|${viewportSize}|files${jobFiles().length}|layout${pdfPreviewLayoutRevision}`;
 }
 
 function renderPdfPreview(file, { orientation = "portrait", pageNumber = 1, zoom = 1 } = {}) {
@@ -8259,12 +8286,13 @@ function renderPdfPreview(file, { orientation = "portrait", pageNumber = 1, zoom
   const cacheKey = pdfPreviewCacheKey(fileKey, pageNumber, previewZoom, requestedOrientation);
   const shellId = "pdf-shell-" + cacheKey.replace(/[^a-zA-Z0-9-]/g, "-");
   const cached = pdfPreviewRenderCache.get(cacheKey);
+  const previewAttributes = `data-preview-file-index="${Math.max(0, jobFiles().indexOf(file))}" data-preview-orientation="${requestedOrientation}" data-preview-page="${Number(pageNumber) || 1}" data-preview-zoom="${previewZoom}"`;
 
   // Repeat renders of an already-rendered page (e.g. triggered by unrelated polling)
   // reuse the cached bitmap instead of re-decoding and re-rendering the PDF.
   if (cached) {
     return `
-      <div id="${shellId}" class="pdf-preview-shell is-ready" data-no-visual-search data-page-count="${cached.pageCount}">
+      <div id="${shellId}" class="pdf-preview-shell is-ready" ${previewAttributes} data-no-visual-search data-page-count="${cached.pageCount}">
         <div class="pdf-preview-page">
           <img class="pdf-preview-canvas" src="${cached.dataUrl}" width="${cached.cssWidth}" height="${cached.cssHeight}" alt="" />
         </div>
@@ -8292,7 +8320,8 @@ function renderPdfPreview(file, { orientation = "portrait", pageNumber = 1, zoom
       }
 
       const currentPage = Math.max(1, Math.min(totalPages, Number(pageNumber) || 1));
-      const deviceScale = Math.max(1, window.devicePixelRatio || 1);
+      // Supersample text even on 1x kiosk screens; cap bitmap memory on 4K displays.
+      const deviceScale = Math.min(3, Math.max(2, window.devicePixelRatio || 1));
       shell.innerHTML = "";
       shell.dataset.pageCount = String(totalPages);
 
@@ -8318,14 +8347,15 @@ function renderPdfPreview(file, { orientation = "portrait", pageNumber = 1, zoom
       const targetWidth = Math.max(1, bounds?.width || baseViewport.width);
       const targetHeight = Math.max(1, bounds?.height || baseViewport.height);
       const fitScale = Math.min(targetWidth / baseViewport.width, targetHeight / baseViewport.height);
-      const viewport = page.getViewport({ scale: fitScale * previewZoom * deviceScale, rotation });
+      const cssWidth = baseViewport.width * fitScale;
+      const cssHeight = baseViewport.height * fitScale;
+      const outputScale = Math.min(deviceScale * Math.max(1, previewZoom), Math.sqrt(12000000 / (cssWidth * cssHeight)));
+      const viewport = page.getViewport({ scale: fitScale * outputScale, rotation });
       const context = canvas.getContext("2d");
 
       if (!context) return;
-      canvas.width = viewport.width;
-      canvas.height = viewport.height;
-      const cssWidth = Math.round(viewport.width / deviceScale);
-      const cssHeight = Math.round(viewport.height / deviceScale);
+      canvas.width = Math.ceil(viewport.width);
+      canvas.height = Math.ceil(viewport.height);
       // No inline pixel width/height here on purpose: CSS (object-fit: contain,
       // or width:100%/height:auto for the single-doc view) must control the
       // displayed size so the canvas actually fills its box — an inline pixel
@@ -8364,7 +8394,7 @@ function renderPdfPreview(file, { orientation = "portrait", pageNumber = 1, zoom
   }, 50);
 
   return `
-    <div id="${shellId}" class="pdf-preview-shell" data-no-visual-search>
+    <div id="${shellId}" class="pdf-preview-shell" ${previewAttributes} data-no-visual-search>
       <div class="pdf-preview-status">Loading PDF preview...</div>
     </div>
   `;

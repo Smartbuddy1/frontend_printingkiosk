@@ -10013,3 +10013,42 @@ body,
   overflow: visible !important;
   max-height: none !important;
 }
+
+/* Give desktop document previews more room without shrinking touch controls. */
+@media (min-width: 1101px) {
+  #app .customer-shell:has(.preview-stage) > .main {
+    width: calc(100% - 48px) !important;
+    max-width: 2200px !important;
+    padding: 8px 0 !important;
+    margin: 0 auto !important;
+  }
+  #app .customer-shell:has(.preview-stage) .customer-layout,
+  #app .customer-shell:has(.preview-stage) .content {
+    width: 100% !important;
+    max-width: none !important;
+  }
+  #app .customer-shell:has(.preview-stage) .preview-grid {
+    grid-template-columns: minmax(0, 1fr) clamp(320px, 19vw, 370px) !important;
+  }
+  #app .customer-shell:has(.preview-stage) .content {
+    padding: 8px !important;
+  }
+  #app .customer-shell:has(.preview-stage) .preview-document-panel {
+    padding: 10px !important;
+  }
+  #app .customer-shell:has(.preview-stage) .preview-document-head {
+    padding-bottom: 8px !important;
+  }
+  #app .customer-shell:has(.preview-stage) .preview-workspace {
+    padding: 6px 6px 40px !important;
+    grid-template-columns: 44px minmax(0, 1fr);
+  }
+  #app .customer-shell.app-shell:has(.preview-stage) .customer-footer {
+    min-height: 52px !important;
+    padding-top: 4px !important;
+    padding-bottom: 4px !important;
+  }
+  #app .customer-shell.app-shell:has(.preview-stage) .powered-by-logo {
+    height: 44px !important;
+  }
+}
