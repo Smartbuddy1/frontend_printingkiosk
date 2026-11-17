@@ -4891,6 +4891,7 @@ function servicesForKiosk(kiosk = {}) {
   const kioskId = kiosk.kioskId || "";
   const projectId = kiosk.projectId || "";
   return data("services").filter((service) => {
+    if ((service.excludedKioskIds || []).includes(kioskId)) return false;
     const kioskIds = Array.isArray(service.kioskIds) ? service.kioskIds : [];
     if (kioskIds.length) return kioskIds.includes(kioskId);
     return serviceForProject(service, projectId);
@@ -5074,8 +5075,8 @@ function renderKioskScopedServiceRow(service, kiosk) {
         </div>
         <div class="simple-service-actions" style="width: 100%; justify-content: flex-start;">
           <span class="badge ${serviceScopeTone(service)}" style="margin-right: auto;">${escapeHtml(service.enabled === false ? "Disabled" : serviceKioskScopeLabel(service, kiosk))}</span>
-          <button class="secondary-button small-button" data-kiosk-service-edit="${escapeHtml(service.id)}">Edit</button>
-          <button class="danger-button small-button" data-project-service-delete="${escapeHtml(service.id)}">Delete</button>
+          <button class="secondary-button small-button" data-kiosk-service-edit="${escapeHtml(service.id)}" data-service-kiosk="${escapeHtml(kiosk.kioskId)}">Edit</button>
+          <button class="danger-button small-button" data-kiosk-service-remove="${escapeHtml(service.id)}" data-service-kiosk="${escapeHtml(kiosk.kioskId)}">Remove from kiosk</button>
         </div>
       </div>
       <div class="simple-service-meta kiosk-service-row-meta" style="margin-top: 16px;">
@@ -5702,7 +5703,7 @@ function renderServiceEditor() {
       <div class="editor-head">
         <div>
           <h2>${editing ? "Edit Service" : "Create Service"}</h2>
-          <p class="helper-text">Configure this service for the selected project.</p>
+          <p class="helper-text">${state.editor.kioskId ? `Configure this service for ${escapeHtml(state.editor.kioskId)} only.` : "Configure this service for the selected project."}</p>
         </div>
         <button class="ghost-button" data-editor-cancel>Close</button>
       </div>
@@ -5733,8 +5734,7 @@ function renderServiceEditor() {
             ${renderField({ key: "enabled", label: "Enabled", type: "select", options: ["true", "false"] }, { ...draft, enabled: String(draft.enabled !== false) })}
           </div>
         </section>
-        ${renderServiceProjectSelector(draft)}
-        ${renderServiceKioskSelector(draft)}
+        ${state.editor.kioskId ? `<p class="helper-text">Assigned to ${escapeHtml(state.editor.kioskId)}. Changes here apply only to this kiosk.</p>` : renderServiceProjectSelector(draft) + renderServiceKioskSelector(draft)}
         ${draft.mode === "digilocker" ? `<section class="dl-admin-setup-card dl-admin-service-setup"><div class="dl-admin-setup-heading"><img src="./assets/digilocker-official.svg" alt="DigiLocker" /><div><span class="dl-admin-kicker">Customer service</span><h2>DigiLocker setup</h2></div><span class="dl-admin-status ${draft.enabled === false ? "is-off" : "is-enabled"}">${draft.enabled === false ? "Disabled" : "Enabled"}</span></div><p>This service appears only on the kiosks selected above. The customer option can be prepared now; live sign-in will remain unavailable until provider credentials are configured.</p><div class="dl-admin-provider-note"><span class="dl-admin-status-dot"></span><span><strong>Provider credentials are pending</strong><small>Set API Setu / DigiLocker credentials on the backend. Do not enter secrets in kiosk or browser settings.</small></span></div></section>` : ""}
         ${draft.mode === "template" ? `<div class="template-editor-section compact-template-section">
           <div class="template-editor-header">
@@ -6332,6 +6332,16 @@ async function handleClick(event) {
 
   if (button.dataset.kioskServiceEdit) {
     beginEdit("services", button.dataset.kioskServiceEdit);
+    if (state.editor) {
+      state.editor.kioskId = button.dataset.serviceKiosk;
+      state.notice = `Editing only ${state.editor.kioskId}. Other kiosks keep their current forms.`;
+      render();
+    }
+    return;
+  }
+
+  if (button.dataset.kioskServiceRemove) {
+    await removeKioskService(button.dataset.serviceKiosk, button.dataset.kioskServiceRemove);
     return;
   }
 
@@ -6691,6 +6701,7 @@ function beginCreate(collection) {
 
   state.page = collection;
   state.editor = {
+    baseConfigVersion: state.snapshot?.config?.version,
     mode: "create",
     collection,
     draft: clone(collections[collection].defaults())
@@ -6708,6 +6719,7 @@ function beginCreateServiceForProject() {
 
   state.page = "services";
   state.editor = {
+    baseConfigVersion: state.snapshot?.config?.version,
     mode: "create",
     collection: "services",
     draft
@@ -6744,6 +6756,8 @@ function beginCreateServiceForKiosk(kioskId, mode = "upload") {
 
   state.page = "services";
   state.editor = {
+    kioskId: kiosk.kioskId,
+    baseConfigVersion: state.snapshot?.config?.version,
     mode: "create",
     collection: "services",
     draft
@@ -6778,6 +6792,7 @@ function beginEdit(collection, id) {
   state.page = collection === "kiosks" || collection === "services" ? "hierarchy" : collection;
   if (collections[collection]) state.page = collection;
   state.editor = {
+    baseConfigVersion: state.snapshot?.config?.version,
     mode: "edit",
     collection,
     id,
@@ -6785,6 +6800,18 @@ function beginEdit(collection, id) {
   };
   state.notice = "";
   render();
+}
+
+async function removeKioskService(kioskId, serviceId) {
+  if (!(await window.customConfirm(`Remove this service from ${kioskId}? Other kiosks keep their services and forms.`))) return;
+  try {
+    await fetchJson(`/api/super-admin/kiosk-services/${encodeURIComponent(kioskId)}/${encodeURIComponent(serviceId)}`, {
+      method: "DELETE", headers: {"X-Kiosk-Config-Version": String(state.snapshot?.config?.version)}
+    });
+    state.notice = `Service removed from ${kioskId}.`;
+    state.editor = null;
+    await loadSnapshot({quiet: true});
+  } catch (error) { state.error = error.message || "Remove failed."; render(); }
 }
 
 async function deleteProjectService(serviceId) {
@@ -6814,13 +6841,13 @@ async function deleteProjectService(serviceId) {
   try {
     if (shouldDeleteRecord) {
       await fetchJson(`/api/super-admin/services/${encodeURIComponent(serviceId)}`, {
-        method: "DELETE"
+        method: "DELETE", headers: {"X-Kiosk-Config-Version": String(state.snapshot?.config?.version)}
       });
       state.notice = "Service deleted.";
     } else {
       await fetchJson(`/api/super-admin/services/${encodeURIComponent(serviceId)}`, {
         method: "PUT",
-        headers: { "Content-Type": "application/json" },
+        headers: { "Content-Type": "application/json", "X-Kiosk-Config-Version": String(state.snapshot?.config?.version) },
         body: JSON.stringify({
           ...service,
           projectIds: nextProjectIds,
@@ -7229,6 +7256,12 @@ function editorPayload() {
       .map((kiosk) => kiosk.projectId)
       .filter((projectId) => assignableProjectIds.has(projectId));
     draft.projectIds = [...new Set([...draft.projectIds, ...kioskProjectIds])];
+    if (state.editor.kioskId) {
+      const kiosk = knownKiosks.find(item => item.kioskId === state.editor.kioskId);
+      draft.kioskIds = [state.editor.kioskId];
+      draft.projectIds = kiosk ? [kiosk.projectId] : [];
+      draft.excludedKioskIds = [];
+    }
     draft.customerSettings = normalizeKioskCustomerSettings(draft.customerSettings);
     draft.printDefaults = normalizeServicePrintDefaults(draft.printDefaults);
     draft.pricing = {
@@ -7351,7 +7384,9 @@ async function saveEditor() {
     return;
   }
   const method = mode === "create" ? "POST" : "PUT";
-  const path = mode === "create"
+  const path = collection === "services" && state.editor.kioskId && mode === "edit"
+    ? `/api/super-admin/kiosk-services/${encodeURIComponent(state.editor.kioskId)}/${encodeURIComponent(id)}`
+    : mode === "create"
     ? `/api/super-admin/${collection}`
     : `/api/super-admin/${collection}/${encodeURIComponent(id)}`;
 
@@ -7362,7 +7397,7 @@ async function saveEditor() {
   try {
     await fetchJson(path, {
       method,
-      headers: { "Content-Type": "application/json" },
+      headers: { "Content-Type": "application/json", ...(collection === "services" ? {"X-Kiosk-Config-Version": String(state.editor.baseConfigVersion)} : {}) },
       body: JSON.stringify(payload)
     });
     state.notice = `${collections[collection].title.replace(" CRUD", "")} saved.`;
@@ -7386,7 +7421,7 @@ async function deleteRecord(collection, id) {
 
   try {
     await fetchJson(`/api/super-admin/${collection}/${encodeURIComponent(id)}`, {
-      method: "DELETE"
+      method: "DELETE", headers: collection === "services" ? {"X-Kiosk-Config-Version": String(state.snapshot?.config?.version)} : {}
     });
     state.notice = `${meta.title.replace(" CRUD", "")} deleted.`;
     state.editor = null;

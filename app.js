@@ -2400,6 +2400,7 @@ function hydrateAdminSession() {
 }
 
 function markServicesDirty(message = "") {
+  if (!state.servicesDirty) state.servicesBaseVersion = state.configVersion;
   state.servicesDirty = true;
   state.pricingSaveStatus = message;
 }
@@ -2939,7 +2940,7 @@ function renderDigiLockerUnavailable() {
 }
 
 function normalizeServicesConfig(value) {
-  const source = Array.isArray(value) && value.length ? value : services;
+  const source = Array.isArray(value) ? value : services;
   const seen = new Set();
 
   return source.map((service, index) => {
@@ -2977,6 +2978,7 @@ function normalizeServicesConfig(value) {
         ? service.projectIds.map((item) => slug(item, "")).filter(Boolean)
         : String(service?.projectIds || "").split(",").map((item) => slug(item, "")).filter(Boolean),
       kioskIds: Array.isArray(service?.kioskIds) ? service.kioskIds.map((item) => String(item).trim()).filter(Boolean) : [],
+      excludedKioskIds: Array.isArray(service?.excludedKioskIds) ? service.excludedKioskIds.map(normalizeKioskId).filter(Boolean) : [],
       customerSettings: normalizeKioskCustomerSettings(service?.customerSettings || fallback.customerSettings),
       printDefaults: normalizeServicePrintDefaults(service?.printDefaults || fallback.printDefaults),
       pricing: {
@@ -2985,7 +2987,7 @@ function normalizeServicesConfig(value) {
       },
       templates: mode === "template"
         ? mergeDefaultTemplateData(
-          normalizeTemplates(service?.templates?.length ? service.templates : (fallback.templates || formTemplates[id])),
+          normalizeTemplates(Array.isArray(service?.templates) ? service.templates : (fallback.templates || formTemplates[id])),
           fallback.templates || formTemplates[id] || []
         )
         : []
@@ -3378,6 +3380,7 @@ function serviceAvailableForKiosk(service, kioskId = KIOSK_ID) {
   // Keep the in-development scanner off the website customer demo only.
   if (isWebsiteRootEntry && !isAdminEntry && !isMobilePaymentEntry && DEMO_KIOSK_MODE &&
       (service.mode === "scan" || service.id === "scan")) return false;
+  if ((service.excludedKioskIds || []).includes(normalizeKioskId(kioskId))) return false;
   const projectIds = Array.isArray(service.projectIds) ? service.projectIds : [];
   const kioskIds = Array.isArray(service.kioskIds) ? service.kioskIds.map((item) => normalizeKioskId(item)).filter(Boolean) : [];
 
@@ -4862,6 +4865,7 @@ function serviceConfigSignature(nextServices, nextPricing) {
       enabled: service.enabled,
       projectIds: service.projectIds,
       kioskIds: service.kioskIds,
+      excludedKioskIds: service.excludedKioskIds,
       customerSettings: service.customerSettings,
       printDefaults: service.printDefaults,
       pricing: service.pricing,
@@ -10211,6 +10215,7 @@ function sortedAdminKiosks() {
 
 function serviceAppliesToAdminKiosk(service = {}, kiosk = null) {
   const kioskId = normalizeKioskId(kiosk?.kioskId);
+  if ((service.excludedKioskIds || []).includes(kioskId)) return false;
   const kioskIds = Array.isArray(service.kioskIds) ? service.kioskIds.map((item) => normalizeKioskId(item)).filter(Boolean) : [];
 
   if (service.mode === "digilocker" && kioskIds.length) {
@@ -13395,7 +13400,7 @@ async function saveServicesSettings() {
   try {
     const response = await fetch(`${BACKEND_URL}/api/admin/services`, {
       method: "POST",
-      headers: adminAuthHeaders({ "Content-Type": "application/json" }),
+      headers: adminAuthHeaders({ "Content-Type": "application/json", "X-Kiosk-Config-Version": String(state.servicesBaseVersion || state.configVersion) }),
       body: JSON.stringify({ services, pricing: state.pricing })
     });
     const payload = await response.json().catch(() => ({}));
@@ -13410,9 +13415,9 @@ async function saveServicesSettings() {
     storeConfigMeta(payload.config || {});
     storeServices();
     storePricing();
-    state.pricingSaveStatus = "Services saved for this kiosk project.";
+    state.pricingSaveStatus = "Service settings saved.";
   } catch (error) {
-    state.pricingSaveStatus = `${error.message || "Backend service is offline."} Local service setup is saved.`;
+    state.pricingSaveStatus = `${error.message || "Backend service is offline."} Changes have not been saved to the server.`;
   }
 
   render();
