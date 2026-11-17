@@ -266,6 +266,64 @@
   width: min(100%, 680px);
 }
 
+.print-motion {
+  position: relative;
+  isolation: isolate;
+  width: min(420px, 100%);
+  color: #638bd4;
+  margin: auto;
+}
+/* Keep printing readable on the shared white customer screen, including
+   background renders while the simulated/real job is in progress. */
+#app .customer-shell .tq-printing-scene,
+#app .customer-shell .tq-printing-scene .tq-title,
+#app .customer-shell .tq-printing-scene .tq-subtitle {
+  animation: none !important;
+  opacity: 1;
+  transform: none;
+}
+#app .customer-shell .tq-printing-scene .tq-title { color: #102a4c !important; }
+#app .customer-shell .tq-printing-scene .tq-subtitle,
+#app .customer-shell .tq-printing-scene .tq-progress-label { color: #52657f !important; }
+#app .customer-shell .tq-printing-scene .tq-printing-eyebrow {
+  background: #e9f8f2;
+  border-color: #bfe7d5;
+  color: #16734b;
+}
+#app .customer-shell .tq-printing-scene .tq-progress-bar { background: #e4edf6; }
+#app .customer-shell .tq-printing-scene .tq-printing-status span {
+  background: #f0f5fb;
+  border-color: #d8e4f1;
+  color: #365372;
+}
+.print-motion-machine { position: relative; display: block; width: 100%; overflow: visible; }
+.print-motion-halo { position: absolute; inset: 10% 5% 0; border-radius: 50%; background: radial-gradient(ellipse, #38bdf826, #8b5cf610 55%, transparent 72%); }
+.print-motion-paper { transform-origin: 210px 184px; }
+.print-motion.is-running .print-motion-paper { animation: print-paper-feed 2.8s ease-in-out infinite; }
+.print-motion.is-running .print-motion-light { animation: print-status-glow 1.4s ease-in-out infinite; }
+.print-motion.is-running .print-motion-scan { animation: print-status-glow 2.8s ease-in-out infinite; }
+.print-motion-check { opacity: 0; }
+.print-motion.is-complete .print-motion-check { opacity: 1; }
+.print-motion.is-complete .print-motion-scan { opacity: 0; }
+.print-motion-dots { display: flex; justify-content: center; gap: 8px; height: 12px; }
+.print-motion-dots i { width: 6px; height: 6px; border-radius: 50%; background: #38bdf8; }
+.print-motion.is-running .print-motion-dots i { animation: print-status-glow 1.5s ease-in-out infinite; }
+.print-motion-dots i:nth-child(2) { animation-delay: .2s !important; }
+.print-motion-dots i:nth-child(3) { animation-delay: .4s !important; }
+.print-motion.is-complete .print-motion-dots { visibility: hidden; }
+.direct-print-panel .print-motion { width: min(280px, 100%); }
+.tq-printing-full .print-motion { width: min(420px, 72vw, 48vh); }
+@keyframes print-paper-feed {
+  0%, 8% { transform: scaleY(.08); opacity: .3; }
+  28% { opacity: 1; }
+  70%, 86% { transform: scaleY(1); opacity: 1; }
+  100% { transform: translateY(12px) scaleY(1); opacity: 0; }
+}
+@keyframes print-status-glow { 0%, 100% { opacity: .3; } 50% { opacity: 1; } }
+@media (prefers-reduced-motion: reduce) {
+  .print-motion *, .tq-printing-full .tq-progress-fill { animation: none !important; }
+}
+
 .customer-shell .direct-print-visual {
   align-items: center;
   background: #eef6ff;

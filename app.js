@@ -1858,9 +1858,9 @@ const state = {
     errorLog: []
   },
   // ── Real internet connectivity (populated by Electron IPC background
-  // monitor; see initInternetStatusIpc). Starts `true` (non-blocking) so the
-  // customer flow isn't blocked before the first check has a chance to run.
-  internetOnline: true,
+  // monitor; see initInternetStatusIpc). Native kiosks stay blocked until
+  // the first successful check. Browsers also honour their offline signal.
+  internetOnline: typeof window.kioskInternetStatus?.onUpdate === "function" ? null : navigator.onLine !== false,
   internetCheckedAt: null,
   // ── Printer-offline watchdog (see tickPrinterOfflineWatchdog) ──────────────
   printerHealthIssueSince: null,
@@ -3375,6 +3375,9 @@ function setTemplateSearchQuery(value, { focus = true } = {}) {
 }
 
 function serviceAvailableForKiosk(service, kioskId = KIOSK_ID) {
+  // Keep the in-development scanner off the website customer demo only.
+  if (isWebsiteRootEntry && !isAdminEntry && !isMobilePaymentEntry && DEMO_KIOSK_MODE &&
+      (service.mode === "scan" || service.id === "scan")) return false;
   const projectIds = Array.isArray(service.projectIds) ? service.projectIds : [];
   const kioskIds = Array.isArray(service.kioskIds) ? service.kioskIds.map((item) => normalizeKioskId(item)).filter(Boolean) : [];
 
@@ -3842,29 +3845,16 @@ function customerPrinterBlockIssue({ includeAgentFallback = false } = {}) {
 }
 
 function printerReadyForCustomerFlow() {
-  // Block on the printer being offline, and on HARD errors (paper jam, no paper,
-  // door open, toner empty) — the customer only ever sees a generic "Offline" state.
-  const h = state.printerHealth || {};
-  if (!h.available) return true; // No health data yet - allow flow
-  if (!h.online || h.workOffline) return false;
-  if (h.paperJam) return false;
-  if (h.paper === false) return false;
-  if (h.doorOpen) return false;
-  if (h.tonerEmpty) return false;
-  if (h.outputBinFull) return false;
-  return true;
+  // Shared by service cards, card-body clicks and direct DigiLocker entry.
+  // Unknown/checking health must never grant a temporary startup bypass.
+  return !customerInternetBlockStatus() && !customerKioskBlockStatus();
 }
 
 function customerKioskBlockStatus() {
-  const h = state.printerHealth || {};
-  if (!h.available) return null;
-  if (!h.online || h.workOffline) return printerIssueStatus("offline", "Offline", "Printer is offline. Please contact staff.");
-  if (h.paperJam) return printerIssueStatus("paper-jam", "Offline", "Printer is offline. Please contact staff.");
-  if (h.paper === false) return printerIssueStatus("paper-empty", "Offline", "Printer is offline. Please contact staff.");
-  if (h.doorOpen) return printerIssueStatus("door-open", "Offline", "Printer is offline. Please contact staff.");
-  if (h.tonerEmpty) return printerIssueStatus("toner-empty", "Offline", "Printer is offline. Please contact staff.");
-  if (h.outputBinFull) return printerIssueStatus("output-full", "Offline", "Printer is offline. Please contact staff.");
-  return null;
+  const issue = customerPrinterBlockIssue() || state.customerPrinterNotice;
+  if (issue?.tone === "checking") return issue;
+  if (!issue && !state.printerHealth?.errorMessage) return null;
+  return printerIssueStatus(issue?.kind || "offline", "Offline", "Printer is offline. Please contact staff.");
 }
 
 // Real internet connectivity (state.internetOnline, from the Electron main
@@ -3874,7 +3864,10 @@ function customerKioskBlockStatus() {
 // and it's checked first everywhere printer status is checked so the two
 // can never show contradictory Online/Offline at the same time.
 function customerInternetBlockStatus() {
-  if (state.internetOnline !== false) return null;
+  if (navigator.onLine !== false && state.internetOnline === true) return null;
+  if (navigator.onLine !== false && state.internetOnline === null) {
+    return printerIssueStatus("checking-internet", "Connecting", "Please wait while the kiosk checks its connection.", "checking");
+  }
   return printerIssueStatus("no-internet", "No Internet", "This kiosk has lost its internet connection. Please contact staff.", "error");
 }
 
@@ -5031,7 +5024,7 @@ function startPrinterStatusPolling() {
       refreshPrinterStatus({
         rerender: showsPrinterStatus,
         showChecking: false,
-        markOfflineOnError: false
+        markOfflineOnError: true
       });
     }
   }, PRINTER_STATUS_POLL_MS);
@@ -5830,6 +5823,19 @@ async function startLocalPrintJob() {
 
   if (DEMO_KIOSK_MODE) {
     const documentCount = files.length || 1;
+    const demoPrintJob = { status: "printing" };
+    state.printJob = demoPrintJob;
+    state.printProgress = 2;
+    state.printError = "";
+    state.printStatusMessage = `Demo: printing ${documentCount} document${documentCount === 1 ? "" : "s"}...`;
+    state.step = 4;
+    state.thankYouPhase = "printing";
+    state.thankYouSecondsLeft = null;
+    render();
+    // Give the mock printer two full paper-feed cycles. Real jobs below
+    // continue to follow hardware status without an artificial delay.
+    await new Promise(resolve => setTimeout(resolve, 6000));
+    if (state.printJob !== demoPrintJob || state.step !== 4 || state.paymentStatus !== "Success") return;
     state.printJob = { status: "completed" };
     state.printProgress = 5;
     state.printError = "";
@@ -6267,7 +6273,7 @@ function renderIdleScreensaver() {
   // offline guard), so it's styled black-and-white instead of its normal blue
   // gradient/glow - a quick visual cue that tapping won't do anything right now,
   // matching the same Online/Offline badge shown in the real page's header.
-  const isOffline = state.internetOnline === false;
+  const isOffline = !printerReadyForCustomerFlow();
   root.innerHTML = `
     <div class="idle-screensaver-overlay ${isOffline ? "is-offline" : ""}" data-idle-screensaver-dismiss>
       <header class="idle-screensaver-header">
@@ -6346,7 +6352,7 @@ function dismissIdleScreensaver() {
   // tap through to a flow that would just fail once it loads. The slideshow
   // rotation timer (see showIdleScreensaver) is untouched, so images/video
   // keep cycling normally; only the tap-to-dismiss action is blocked.
-  if (state.internetOnline === false) return;
+  if (!printerReadyForCustomerFlow()) return;
   hideIdleScreensaver();
   scheduleCustomerInactivityTimer();
 }
@@ -6910,7 +6916,7 @@ function renderConfirmModal() {
 }
 
 function renderNmcKioskStatus(additionalClass = "") {
-  const issue = customerInternetBlockStatus() || customerPrinterBlockIssue() || state.customerPrinterNotice;
+  const issue = customerInternetBlockStatus() || customerKioskBlockStatus();
   const isBlocked = Boolean(issue);
   const hasError = isBlocked || Boolean(state.printerHealth?.errorMessage);
   const statusClass = hasError ? "is-offline" : "is-online";
@@ -6925,11 +6931,11 @@ function renderNmcKioskStatus(additionalClass = "") {
 }
 
 function renderCustomerPrinterStatusBadge() {
-  const issue = customerInternetBlockStatus() || customerPrinterBlockIssue() || state.customerPrinterNotice;
+  const issue = customerInternetBlockStatus() || customerKioskBlockStatus();
   const isBlocked = Boolean(issue);
   // Never surface raw hardware detail (paper jam, door open, toner empty, ...) to the
   // customer — keep the public badge generic and send staff to the admin panel for detail.
-  const text = issue?.tone === "checking" ? "Checking printer..." : (isBlocked ? "Offline" : "Online");
+  const text = issue?.kind === "checking-internet" ? "Connecting..." : issue?.tone === "checking" ? "Checking printer..." : (isBlocked ? "Offline" : "Online");
   const hasError = isBlocked || Boolean(state.printerHealth?.errorMessage);
   const icon = uiIcon("dot", 10);
   const colorClass = hasError ? "status-offline" : "status-online";
@@ -8516,6 +8522,31 @@ function renderHealthRow(label, value, tone) {
   `;
 }
 
+function renderPrintingAnimation(complete = false) {
+  return `<div class="print-motion ${complete ? "is-complete" : "is-running"}" aria-hidden="true">
+    <div class="print-motion-halo"></div>
+    <svg class="print-motion-machine" viewBox="0 0 420 300" fill="none">
+      <ellipse cx="210" cy="272" rx="142" ry="12" fill="currentColor" opacity=".08"/>
+      <rect x="132" y="35" width="156" height="108" rx="10" fill="#f8fafc" stroke="#b7c9df" stroke-width="2"/>
+      <path d="M155 58h110M155 72h80M155 86h100" stroke="#c2d1e3" stroke-width="5" stroke-linecap="round"/>
+      <rect x="73" y="101" width="274" height="132" rx="30" fill="#dce7f5" stroke="#b7c9df" stroke-width="2"/>
+      <path d="M74 131c0-17 13-30 30-30h212c17 0 30 13 30 30v32H74z" fill="#f8fafc"/>
+      <rect x="96" y="122" width="55" height="21" rx="7" fill="#172a48"/>
+      <path class="print-motion-meter" d="M105 133h35" stroke="#67e8f9" stroke-width="3" stroke-linecap="round"/>
+      <circle class="print-motion-light" cx="315" cy="133" r="5" fill="#14b8a6"/>
+      <rect x="112" y="176" width="196" height="17" rx="8" fill="#172a48"/>
+      <g class="print-motion-paper">
+        <path d="M139 184h142l13 67c1 6-3 10-9 10H135c-6 0-10-4-9-10z" fill="white" stroke="#b7c9df" stroke-width="2"/>
+        <rect x="153" y="199" width="25" height="22" rx="4" fill="#dbeafe"/>
+        <path d="M190 203h65M190 214h47M151 234h106M149 245h80" stroke="#8da4c1" stroke-width="4" stroke-linecap="round"/>
+      </g>
+      <path class="print-motion-scan" d="M142 187h136" stroke="#38bdf8" stroke-width="3" stroke-linecap="round"/>
+      <g class="print-motion-check"><circle cx="326" cy="220" r="22" fill="#0d9488"/><path d="m316 220 7 7 13-14" stroke="white" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"/></g>
+    </svg>
+    <div class="print-motion-dots"><i></i><i></i><i></i></div>
+  </div>`;
+}
+
 function renderDirectPrintStep() {
   const details = priceDetails();
   const files = jobFiles();
@@ -8539,9 +8570,7 @@ function renderDirectPrintStep() {
         <p class="stage-intro">Please wait while the kiosk sends your document to the printer.</p>
       </div>
       <section class="direct-print-panel" aria-live="polite">
-        <div class="direct-print-visual" aria-hidden="true">
-          <span>${uiIcon("print", 44)}</span>
-        </div>
+        ${renderPrintingAnimation(printComplete)}
         <h2>${escapeHtml(message)}</h2>
         <p>${escapeHtml(detailParts)}</p>
         <div class="timeline direct-print-timeline">
@@ -8750,20 +8779,14 @@ function initPrinterHealthIpc() {
 }
 
 // ── Internet Status IPC bridge (Electron-only, non-breaking) ────────────────
-// No-op when window.kioskInternetStatus is not exposed (non-Electron / demo
-// mode) — state.internetOnline stays at its default `true`, so nothing here
-// ever blocks the flow in a browser/dev context where a real check isn't
-// possible anyway.
+// Browser offline events block immediately. Native reconnects wait for a
+// fresh reachability result instead of trusting the network adapter alone.
 function initInternetStatusIpc() {
-  if (!window.kioskInternetStatus || typeof window.kioskInternetStatus.onUpdate !== "function") {
-    return; // Not running in Electron — skip gracefully
-  }
-
-  window.kioskInternetStatus.onUpdate(function (status) {
-    if (!status || typeof status !== "object") return;
+  const nativeMonitor = typeof window.kioskInternetStatus?.onUpdate === "function";
+  function update(online, checkedAt = null) {
     const wasOnline = state.internetOnline;
-    state.internetOnline = Boolean(status.online);
-    state.internetCheckedAt = status.checkedAt || new Date().toISOString();
+    state.internetOnline = online;
+    state.internetCheckedAt = checkedAt;
 
     if (wasOnline === state.internetOnline) return; // No visible change — skip the rerender.
 
@@ -8778,6 +8801,12 @@ function initInternetStatusIpc() {
     if (state.mode === "customer" && (state.step === 2 || state.step >= 4)) return;
 
     render();
+  }
+  window.addEventListener("offline", () => update(false));
+  window.addEventListener("online", () => update(nativeMonitor ? null : true));
+  if (nativeMonitor) window.kioskInternetStatus.onUpdate(status => {
+    if (!status || typeof status.online !== "boolean") return;
+    update(navigator.onLine === false ? false : status.online, status.checkedAt || new Date().toISOString());
   });
 }
 
@@ -9170,34 +9199,7 @@ function renderThankYouPrinting() {
           <h1 class="tq-title">${escapeHtml(heading)}</h1>
           <p class="tq-subtitle">${escapeHtml(subtitle)}</p>
         </div>
-        <div class="tq-printer-stage" aria-hidden="true">
-          <div class="tq-paper-stack tq-paper-stack-left">
-            <span></span><span></span><span></span>
-          </div>
-          <div class="tq-printer-anim tq-printer-anim-large">
-            <div class="tq-printer-body">
-              <div class="tq-printer-top"></div>
-              <div class="tq-printer-lights">
-                <div class="tq-light tq-light-blink"></div>
-                <div class="tq-light tq-light-blink" style="animation-delay:0.4s"></div>
-                <div class="tq-light tq-light-solid"></div>
-              </div>
-              <div class="tq-printer-slot">
-                <div class="tq-printer-paper"></div>
-              </div>
-              <div class="tq-printer-face"></div>
-              <div class="tq-printer-base"></div>
-            </div>
-            <div class="tq-printer-output">
-              <div class="tq-output-paper">
-                <span></span><span></span><span></span>
-              </div>
-            </div>
-          </div>
-          <div class="tq-paper-stack tq-paper-stack-right">
-            <span></span><span></span><span></span>
-          </div>
-        </div>
+        ${renderPrintingAnimation(!stillPrinting)}
         <div class="tq-print-progress">
           <div class="tq-progress-bar"><div class="tq-progress-fill"></div></div>
           <span class="tq-progress-label">${escapeHtml(liveStatus)}</span>
@@ -9207,30 +9209,6 @@ function renderThankYouPrinting() {
           <span>${documentSent ? "Document sent" : "Sending document"}</span>
           <span>${escapeHtml(liveStatus)}</span>
         </div>
-      </div>
-      <div class="tq-printer-anim">
-        <div class="tq-printer-body">
-          <div class="tq-printer-slot">
-            <div class="tq-printer-paper"></div>
-          </div>
-          <div class="tq-printer-base"></div>
-          <div class="tq-printer-lights">
-            <div class="tq-light tq-light-blink"></div>
-            <div class="tq-light tq-light-blink" style="animation-delay:0.4s"></div>
-            <div class="tq-light tq-light-solid"></div>
-          </div>
-        </div>
-        <div class="tq-printer-output">
-          <div class="tq-output-paper"></div>
-        </div>
-      </div>
-      <div class="tq-message">
-        <h1 class="tq-title">${escapeHtml(heading)}</h1>
-        <p class="tq-subtitle">${escapeHtml(subtitle)}</p>
-      </div>
-      <div class="tq-print-progress">
-        <div class="tq-progress-bar"><div class="tq-progress-fill"></div></div>
-        <span class="tq-progress-label">${escapeHtml(liveStatus)}</span>
       </div>
     </div>`;
 }

@@ -4,6 +4,12 @@ const en = {
   launchDescription: "Choose documents from your digital locker and print them here.", launchAction: "Choose documents",
   title: "DigiLocker", scan: "Scan", login: "Log in on your phone", choose: "Choose documents", print: "Print",
   heading: "Print from DigiLocker", instructions: "Scan this QR code with your phone. Sign in to DigiLocker and choose the documents you want to print.",
+  scanPhoneTitle: "Scan with your phone", scanPhoneHint: "Use your phone camera to scan this code.", waitingForScan: "Waiting for phone scan",
+  scanPhoneLead: "Sign in on your phone, choose the documents you want to print, then send them securely to this kiosk.",
+  scanPhoneStep: "Scan this QR code with your phone camera.", signInStep: "Sign in to DigiLocker on your phone.",
+  selectDocumentsStep: "Select the documents you want to print, such as PAN card or another document shown on your phone.", sendStep: "Tap Send to kiosk. Your selected documents will open here automatically.",
+  phoneConnectedTitle: "Your phone is connected", phoneConnectedHint: "Continue securely on your phone and choose the documents you want to print.",
+  receivingTitle: "Bringing your documents to the kiosk", receivingHint: "Your selected documents are being securely prepared for preview.", automaticPreviewNote: "The full selected set will open in preview automatically.",
   phoneConnected: "Phone connected. Continue on your phone.", downloading: "Receiving your selected documents…", ready: "Your documents are ready",
   privacy: "Your documents are printed and then deleted immediately", confirm: "Confirm & Print", continueNote: "Next: preview, print settings and payment.",
   refresh: "Refresh QR", cancel: "Cancel", home: "Back to home", timeLeft: "Time remaining", starting: "Preparing a secure connection…",
@@ -92,4 +98,52 @@ Object.assign(dictionaries.mr, { DIGILOCKER_KIOSK_DISABLED: "या किऑस
 Object.assign(dictionaries.en, { connectionFailed: "DigiLocker connection could not be opened", confirm: "Continue to preview" });
 Object.assign(dictionaries.hi, { connectionFailed: "DigiLocker कनेक्शन नहीं खुल सका", confirm: "पूर्वावलोकन पर जाएँ" });
 Object.assign(dictionaries.mr, { connectionFailed: "DigiLocker जोडणी उघडता आली नाही", confirm: "पूर्वावलोकनाकडे जा" });
+Object.assign(dictionaries.en, {
+  "scanPhoneTitle": "Scan with your phone",
+  "scanPhoneHint": "Use your phone camera to scan this code.",
+  "waitingForScan": "Waiting for phone scan",
+  "scanPhoneLead": "Sign in on your phone, choose the documents you want to print, then send them securely to this kiosk.",
+  "scanPhoneStep": "Scan this QR code with your phone camera.",
+  "signInStep": "Sign in to DigiLocker on your phone.",
+  "selectDocumentsStep": "Select the available documents you want to print, such as Aadhaar, PAN card or marksheet.",
+  "sendStep": "Tap Send to kiosk. Your selected documents will open here automatically.",
+  "phoneConnectedTitle": "Connected to DigiLocker",
+  "phoneConnectedHint": "Continue securely on your phone and choose the documents you want to print.",
+  "receivingTitle": "Bringing your documents to the kiosk",
+  "receivingHint": "Your selected documents are being securely prepared for preview.",
+  "automaticPreviewNote": "The full selected set will open in preview automatically.",
+  "sentNote": "Your selected documents are opening on the kiosk now."
+});
+Object.assign(dictionaries.hi, {
+  "scanPhoneTitle": "अपने फ़ोन से स्कैन करें",
+  "scanPhoneHint": "अपने फ़ोन के कैमरे से यह QR कोड स्कैन करें।",
+  "waitingForScan": "फ़ोन से स्कैन करने की प्रतीक्षा",
+  "scanPhoneLead": "फ़ोन पर लॉग इन करें, दस्तावेज़ चुनें और इस कियोस्क पर भेजें।",
+  "scanPhoneStep": "फ़ोन के कैमरे से QR कोड स्कैन करें।",
+  "signInStep": "अपने फ़ोन पर DigiLocker में लॉग इन करें।",
+  "selectDocumentsStep": "उपलब्ध दस्तावेज़ चुनें, जैसे आधार, PAN कार्ड या मार्कशीट।",
+  "sendStep": "कियोस्क पर भेजें दबाएँ। चुने हुए दस्तावेज़ यहाँ अपने आप खुलेंगे।",
+  "phoneConnectedTitle": "DigiLocker से जुड़ गए हैं",
+  "phoneConnectedHint": "अपने फ़ोन पर आगे बढ़ें और प्रिंट करने के लिए दस्तावेज़ चुनें।",
+  "receivingTitle": "आपके दस्तावेज़ कियोस्क पर आ रहे हैं",
+  "receivingHint": "चुने हुए दस्तावेज़ पूर्वावलोकन के लिए तैयार हो रहे हैं।",
+  "automaticPreviewNote": "सभी चुने हुए दस्तावेज़ एक साथ अपने आप खुलेंगे।",
+  "sentNote": "आपके चुने हुए दस्तावेज़ अब कियोस्क पर खुल रहे हैं।"
+});
+Object.assign(dictionaries.mr, {
+  "scanPhoneTitle": "तुमच्या फोनने स्कॅन करा",
+  "scanPhoneHint": "फोनच्या कॅमेऱ्याने हा QR कोड स्कॅन करा.",
+  "waitingForScan": "फोनने स्कॅन करण्याची प्रतीक्षा",
+  "scanPhoneLead": "फोनवर लॉग इन करा, कागदपत्रे निवडा आणि या कियोस्कवर पाठवा.",
+  "scanPhoneStep": "फोनच्या कॅमेऱ्याने QR कोड स्कॅन करा.",
+  "signInStep": "तुमच्या फोनवर DigiLocker मध्ये लॉग इन करा.",
+  "selectDocumentsStep": "उपलब्ध कागदपत्रे निवडा, जसे आधार, PAN कार्ड किंवा गुणपत्रिका.",
+  "sendStep": "कियोस्कवर पाठवा दाबा. निवडलेली कागदपत्रे येथे आपोआप उघडतील.",
+  "phoneConnectedTitle": "DigiLocker शी जोडले आहे",
+  "phoneConnectedHint": "फोनवर पुढे जा आणि प्रिंट करायची कागदपत्रे निवडा.",
+  "receivingTitle": "तुमची कागदपत्रे कियोस्कवर येत आहेत",
+  "receivingHint": "निवडलेली कागदपत्रे पूर्वावलोकनासाठी तयार होत आहेत.",
+  "automaticPreviewNote": "सर्व निवडलेली कागदपत्रे एकत्र आपोआप उघडतील.",
+  "sentNote": "तुमची निवडलेली कागदपत्रे आता कियोस्कवर उघडत आहेत."
+});
 module.exports = { dictionaries, translator };

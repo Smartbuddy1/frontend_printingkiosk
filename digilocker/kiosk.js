@@ -4,7 +4,7 @@
   if (!config?.enabled) return;
   let session = null, phase = "", active = false, handedOff = false, generation = 0;
   let resumePending = false, resumeTimer = null, progressStep = 0;
-  let poller = null, clock = null, fetching = false, records = [], received = [], message = "";
+  let poller = null, clock = null, fetching = false, records = [], message = "";
   let abort = new AbortController();
   const owned = new WeakSet();
   const pendingCreations = new Set(), cancelledSessions = new Map(), cancellationRequests = new Map();
@@ -52,7 +52,7 @@
     if (record.previewUrl?.startsWith("blob:")) URL.revokeObjectURL(record.previewUrl);
     record.previewUrl = ""; record.printContentBase64 = "";
   }
-  function eraseLocal() { records.forEach(eraseRecord); records = []; received = []; }
+  function eraseLocal() { records.forEach(eraseRecord); records = []; }
   function cancel() {
     const old = session; session = null; generation++; abort.abort(); abort = new AbortController();
     resumePending = false; active = false; handedOff = false; fetching = false; phase = ""; progressStep = 0; message = ""; clearTimers(); eraseLocal();
@@ -102,10 +102,17 @@
       if (["DOWNLOADING", "READY"].includes(data.status)) progressStep = 2;
       else if (data.status === "PHONE_CONNECTED") progressStep = 1;
       if (data.status === "READY") {
+        // Keep the customer on the hand-off animation while the selected files
+        // move from the paired phone. There is no intermediate confirmation:
+        // all documents selected on the phone open in one preview together.
+        phase = "RECEIVING"; redraw();
+        await new Promise(resolve => setTimeout(resolve, 300));
+        if (epoch !== generation) return;
         const prepared = await prepare(data.files, epoch);
         if (epoch !== generation) { prepared.forEach(eraseRecord); return; }
-        received = data.files; records = prepared;
-        phase = "READY"; redraw(); return;
+        records = prepared; phase = "READY";
+        if (!confirm()) fail("unavailable");
+        return;
       }
       if (phase !== data.status) { phase = data.status; redraw(); }
     } catch (error) { if (epoch === generation && error.name !== "AbortError") fail(error.message); }
@@ -161,10 +168,11 @@
     } catch(error) { if(epoch === generation && error.name !== "AbortError")fail(error.message); }
   }
   function confirm() {
-    if (phase !== "READY" || !session || !records.length || !printerReadyForCustomerFlow()) return;
-    const paperError=enforceUploadPaperSufficiency(records);if(paperError){message=paperError;redraw();return;}
+    if (phase !== "READY" || !session || !records.length || !printerReadyForCustomerFlow()) return false;
+    const paperError=enforceUploadPaperSufficiency(records);if(paperError){message=paperError;redraw();return false;}
     clearCurrentFile(); handedOff = true; active = false; clearTimeout(poller);
     setJobFiles(records); state.uploadError=""; state.step=2; redraw();
+    return true;
   }
   async function aroundPrint(original) {
     if (!session || !handedOff || !jobFiles().some(f=>owned.has(f))) return original();
@@ -234,34 +242,53 @@
     if (phase === "DONE") return "digilockerDone";
     if (["FAILED","DENIED","EXPIRED"].includes(phase)) return "error";
     if (phase === "READY") return "digilockerReady";
-    if (["STARTING","DOWNLOADING"].includes(phase)) return "digilockerReceive";
+    if (["STARTING","DOWNLOADING","RECEIVING"].includes(phase)) return "digilockerReceive";
     return "digilockerPair";
   }
-  function screen() {
-    const steps=["scan","login","choose","print"];
-    const index=progressStep;
-    const failureTitle = progressStep === 3 ? "failed" : "connectionFailed";
-    let content="";
-    if(phase==="STARTING")content=`<div class="dl-starting-card" role="status"><span class="dl-state-spinner" aria-hidden="true"></span><p>${h(t("starting"))}</p></div>`;
-    else if(["CREATED","PHONE_CONNECTED","DOWNLOADING"].includes(phase))content=`<div class="dl-pair-layout">
+  function phoneTransferArtwork() {
+    return `<div class="dl-transfer-art" aria-hidden="true">
+      <div class="dl-device dl-phone-device"><span class="dl-device-speaker"></span><div class="dl-phone-screen"><span class="dl-phone-lock">&#128274;</span><strong>DigiLocker</strong><small>Securely connected</small></div><span class="dl-device-home"></span></div>
+      <div class="dl-transfer-route"><span class="dl-transfer-line"></span><i class="dl-transfer-pulse dl-pulse-one"></i><i class="dl-transfer-pulse dl-pulse-two"></i><b class="dl-transfer-doc dl-doc-one">PDF</b><b class="dl-transfer-doc dl-doc-two">DOC</b></div>
+      <div class="dl-device dl-kiosk-device"><span class="dl-kiosk-status"></span><div class="dl-kiosk-screen"><span class="dl-kiosk-check">&#10003;</span><strong>Printing Kiosk</strong><small>Documents arriving</small></div><span class="dl-kiosk-slot"></span></div>
+    </div>`;
+  }
+  function qrPairingScreen() {
+    return `<div class="dl-pair-layout">
       <section class="dl-qr-card" aria-label="DigiLocker QR code">
         <span class="dl-card-kicker">DigiLocker secure connection</span>
         <div class="dl-qr">${session?.qrSvg||""}</div>
-        <p>${h(t("scan"))}</p>
+        <p class="dl-scan-caption">${h(t("scanPhoneHint"))}</p>
         <div class="dl-countdown"><span>${h(t("timeLeft"))}</span><strong data-digilocker-countdown>--:--</strong></div>
       </section>
-      <section class="dl-instructions-card" aria-live="polite">
-        <span class="dl-state-pill"><i></i>${h(t(phase==="CREATED"?"scan":phase==="PHONE_CONNECTED"?"phoneConnected":"downloading"))}</span>
-        <h2>${h(t(phase==="CREATED"?"instructions":phase==="PHONE_CONNECTED"?"phoneConnected":"downloading"))}</h2>
-        <div class="dl-phone-note"><span aria-hidden="true">i</span><p>${h(t("consent"))}</p></div>
+      <section class="dl-qr-guide" aria-live="polite">
+        <div class="dl-qr-guide-art" aria-hidden="true"><span class="dl-guide-phone">&#128241;</span><span class="dl-guide-scan"></span><span class="dl-guide-lock">&#128274;</span></div>
+        <span class="dl-state-pill"><i></i>${h(t("waitingForScan"))}</span>
+        <h2>${h(t("scanPhoneTitle"))}</h2>
+        <p class="dl-guide-lead">${h(t("scanPhoneLead"))}</p>
+        <ol class="dl-guide-steps"><li><b>1</b><span>${h(t("scanPhoneStep"))}</span></li><li><b>2</b><span>${h(t("signInStep"))}</span></li><li><b>3</b><span>${h(t("selectDocumentsStep"))}</span></li><li><b>4</b><span>${h(t("sendStep"))}</span></li></ol>
       </section>
     </div>`;
-    else if(phase==="READY")content=`<div class="dl-ready-card"><div class="dl-ready-icon" aria-hidden="true">&#10003;</div><span class="dl-card-kicker">${h(t("sent"))}</span><h2>${h(t("ready"))}</h2><p class="dl-ready-intro">${h(t("continueNote"))}</p><ul class="dl-files">${received.map(f=>`<li><span class="dl-file-icon" aria-hidden="true">FILE</span><span class="dl-file-name">${h(f.name)}</span><strong>${f.pages} ${h(t("pages"))}</strong></li>`).join("")}</ul><p class="dl-privacy">${h(t("privacy"))}</p><button class="primary-button" data-digilocker="confirm">${h(t("confirm"))}</button></div>`;
+  }
+  function transferScreen() {
+    const connected = phase === "PHONE_CONNECTED";
+    const title = connected ? "phoneConnectedTitle" : "receivingTitle";
+    const description = connected ? "phoneConnectedHint" : "receivingHint";
+    return `<section class="dl-transfer-card" aria-live="polite">
+      ${phoneTransferArtwork()}
+      <div class="dl-transfer-copy"><span class="dl-state-pill"><i></i>${h(t(connected ? "phoneConnected" : "downloading"))}</span><h2>${h(t(title))}</h2><p>${h(t(description))}</p><div class="dl-transfer-note"><span aria-hidden="true">&#10003;</span>${h(t("automaticPreviewNote"))}</div></div>
+      <div class="dl-transfer-countdown"><span>${h(t("timeLeft"))}</span><strong data-digilocker-countdown>--:--</strong></div>
+    </section>`;
+  }
+  function screen() {
+    const failureTitle = progressStep === 3 ? "failed" : "connectionFailed";
+    let content="";
+    if(phase==="STARTING")content=`<div class="dl-starting-card" role="status"><span class="dl-state-spinner" aria-hidden="true"></span><p>${h(t("starting"))}</p></div>`;
+    else if(phase==="CREATED")content=qrPairingScreen();
+    else if(["PHONE_CONNECTED","DOWNLOADING","RECEIVING","READY"].includes(phase))content=transferScreen();
     else content=`<div class="dl-result-card"><div class="dl-result">${phase==="DONE"?"✓":phase==="CLEANUP"?"…":"!"}</div><h2>${h(t(phase==="DONE"?"done":phase==="CLEANUP"?"cleanup":failureTitle))}</h2></div>`;
     const canLeave = !["PRINTING", "CLEANUP"].includes(phase);
-    return `<div class="stage dl-stage ${["STARTING","CREATED","PHONE_CONNECTED","DOWNLOADING"].includes(phase)?"dl-pair-screen":""}" data-no-customer-translation>
+    return `<div class="stage dl-stage ${["STARTING","CREATED","PHONE_CONNECTED","DOWNLOADING","RECEIVING","READY"].includes(phase)?"dl-pair-screen":""}" data-no-customer-translation>
       <header class="dl-page-head">${canLeave ? `<button type="button" class="secondary-button dl-back" data-digilocker="back" aria-label="${h(t("home"))}"><span aria-hidden="true">&larr;</span> ${h(t("back"))}</button>` : ""}<div class="dl-brand-lockup"><div><span>Secure document printing</span><h1>${h(t("heading"))}</h1></div></div><span class="dl-session-badge"><i></i>Private session</span></header>
-      <ol class="dl-progress" aria-label="DigiLocker">${steps.map((s,i)=>`<li data-digilocker-step="${i}" ${i===index?'aria-current="step"':""} class="${i===index?"is-current":""} ${i<index?"is-complete":""}"><span>${i<index?"&#10003;":i+1}</span><b>${h(t(s))}</b></li>`).join("")}</ol>
       <div class="dl-content" aria-live="polite">${content}${message?`<p role="status">${h(message)}</p>`:""}</div>
       <p class="dl-footer-note"><span aria-hidden="true">i</span> ${h(t("privacy"))}</p>
     </div>`;
@@ -289,7 +316,6 @@
       const target=event.target.closest("[data-digilocker]");if(!target)return;event.preventDefault();event.stopPropagation();
       const action=target.dataset.digilocker;
       if(action==="start"||action==="service"||action==="refresh")void start(target.dataset.digilockerService);
-      if(action==="confirm")confirm();
       if((action==="back"||action==="home") && !["PRINTING","CLEANUP"].includes(phase)){resetCustomer();redraw();void refreshPrinterStatus();}
     },true);
     window.addEventListener("pagehide",cancel);
