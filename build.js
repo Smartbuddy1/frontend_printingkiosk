@@ -63,7 +63,7 @@ function writeConfig() {
 }
 
 function addCacheBusters() {
-  for (const filename of ["index.html", "admin.html", "super-admin.html"]) {
+  for (const filename of ["index.html", "admin.html", "admin/index.html", "super-admin.html", "super-admin/index.html"]) {
     const filePath = path.join(distDir, filename);
     if (!fs.existsSync(filePath)) continue;
 
