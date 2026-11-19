@@ -7376,11 +7376,6 @@ async function saveEditor() {
       return;
     }
 
-    if (setupCodeExists(payload.setupCode, ignoreKioskId)) {
-      state.error = "Mini PC setup code already exists. Generate a new setup code.";
-      render();
-      return;
-    }
   }
 
   if (collection === "kioskAdmins" && mode === "create") {

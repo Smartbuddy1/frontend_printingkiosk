@@ -13982,12 +13982,6 @@ async function saveKioskEditor() {
     return;
   }
 
-  if (adminSetupCodeExists(draft.setupCode, originalKioskId)) {
-    state.kioskCreateStatus = "Mini PC setup code already exists. Generate a new setup code.";
-    render();
-    return;
-  }
-
   if (!draft.projectId) {
     state.kioskCreateStatus = "Select a project.";
     render();
