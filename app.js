@@ -13476,7 +13476,7 @@ async function saveServicesSettings() {
     const response = await fetch(`${BACKEND_URL}/api/admin/services`, {
       method: "POST",
       headers: adminAuthHeaders({ "Content-Type": "application/json", "X-Kiosk-Config-Version": String(state.servicesBaseVersion || state.configVersion) }),
-      body: JSON.stringify({ services, pricing: state.pricing })
+      body: JSON.stringify({ services, pricing: state.pricing, expectedConfigVersion: state.servicesBaseVersion ?? state.configVersion })
     });
     const payload = await response.json().catch(() => ({}));
 

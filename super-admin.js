@@ -688,6 +688,8 @@ function firstServiceId() {
 }
 
 async function fetchJson(path, options = {}) {
+  const version = options.headers?.["X-Kiosk-Config-Version"];
+  if (version != null) path += `${path.includes("?") ? "&" : "?"}expectedConfigVersion=${encodeURIComponent(version)}`;
   const response = await fetch(`${BACKEND_URL}${path}`, {
     cache: "no-store",
     ...options,
