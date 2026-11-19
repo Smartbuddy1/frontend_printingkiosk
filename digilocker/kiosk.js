@@ -132,6 +132,7 @@
     if (!kioskPermitted()) return;
     const service = serviceId ? services.find(s => s.id === serviceId && isLocker(s) && serviceAvailableForKiosk(s)) : serviceDefinition(); if (!service || !normalService() || !printerReadyForCustomerFlow()) return;
     cancel(); const epoch = generation;
+    if (typeof cancelCustomerUpload === "function") cancelCustomerUpload();
     clearCurrentFile(); stopUploadPolling(); stopPaymentPolling();
     state.selectedService = service.id; applyServicePrintDefaults(service); state.step = 1; state.activeJobId = null;
     state.paymentStatus = "Pending"; state.paymentError = ""; state.printError = "";
@@ -281,6 +282,10 @@
   }
   function screen() {
     const failureTitle = progressStep === 3 ? "failed" : "connectionFailed";
+    const currentStep = Math.max(0, Math.min(3, progressStep));
+    const progress = [t("scan"), t("login"), t("choose"), t("print")]
+      .map((label, index) => `<li class="${index === currentStep ? "is-current" : ""} ${index < currentStep ? "is-complete" : ""}" ${index === currentStep ? `aria-current="step" data-digilocker-step="${index}"` : ""}><span>${index < currentStep ? "✓" : index + 1}</span><b>${h(label)}</b></li>`)
+      .join("");
     let content="";
     if(phase==="STARTING")content=`<div class="dl-starting-card" role="status"><span class="dl-state-spinner" aria-hidden="true"></span><p>${h(t("starting"))}</p></div>`;
     else if(phase==="CREATED")content=qrPairingScreen();
@@ -289,6 +294,7 @@
     const canLeave = !["PRINTING", "CLEANUP"].includes(phase);
     return `<div class="stage dl-stage ${["STARTING","CREATED","PHONE_CONNECTED","DOWNLOADING","RECEIVING","READY"].includes(phase)?"dl-pair-screen":""}" data-no-customer-translation>
       <header class="dl-page-head">${canLeave ? `<button type="button" class="secondary-button dl-back" data-digilocker="back" aria-label="${h(t("home"))}"><span aria-hidden="true">&larr;</span> ${h(t("back"))}</button>` : ""}<div class="dl-brand-lockup"><div><span>Secure document printing</span><h1>${h(t("heading"))}</h1></div></div><span class="dl-session-badge"><i></i>Private session</span></header>
+      <ol class="dl-progress" aria-label="DigiLocker print progress">${progress}</ol>
       <div class="dl-content" aria-live="polite">${content}${message?`<p role="status">${h(message)}</p>`:""}</div>
       <p class="dl-footer-note"><span aria-hidden="true">i</span> ${h(t("privacy"))}</p>
     </div>`;

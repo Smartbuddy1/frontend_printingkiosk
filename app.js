@@ -2365,10 +2365,28 @@ function isSessionAuthError(error) {
   return error?.status === 401 || message.includes("admin login required") || message.includes("login required");
 }
 
+function clearAdminClientState() {
+  state.adminData = {jobs: [], transactions: [], projects: [], kiosks: [], reports: [], alertLogs: [], backendOnline: false, lastUpdated: "", error: ""};
+  state.idleScreensaverDraft = null;
+  state.idleScreensaverKioskId = "";
+  state.idleScreensaverKiosks = [];
+  state.serviceEditor = null;
+  state.servicesDirty = false;
+  state.adminSelectedServiceId = "";
+  state.adminSelectedServiceKioskId = "";
+  state.adminPricingKioskId = "";
+  state.adminPagination = {};
+  services = [];
+  formTemplates = {};
+  state.pricing = {};
+  state.configVersion = 0;
+}
+
 function expireAdminSession(message = "Session expired. Please sign in again.") {
   state.adminAuthed = false;
   state.adminNavOpen = false;
   state.adminToken = "";
+  clearAdminClientState();
   state.adminAccount = null;
   state.adminLoginError = message;
   clearAdminSession();
@@ -3075,17 +3093,23 @@ function normalizePricing(pricing) {
   return nextPricing;
 }
 
+function kioskStorageKey(key) {
+  return `${key}:v2:${BACKEND_URL}:${isAdminEntry ? "admin" : DEMO_KIOSK_MODE ? "demo" : "kiosk"}:${normalizeKioskId(KIOSK_ID)}`;
+}
+
 function readStoredPricing() {
+  if (isAdminEntry) return createDefaultPricing();
   try {
-    return normalizePricing(JSON.parse(window.localStorage.getItem("kioskServicePricing") || "null"));
+    return normalizePricing(JSON.parse(window.localStorage.getItem(kioskStorageKey("kioskServicePricing")) || "null"));
   } catch {
     return createDefaultPricing();
   }
 }
 
 function storePricing() {
+  if (isAdminEntry) return;
   try {
-    window.localStorage.setItem("kioskServicePricing", JSON.stringify(state.pricing));
+    window.localStorage.setItem(kioskStorageKey("kioskServicePricing"), JSON.stringify(state.pricing));
   } catch {
     // Local storage can be unavailable in hardened kiosk shells.
   }
@@ -3115,6 +3139,7 @@ function setPricingRate(serviceId, priceKey, value, kioskId = "") {
 }
 
 function readStoredServices() {
+  if (isAdminEntry) return [];
   try {
     const scopedKey = servicesCacheKey();
     const scopedServices = window.localStorage.getItem(scopedKey);
@@ -3126,7 +3151,7 @@ function readStoredServices() {
       return [];
     }
 
-    return normalizeServicesConfig(JSON.parse(window.localStorage.getItem(SERVICES_CACHE_KEY) || "null"));
+    return normalizeServicesConfig(services);
   } catch {
     return isAdminEntry || DEMO_KIOSK_MODE || KIOSK_ID === "LOCAL-KIOSK"
       ? normalizeServicesConfig(services)
@@ -3134,27 +3159,16 @@ function readStoredServices() {
   }
 }
 
-function servicesCacheKey() {
-  const kioskId = normalizeKioskId(KIOSK_ID);
-  return kioskId && kioskId !== UNASSIGNED_KIOSK_ID
-    ? `${SERVICES_CACHE_KEY}:${kioskId}`
-    : SERVICES_CACHE_KEY;
-}
+function servicesCacheKey() { return kioskStorageKey(SERVICES_CACHE_KEY); }
 
 function storeServices() {
-  try {
-    window.localStorage.setItem(servicesCacheKey(), JSON.stringify(services));
-    if (isAdminEntry || DEMO_KIOSK_MODE || KIOSK_ID === "LOCAL-KIOSK") {
-      window.localStorage.setItem(SERVICES_CACHE_KEY, JSON.stringify(services));
-    }
-  } catch {
-    // Local storage can be unavailable in hardened kiosk shells.
-  }
+  if (isAdminEntry) return;
+  try { window.localStorage.setItem(servicesCacheKey(), JSON.stringify(services)); } catch {}
 }
 
 function readStoredConfigVersion() {
   try {
-    return Number(window.localStorage.getItem("kioskConfigVersion") || 0);
+    return Number(window.localStorage.getItem(kioskStorageKey("kioskConfigVersion")) || 0);
   } catch {
     return 0;
   }
@@ -3203,7 +3217,7 @@ function normalizeClientBrand(brand = {}) {
 
 function readStoredClientBrand() {
   try {
-    const brand = normalizeClientBrand(JSON.parse(window.localStorage.getItem("kioskClientBrand") || "null"));
+    const brand = normalizeClientBrand(JSON.parse(window.localStorage.getItem(kioskStorageKey("kioskClientBrand")) || "null"));
     if (brand.kioskId && brand.kioskId !== normalizeKioskId(KIOSK_ID)) return {};
     return brand;
   } catch {
@@ -3213,7 +3227,7 @@ function readStoredClientBrand() {
 
 function storeClientBrand() {
   try {
-    window.localStorage.setItem("kioskClientBrand", JSON.stringify({
+    window.localStorage.setItem(kioskStorageKey("kioskClientBrand"), JSON.stringify({
       ...(state.clientBrand || {}),
       kioskId: normalizeKioskId(state.kiosk?.kioskId || KIOSK_ID)
     }));
@@ -3227,9 +3241,9 @@ function storeConfigMeta(config = {}) {
   state.configUpdatedAt = config.updatedAt || state.configUpdatedAt || "";
 
   try {
-    window.localStorage.setItem("kioskConfigVersion", String(state.configVersion || 0));
+    window.localStorage.setItem(kioskStorageKey("kioskConfigVersion"), String(state.configVersion || 0));
     if (state.configUpdatedAt) {
-      window.localStorage.setItem("kioskConfigUpdatedAt", state.configUpdatedAt);
+      window.localStorage.setItem(kioskStorageKey("kioskConfigUpdatedAt"), state.configUpdatedAt);
     }
   } catch {
     // Local storage can be unavailable in hardened kiosk shells.
@@ -4489,9 +4503,25 @@ function publicMobileUploadUrl(token = "") {
   return `${uploadOrigin}/mobile-upload${tokenPath}`;
 }
 
+let customerUploadEpoch = 0;
+function revokeMobileUpload(session) {
+  if (!session?.token || !session.controlToken) return;
+  fetch(`${BACKEND_URL}/api/mobile-upload/${encodeURIComponent(session.token)}`, {
+    method: "DELETE", headers: {"X-Upload-Control": session.controlToken}, keepalive: true
+  }).catch(() => {});
+}
+function cancelCustomerUpload() {
+  customerUploadEpoch += 1;
+  stopUploadPolling();
+  revokeMobileUpload(state.uploadSession);
+  state.uploadSession = null;
+  mobileUploadProcessing = false;
+}
+window.addEventListener("pagehide", cancelCustomerUpload);
+
 async function startMobileUploadSession() {
   // A DigiLocker selection must never create a generic file-upload session.
-  if (isDigiLockerService(selectedService())) { state.uploadSession = null; return; }
+  if (isDigiLockerService(selectedService())) { cancelCustomerUpload(); return; }
   if (typeof isScanService === 'function' && isScanService()) return;
   if (!state.selectedService) {
     state.step = 0;
@@ -4499,7 +4529,9 @@ async function startMobileUploadSession() {
     return;
   }
 
-  stopUploadPolling();
+  cancelCustomerUpload();
+  const epoch = customerUploadEpoch;
+  const serviceId = state.selectedService;
   state.uploadSession = {
     token: "",
     uploadUrl: "",
@@ -4514,7 +4546,7 @@ async function startMobileUploadSession() {
     const timeoutId = window.setTimeout(() => controller.abort(), MOBILE_UPLOAD_SESSION_TIMEOUT_MS);
 
     try {
-      const response = await fetch(`${BACKEND_URL}/api/mobile-upload/session`, {
+      const response = await fetch(`${BACKEND_URL}/api/mobile-upload/session${!DEMO_KIOSK_MODE && KIOSK_ID !== UNASSIGNED_KIOSK_ID ? `?kioskId=${encodeURIComponent(KIOSK_ID)}&serviceId=${encodeURIComponent(serviceId)}` : ""}`, {
         signal: controller.signal
       });
 
@@ -4523,6 +4555,7 @@ async function startMobileUploadSession() {
       }
 
       const payload = await response.json();
+      if (epoch !== customerUploadEpoch || state.selectedService !== serviceId) { revokeMobileUpload(payload); return; }
       state.uploadSession = {
         ...payload,
         uploadUrl: publicMobileUploadUrl(payload.token),
@@ -4532,6 +4565,7 @@ async function startMobileUploadSession() {
       startUploadPolling();
       return;
     } catch (error) {
+      if (epoch !== customerUploadEpoch) return;
       if (attempt < MOBILE_UPLOAD_SESSION_MAX_ATTEMPTS) continue;
 
       state.uploadSession = {
@@ -4568,13 +4602,19 @@ let mobileUploadProcessing = false;
 
 async function checkMobileUpload() {
   if (!state.uploadSession?.token || mobileUploadProcessing) return;
-
+  const epoch = customerUploadEpoch;
+  const token = state.uploadSession.token;
+  const current = () => epoch === customerUploadEpoch && token === state.uploadSession?.token;
+  mobileUploadProcessing = true;
   try {
-    const response = await fetch(`${BACKEND_URL}/api/mobile-upload/${state.uploadSession.token}/status`);
+    const response = await fetch(`${BACKEND_URL}/api/mobile-upload/${token}/status`, {
+      headers: state.uploadSession.controlToken ? {"X-Upload-Control": state.uploadSession.controlToken} : {}
+    });
 
     if (!response.ok) return;
 
     const session = await response.json();
+    if (!current()) return;
     state.uploadSession = {
       ...state.uploadSession,
       ...session
@@ -4609,6 +4649,7 @@ async function checkMobileUpload() {
       }
 
       const pageLimitErrors = await Promise.all(receivedFiles.map((result) => enforceUploadPageLimit(result.file)));
+      if (!current()) return;
       const pageLimitError = pageLimitErrors.find(Boolean);
       if (pageLimitError) {
         state.uploadError = pageLimitError;
@@ -4629,11 +4670,12 @@ async function checkMobileUpload() {
       state.step = 2;
       render();
     } finally {
-      mobileUploadProcessing = false;
+      if (current()) mobileUploadProcessing = false;
     }
   } catch (error) {
-    // Silently ignore temporary network blips during polling so the QR code stays visible
-    // and no confusing error messages are shown to the user.
+    // A temporary network failure must not revive or replace a cancelled customer.
+  } finally {
+    if (current()) mobileUploadProcessing = false;
   }
 }
 
@@ -4791,13 +4833,14 @@ function adminAuthHeaders(headers = {}) {
 }
 
 async function fetchAdminJson(path, options = {}) {
+  const token = state.adminToken;
   try {
     return await fetchJson(`${BACKEND_URL}${path}`, {
       ...options,
       headers: adminAuthHeaders(options.headers)
     });
   } catch (error) {
-    if (state.adminToken && isSessionAuthError(error)) {
+    if (token && token === state.adminToken && isSessionAuthError(error)) {
       expireAdminSession();
       error.sessionExpired = true;
     }
@@ -4880,7 +4923,9 @@ function applyServiceConfig(payload, { rerender = true, source = "backend" } = {
     return false;
   }
 
+  if (source !== "admin" && payload.kioskId && normalizeKioskId(payload.kioskId) !== normalizeKioskId(KIOSK_ID)) return false;
   const incomingVersion = Number(payload.config?.version || payload.version || 0);
+  if (incomingVersion && incomingVersion < state.configVersion) return false;
   const hasNewVersion = incomingVersion && incomingVersion !== state.configVersion;
   const incomingSignature = serviceConfigSignature(payload.services, payload.pricing || state.pricing);
   const currentSignature = serviceConfigSignature(services, state.pricing);
@@ -4927,7 +4972,7 @@ function applyServiceConfig(payload, { rerender = true, source = "backend" } = {
       state.step = 0;
       state.selectedService = null;
       clearCurrentFile();
-      state.uploadSession = null;
+      cancelCustomerUpload();
     } else {
       state.configStatus = "Service setup changed. Finish this job, then start a new session.";
     }
@@ -5124,6 +5169,7 @@ function isEditingFormField() {
 }
 
 async function loadAdminData({ rerender = true } = {}) {
+  const adminToken = state.adminToken;
   try {
     const [
       dashboard,
@@ -5145,6 +5191,7 @@ async function loadAdminData({ rerender = true } = {}) {
       fetchAdminJson("/api/admin/reports")
     ]);
 
+    if (!adminToken || adminToken !== state.adminToken) return;
     state.adminData = {
       ...state.adminData,
       dashboard,
@@ -5173,6 +5220,7 @@ async function loadAdminData({ rerender = true } = {}) {
       }, { rerender: false, source: "admin" });
     }
   } catch (error) {
+    if (adminToken !== state.adminToken) return;
     if (!error.sessionExpired) {
       state.adminData = {
         ...state.adminData,
@@ -6129,7 +6177,8 @@ async function resolveLocalIdleScreensaverMedia() {
       signal: controller.signal
     });
 
-    if (!local || !local.ready || local.mode !== idle.mode) return;
+    if (state.clientBrand?.idleScreensaver !== idle || !local?.ready || local.mode !== idle.mode || local.kioskId !== normalizeKioskId(KIOSK_ID) || local.clientBrand?.clientId !== state.clientBrand?.clientId) return;
+    if (JSON.stringify(local.sourceImageUrls || []) !== JSON.stringify(idle.imageUrls || []) || (local.sourceVideoUrl || "") !== (idle.videoUrl || "")) return;
 
     if (idle.mode === "image" && Array.isArray(local.imageUrls) && local.imageUrls.length === idle.imageUrls.length) {
       idle.imageUrls = local.imageUrls;
@@ -6165,7 +6214,7 @@ async function resolveLocalClientBrandIdentity() {
     });
 
     const brand = local?.clientBrand;
-    if (!brand || !(brand.title || brand.subtitle || brand.logoUrl)) return;
+    if (local?.kioskId !== normalizeKioskId(KIOSK_ID) || !brand || brand.clientId !== state.clientBrand?.clientId || !(brand.title || brand.subtitle || brand.logoUrl)) return;
 
     if (!state.clientBrand) state.clientBrand = {};
     if (brand.title) state.clientBrand.title = brand.title;
@@ -6374,6 +6423,7 @@ function customerInactivityScreenKey() {
     return window.DigilockerUI.inactivityScreenKey();
   }
 
+  if (state.step === 3 && (paymentVerificationInProgress() || printingInProgress())) return "";
   if (state.printError || state.paymentError || state.uploadError) {
     if (state.printError && state.paymentStatus === "Success") return "paidFailure";
     return "error";
@@ -6632,12 +6682,6 @@ function render() {
   }
   try {
     if (state.mode === "customer" && state.step !== undefined) {
-      sessionStorage.setItem("kioskCustomerState", JSON.stringify({
-        step: state.step,
-        documentSource: window.DigilockerUI?.isActive() ? "digilocker" : null,
-        selectedService: state.selectedService,
-        selectedTemplate: state.selectedTemplate
-      }));
       const url = new URL(window.location);
       if (state.step > 0) {
         url.searchParams.set("step", state.step);
@@ -7239,7 +7283,10 @@ function renderAdminIdleScreensaverSection() {
 
   return `
     <h3>Idle Screen (Screensaver)</h3>
-    <p class="helper-text">Shown on the kiosk home screen after it sits idle. Pick one mode - image slideshow or video.</p>
+    <label class="setting-field">Kiosk
+      <select data-idle-kiosk-select>${(state.idleScreensaverKiosks || []).map(k => `<option value="${escapeHtml(k.kioskId)}" ${k.kioskId === state.idleScreensaverKioskId ? "selected" : ""}>${escapeHtml(k.kioskId)} — ${escapeHtml(k.name || "")}</option>`).join("")}</select>
+    </label>
+    <p class="helper-text">These idle-screen settings apply only to the selected kiosk.</p>
     ${state.idleScreensaverStatus ? `<p class="helper-text">${escapeHtml(state.idleScreensaverStatus)}</p>` : ""}
     ${state.idleScreensaverError ? `<div class="empty-note">${escapeHtml(state.idleScreensaverError)}</div>` : ""}
 
@@ -9435,13 +9482,24 @@ function renderAdminPage() {
   return renderDashboard();
 }
 
-async function loadAdminIdleScreensaver() {
+async function loadAdminIdleScreensaver(kioskId = state.idleScreensaverKioskId || "") {
+  const adminToken = state.adminToken;
+  state.idleScreensaverKioskId = kioskId;
+  state.idleScreensaverDraft = null;
   state.idleScreensaverStatus = "Loading idle-screen settings...";
   state.idleScreensaverError = "";
   render();
 
   try {
-    const payload = await fetchAdminJson("/api/admin/idle-screensaver");
+    const payload = await fetchAdminJson(`/api/admin/idle-screensaver?kioskId=${encodeURIComponent(kioskId)}`);
+    if (state.adminToken !== adminToken || state.idleScreensaverKioskId !== kioskId) return;
+    state.idleScreensaverKiosks = payload.kiosks || [];
+    if (!payload.kioskId) {
+      if (payload.kiosks?.length) return loadAdminIdleScreensaver(payload.kiosks[0].kioskId);
+      throw new Error("No kiosk is assigned to this account.");
+    }
+    state.idleScreensaverKioskId = payload.kioskId;
+    state.idleScreensaverVersion = payload.config?.version;
     state.idleScreensaverDraft = {
       idleMediaMode: ["none", "image", "video"].includes(payload.idleMediaMode) ? payload.idleMediaMode : "none",
       idleImageUrls: Array.isArray(payload.idleImageUrls) ? payload.idleImageUrls : [],
@@ -9450,6 +9508,7 @@ async function loadAdminIdleScreensaver() {
     };
     state.idleScreensaverStatus = "";
   } catch (error) {
+    if (adminToken !== state.adminToken) return;
     if (!error.sessionExpired) {
       state.idleScreensaverStatus = "";
       state.idleScreensaverError = error.message || "Could not load idle-screen settings.";
@@ -9461,17 +9520,22 @@ async function loadAdminIdleScreensaver() {
 
 async function saveAdminIdleScreensaver() {
   if (!state.idleScreensaverDraft) return;
+  const draft = state.idleScreensaverDraft;
+  const adminToken = state.adminToken;
+  const kioskId = state.idleScreensaverKioskId;
 
   state.idleScreensaverStatus = "Saving idle-screen settings...";
   state.idleScreensaverError = "";
   render();
 
   try {
-    const payload = await fetchAdminJson("/api/admin/idle-screensaver", {
+    const payload = await fetchAdminJson(`/api/admin/idle-screensaver?kioskId=${encodeURIComponent(kioskId)}`, {
       method: "PUT",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(state.idleScreensaverDraft)
+      headers: { "Content-Type": "application/json", "X-Kiosk-Config-Version": String(state.idleScreensaverVersion) },
+      body: JSON.stringify(draft)
     });
+    if (state.adminToken !== adminToken || state.idleScreensaverDraft !== draft) return;
+    state.idleScreensaverVersion = payload.config?.version;
     state.idleScreensaverDraft = {
       idleMediaMode: payload.idleMediaMode || "none",
       idleImageUrls: Array.isArray(payload.idleImageUrls) ? payload.idleImageUrls : [],
@@ -9480,6 +9544,7 @@ async function saveAdminIdleScreensaver() {
     };
     state.idleScreensaverStatus = "Idle-screen settings saved.";
   } catch (error) {
+    if (adminToken !== state.adminToken) return;
     if (!error.sessionExpired) {
       state.idleScreensaverStatus = "";
       state.idleScreensaverError = error.message || "Could not save idle-screen settings.";
@@ -9499,6 +9564,8 @@ function validateAdminIdleImageFile(file) {
 
 async function uploadAdminIdleImages(files) {
   if (!state.idleScreensaverDraft) return;
+  const draft = state.idleScreensaverDraft;
+  const adminToken = state.adminToken;
 
   const list = Array.from(files || []);
   if (!list.length) return;
@@ -9534,6 +9601,7 @@ async function uploadAdminIdleImages(files) {
       body: formData
     });
 
+    if (state.idleScreensaverDraft !== draft || state.adminToken !== adminToken) return;
     state.idleScreensaverDraft.idleImageUrls = [...existing, ...(payload.imageUrls || [])].slice(0, 10);
     // Uploading images used to leave mode untouched - if it was "Off" (or
     // "Video", from a previous choice) the images saved fine but never
@@ -9544,6 +9612,7 @@ async function uploadAdminIdleImages(files) {
     state.idleScreensaverDraft.idleMediaMode = "image";
     state.idleScreensaverStatus = "Idle-screen images uploaded. Save to publish them.";
   } catch (error) {
+    if (state.idleScreensaverDraft !== draft || state.adminToken !== adminToken) return;
     if (!error.sessionExpired) {
       state.idleScreensaverStatus = "";
       state.idleScreensaverError = error.message || "Idle-screen image upload failed.";
@@ -9563,6 +9632,8 @@ function validateAdminIdleVideoFile(file) {
 
 async function uploadAdminIdleVideo(file) {
   if (!state.idleScreensaverDraft) return;
+  const draft = state.idleScreensaverDraft;
+  const adminToken = state.adminToken;
 
   const validationError = validateAdminIdleVideoFile(file);
   if (validationError) {
@@ -9583,6 +9654,7 @@ async function uploadAdminIdleVideo(file) {
       body: formData
     });
 
+    if (state.idleScreensaverDraft !== draft || state.adminToken !== adminToken) return;
     state.idleScreensaverDraft.idleVideoUrl = payload.videoUrl || "";
     // Same reasoning as the image upload above - always switch to video mode
     // on a successful upload, not just from "Off", so switching from Image
@@ -9590,6 +9662,7 @@ async function uploadAdminIdleVideo(file) {
     state.idleScreensaverDraft.idleMediaMode = "video";
     state.idleScreensaverStatus = "Idle-screen video uploaded. Save to publish it.";
   } catch (error) {
+    if (state.idleScreensaverDraft !== draft || state.adminToken !== adminToken) return;
     if (!error.sessionExpired) {
       state.idleScreensaverStatus = "";
       state.idleScreensaverError = error.message || "Idle-screen video upload failed.";
@@ -13112,6 +13185,7 @@ async function loadPricingSettings() {
     return;
   }
 
+  const adminToken = state.adminToken;
   try {
     const response = await fetch(`${BACKEND_URL}/api/admin/pricing`, {
       cache: "no-store",
@@ -13123,6 +13197,7 @@ async function loadPricingSettings() {
     }
 
     const payload = await response.json();
+    if (adminToken !== state.adminToken) return;
     if (Array.isArray(payload.services) && !state.servicesDirty) {
       applyServiceConfig(payload, { rerender: false, source: "admin" });
     }
@@ -14196,6 +14271,7 @@ async function adminLogin() {
       return;
     }
 
+    clearAdminClientState();
     state.adminAuthed = true;
     state.adminToken = payload.token || "";
     state.adminAccount = payload.admin || null;
@@ -14212,6 +14288,7 @@ async function adminLogin() {
   } catch (error) {
     state.adminAuthed = false;
     state.adminToken = "";
+    clearAdminClientState();
     state.adminAccount = null;
     state.adminLoginError = error.message || "Admin login failed.";
     render();
@@ -14249,7 +14326,7 @@ async function handleClick(event) {
     if (isDigiLockerService(service)) {
       if (!printerReadyForCustomerFlow() || customerInternetBlockStatus()) return;
       if (window.DigilockerUI?.start) await window.DigilockerUI.start(service.id);
-      else { stopUploadPolling(); clearCurrentFile(); state.uploadSession = null; state.selectedService = service.id; state.step = 1; render(); }
+      else { stopUploadPolling(); clearCurrentFile(); cancelCustomerUpload(); state.selectedService = service.id; state.step = 1; render(); }
       return;
     }
     // The service card's wrapping <div> also carries data-service so the whole
@@ -14267,7 +14344,7 @@ async function handleClick(event) {
     state.step = 1;
     stopUploadPolling();
     clearCurrentFile();
-    state.uploadSession = null;
+    cancelCustomerUpload();
     state.uploadError = "";
     state.printError = "";
     state.printStatusMessage = "";
@@ -14285,7 +14362,7 @@ async function handleClick(event) {
       const template = selectedTemplates[0];
       applyTemplatePrintDefaults(template);
       setJobFiles([createTemplateFile(template)]);
-      state.uploadSession = null;
+      cancelCustomerUpload();
       state.uploadError = "";
       state.step = 2;
       render();
@@ -14458,7 +14535,7 @@ async function handleClick(event) {
     applyTemplatePrintDefaults(template);
     setJobFiles([createTemplateFile(template)]);
     state.uploadError = "";
-    state.uploadSession = null;
+    cancelCustomerUpload();
     state.step = 2;
     render();
     return;
@@ -14587,6 +14664,7 @@ async function handleClick(event) {
       state.adminAuthed = false;
       state.adminNavOpen = false;
       state.adminToken = "";
+      clearAdminClientState();
       state.adminAccount = null;
       clearAdminSession();
       stopAdminPolling();
@@ -14607,7 +14685,7 @@ async function handleClick(event) {
       if (state.step <= 1) {
         stopUploadPolling();
         state.step = 0;
-        state.uploadSession = null;
+        cancelCustomerUpload();
         state.uploadError = "";
         state.templateSearchQuery = "";
         state.templateSearchKeyboardActive = false;
@@ -14619,7 +14697,7 @@ async function handleClick(event) {
         // can no longer accept new uploads on it — a new token is required.
         if (prevStep === 1 && !isFormTemplateService()) {
           stopUploadPolling();
-          state.uploadSession = null;
+          cancelCustomerUpload();
           state.uploadError = "";
           render();
           startMobileUploadSession();
@@ -14787,6 +14865,7 @@ async function handleClick(event) {
 }
 
 async function handleChange(event) {
+  if (event.target.matches("[data-idle-kiosk-select]")) { await loadAdminIdleScreensaver(event.target.value); return; }
   const target = event.target;
 
   if (!kioskAdminCanManageSetup() && isKioskAdminSetupMutationInput(target)) {
@@ -14900,6 +14979,9 @@ async function handleChange(event) {
       state.selectedService = "print";
     }
 
+    cancelCustomerUpload();
+    const uploadEpoch = customerUploadEpoch;
+    const allocatedFiles = [];
     const selectedFiles = Array.from(target.files);
     if (selectedFiles.length > MAX_FILES_PER_JOB) {
       clearCurrentFile();
@@ -14926,7 +15008,9 @@ async function handleChange(event) {
         const estimateError = await enforceUploadPageLimit(result.file);
         if (estimateError) throw new Error(estimateError);
 
+        if (uploadEpoch !== customerUploadEpoch) throw new Error("Customer session ended.");
         result.file.previewUrl = URL.createObjectURL(file);
+        allocatedFiles.push(result.file);
         const [printContentBase64, pageLimitError] = await Promise.all([
           readFileAsBase64(file),
           enforceUploadPageLimit(result.file)
@@ -14940,6 +15024,7 @@ async function handleChange(event) {
         return result.file;
       }));
 
+      if (uploadEpoch !== customerUploadEpoch) { allocatedFiles.forEach(revokePreviewUrl); return; }
       const paperError = enforceUploadPaperSufficiency(records);
       if (paperError) throw new Error(paperError);
 
@@ -14949,6 +15034,9 @@ async function handleChange(event) {
       state.step = 2;
       render();
     } catch (error) {
+      allocatedFiles.forEach(revokePreviewUrl);
+      if (uploadEpoch !== customerUploadEpoch) return;
+      customerUploadEpoch += 1;
       clearCurrentFile();
       state.uploadError = error.message || "The selected files could not be read.";
       render();
@@ -15124,6 +15212,7 @@ function addJob(printStatus, failureReason = state.printError) {
 }
 
 function resetCustomer() {
+  window.DigilockerUI?.cancel();
   if (typeof resetScanner === 'function') resetScanner();
   stopUploadPolling();
   stopPaymentPolling();
@@ -15133,10 +15222,12 @@ function resetCustomer() {
   setPrivacyPolicyVisible(false);
   state.step = 0;
   state.selectedService = null;
+  state.selectedTemplate = null;
+  pdfPreviewRenderCache.clear();
   state.templateSearchQuery = "";
   state.templateSearchKeyboardActive = false;
   clearCurrentFile();
-  state.uploadSession = null;
+  cancelCustomerUpload();
   state.previewZoom = 1;
   state.previewActivityArea = "document";
   state.previewFileIndex = 0;
@@ -15304,30 +15395,7 @@ if (TEST_HOOKS_ENABLED) {
 
 hydrateAdminSession();
 
-try {
-  const savedState = sessionStorage.getItem("kioskCustomerState");
-  if (savedState) {
-    const parsed = JSON.parse(savedState);
-    if (window.DigilockerUI?.restoreCustomerState(parsed)) {
-      state.step = 1;
-      state.selectedService = parsed.selectedService || null;
-    } else if (parsed.step !== undefined && parsed.step > 0 && parsed.selectedService) {
-      state.step = parsed.step;
-      state.selectedService = parsed.selectedService;
-      if (parsed.selectedTemplate) state.selectedTemplate = parsed.selectedTemplate;
-
-      if (state.step >= 2) {
-        const isTemplate = services.find(s => s.id === state.selectedService)?.mode === "template" || (formTemplates[state.selectedService] && formTemplates[state.selectedService].length > 0);
-        if (!isTemplate && (!state.files || state.files.length === 0)) {
-          state.step = 1;
-        }
-      }
-    } else if (parsed.step === 0) {
-      state.step = 0;
-      state.selectedService = null;
-    }
-  }
-} catch (e) { }
+try { sessionStorage.removeItem("kioskCustomerState"); } catch {}
 
 if (!isMobilePaymentEntry && state.mode === "customer" && !DEMO_KIOSK_MODE && KIOSK_ID !== UNASSIGNED_KIOSK_ID && !services.length) {
   state.configStatus = "Loading kiosk services...";

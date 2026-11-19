@@ -5520,7 +5520,7 @@ function renderKioskAdminIdleScreensaverEditor(draft) {
     <section class="kiosk-settings-panel idle-screensaver-panel" style="margin-top: 24px; border: 1px solid #e2e8f0; border-radius: 16px; padding: 20px; background: #fafafa;">
       <div class="section-heading" style="margin-bottom: 16px;">
         <h2 style="font-size: 16px; font-weight: 700; color: #0f172a; font-family: var(--font-serif, 'Playfair Display', Georgia, serif);">Idle Screen (Screensaver)</h2>
-        <span style="font-size: 12.5px; color: #64748b;">Shown on the kiosk home screen after it sits idle. Pick one mode — image slideshow or video.</span>
+        <span style="font-size: 12.5px; color: #64748b;">Client default for all its kiosks. Kiosk Admin → Settings can override one selected kiosk.</span>
       </div>
       <div class="settings-grid" style="display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-bottom: 16px;">
         <div>
@@ -7035,6 +7035,7 @@ function validateClientLogoFile(file) {
 
 async function uploadSuperAdminClientLogo(file) {
   if (!state.editor || state.editor.collection !== "kioskAdmins") return;
+  const editor = state.editor;
 
   const statusSelector = '[data-field-wrapper="logoUrl"] [data-image-upload-status]';
 
@@ -7054,12 +7055,14 @@ async function uploadSuperAdminClientLogo(file) {
       body: formData
     });
 
+    if (state.editor !== editor) return;
     state.editor.draft.logoUrl = payload.imageUrl || "";
     refreshClientLogoDom();
     setIdleUploadStatus(statusSelector, payload.storage === "s3"
       ? "Client logo uploaded to S3. Save Client to publish it."
       : "Client logo uploaded. Save Client to publish it.");
   } catch (error) {
+    if (state.editor !== editor) return;
     if (error.sessionExpired) {
       render();
       return;
@@ -7078,6 +7081,7 @@ function validateIdleImageFile(file) {
 
 async function uploadSuperAdminIdleImages(files) {
   if (!state.editor || state.editor.collection !== "kioskAdmins") return;
+  const editor = state.editor;
 
   const list = Array.from(files || []);
   if (!list.length) return;
@@ -7106,9 +7110,11 @@ async function uploadSuperAdminIdleImages(files) {
     const formData = new FormData();
     toUpload.forEach((file) => formData.append("idleImage", file, file.name));
     const payload = await uploadWithProgress("/api/super-admin/idle-image", formData, (percent) => {
+      if (state.editor !== editor) return;
       setIdleUploadProgress("[data-idle-upload-progress]", "[data-idle-upload-progress-fill]", percent);
     });
 
+    if (state.editor !== editor) return;
     state.editor.draft.idleImageUrls = [...existing, ...(payload.imageUrls || [])].slice(0, 10);
     // Same fix as the Kiosk Admin panel's equivalent upload handler - without
     // this, uploading images never switched mode off "Off" (or off "Video"),
@@ -7118,6 +7124,7 @@ async function uploadSuperAdminIdleImages(files) {
     setIdleUploadStatus("[data-idle-upload-status]", "Idle-screen images uploaded. Save Client to publish them.");
     refreshIdleImageGridDom();
   } catch (error) {
+    if (state.editor !== editor) return;
     setIdleUploadProgress("[data-idle-upload-progress]", "[data-idle-upload-progress-fill]", null);
     if (error.sessionExpired) {
       render();
@@ -7137,6 +7144,7 @@ function validateIdleVideoFile(file) {
 
 async function uploadSuperAdminIdleVideo(file) {
   if (!state.editor || state.editor.collection !== "kioskAdmins") return;
+  const editor = state.editor;
 
   const validationError = validateIdleVideoFile(file);
   if (validationError) {
@@ -7151,9 +7159,11 @@ async function uploadSuperAdminIdleVideo(file) {
     const formData = new FormData();
     formData.append("idleVideo", file, file.name);
     const payload = await uploadWithProgress("/api/super-admin/idle-video", formData, (percent) => {
+      if (state.editor !== editor) return;
       setIdleUploadProgress("[data-idle-video-upload-progress]", "[data-idle-video-upload-progress-fill]", percent);
     });
 
+    if (state.editor !== editor) return;
     state.editor.draft.idleVideoUrl = payload.videoUrl || "";
     state.editor.draft.idleMediaMode = "video";
     setIdleUploadProgress("[data-idle-video-upload-progress]", "[data-idle-video-upload-progress-fill]", null);
@@ -7162,6 +7172,7 @@ async function uploadSuperAdminIdleVideo(file) {
       : "Idle-screen video uploaded. Save Client to publish it.");
     refreshIdleVideoDom();
   } catch (error) {
+    if (state.editor !== editor) return;
     setIdleUploadProgress("[data-idle-video-upload-progress]", "[data-idle-video-upload-progress-fill]", null);
     if (error.sessionExpired) {
       render();
@@ -7191,6 +7202,8 @@ function moveDraftIdleImage(index, direction) {
 
 async function uploadSuperAdminTemplateImage(file, templateIndex) {
   if (!state.editor || state.editor.collection !== "services") return;
+  const editor = state.editor;
+  const template = editor.draft.templates?.[templateIndex];
 
   const statusSelector = `[data-template-helper="${templateIndex}"]`;
 
@@ -7213,6 +7226,7 @@ async function uploadSuperAdminTemplateImage(file, templateIndex) {
       body: formData
     });
 
+    if (state.editor !== editor || editor.draft.templates?.[templateIndex] !== template) return;
     updateDraftTemplate(templateIndex, "imageUrl", payload.imageUrl || "");
     updateDraftTemplate(templateIndex, "documentType", payload.documentType || documentType);
     updateDraftTemplate(templateIndex, "pages", pages);
@@ -7223,6 +7237,7 @@ async function uploadSuperAdminTemplateImage(file, templateIndex) {
     // replaced by this along with it, same as the idle-image grid refresh.
     refreshDraftTemplateCardDom(templateIndex);
   } catch (error) {
+    if (state.editor !== editor || editor.draft.templates?.[templateIndex] !== template) return;
     if (error.sessionExpired) {
       render();
       return;
@@ -7335,6 +7350,7 @@ function syncEditorDraftFromDom() {
 
 async function saveEditor() {
   if (!state.editor) return;
+  const editor = state.editor;
   const { collection, mode, id } = state.editor;
   const payload = editorPayload();
   if (collection === "kiosks") {
@@ -7397,11 +7413,11 @@ async function saveEditor() {
   try {
     await fetchJson(path, {
       method,
-      headers: { "Content-Type": "application/json", ...(collection === "services" ? {"X-Kiosk-Config-Version": String(state.editor.baseConfigVersion)} : {}) },
+      headers: { "Content-Type": "application/json", ...(["services", "kiosks", "projects", "kioskAdmins"].includes(collection) ? {"X-Kiosk-Config-Version": String(editor.baseConfigVersion)} : {}) },
       body: JSON.stringify(payload)
     });
     state.notice = `${collections[collection].title.replace(" CRUD", "")} saved.`;
-    state.editor = null;
+    if (state.editor === editor) state.editor = null;
     await loadSnapshot({ quiet: true });
   } catch (error) {
     state.notice = "";
@@ -7421,7 +7437,7 @@ async function deleteRecord(collection, id) {
 
   try {
     await fetchJson(`/api/super-admin/${collection}/${encodeURIComponent(id)}`, {
-      method: "DELETE", headers: collection === "services" ? {"X-Kiosk-Config-Version": String(state.snapshot?.config?.version)} : {}
+      method: "DELETE", headers: ["services", "kiosks", "projects", "kioskAdmins"].includes(collection) ? {"X-Kiosk-Config-Version": String(state.snapshot?.config?.version)} : {}
     });
     state.notice = `${meta.title.replace(" CRUD", "")} deleted.`;
     state.editor = null;
@@ -7446,6 +7462,7 @@ function beginEditKioskPricing(kioskId) {
 
   state.pricingEditor = {
     kioskId: kiosk.kioskId,
+    baseConfigVersion: state.snapshot?.config?.version,
     draft
   };
   render();
@@ -7484,7 +7501,7 @@ async function persistPricingDraft(successMessage) {
   try {
     await fetchJson("/api/super-admin/pricing", {
       method: "PUT",
-      headers: { "Content-Type": "application/json" },
+      headers: { "Content-Type": "application/json", "X-Kiosk-Config-Version": String(state.snapshot?.config?.version) },
       body: JSON.stringify(state.pricingDraft)
     });
     state.notice = successMessage || "Pricing saved.";
@@ -7497,24 +7514,42 @@ async function persistPricingDraft(successMessage) {
   }
 }
 
+async function persistKioskPricing(kioskId, method, rates, version) {
+  state.notice = "Saving kiosk pricing...";
+  state.error = "";
+  render();
+  try {
+    await fetchJson(`/api/super-admin/kiosk-pricing/${encodeURIComponent(kioskId)}`, {
+      method, headers: {"Content-Type": "application/json", "X-Kiosk-Config-Version": String(version)},
+      body: method === "DELETE" ? undefined : JSON.stringify({rates})
+    });
+    state.notice = `Pricing saved for ${kioskId}.`;
+    await loadSnapshot({quiet: true});
+    return true;
+  } catch (error) {
+    state.notice = "";
+    state.error = error.message || "Kiosk pricing could not be saved.";
+    render();
+    return false;
+  }
+}
+
 async function saveKioskPricing() {
   const editor = state.pricingEditor;
   if (!editor?.kioskId) return;
-
-  state.pricingDraft = pricingDraftWithKiosk(editor.kioskId, editor.draft || {});
-  state.pricingEditor = null;
-  await persistPricingDraft("Kiosk pricing saved.");
+  if (await persistKioskPricing(editor.kioskId, "PUT", editor.draft, editor.baseConfigVersion)) {
+    if (state.pricingEditor === editor) state.pricingEditor = null;
+    render();
+  }
 }
 
 async function deleteKioskPricing(kioskId) {
-  if (!kioskId) return;
-  if (!(await window.customConfirm(`Delete custom pricing for ${kioskId}? This kiosk will use default service prices.`))) return;
-
-  state.pricingDraft = pricingDraftWithoutKiosk(kioskId);
-  if (state.pricingEditor?.kioskId === kioskId) {
-    state.pricingEditor = null;
+  const version = state.snapshot?.config?.version;
+  if (!kioskId || !(await window.customConfirm(`Delete custom pricing for ${kioskId}? This kiosk will use default service prices.`))) return;
+  if (await persistKioskPricing(kioskId, "DELETE", null, version)) {
+    if (state.pricingEditor?.kioskId === kioskId) state.pricingEditor = null;
+    render();
   }
-  await persistPricingDraft("Kiosk custom pricing deleted.");
 }
 
 async function savePricing(serviceId) {
@@ -7526,7 +7561,7 @@ async function savePricing(serviceId) {
   try {
     await fetchJson(`/api/super-admin/pricing/${encodeURIComponent(serviceId)}`, {
       method: "PUT",
-      headers: { "Content-Type": "application/json" },
+      headers: { "Content-Type": "application/json", "X-Kiosk-Config-Version": String(state.snapshot?.config?.version) },
       body: JSON.stringify(rates)
     });
     state.notice = "Pricing saved.";

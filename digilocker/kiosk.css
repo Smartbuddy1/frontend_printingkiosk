@@ -264,8 +264,14 @@ body .dl-preview-banner {
 #app .customer-shell .dl-pair-screen .dl-phone-note > span { line-height: 1; }
 
 /* Direct DigiLocker hand-off: pair on phone, then open the selected set in preview. */
+@media (max-height: 820px) {
+  #app .customer-shell .dl-pair-screen .dl-qr-guide-art { display: none; }
+  #app .customer-shell .dl-pair-screen .dl-qr-guide { gap: 4px; padding: 0; }
+  #app .customer-shell .dl-pair-screen .dl-qr-guide h2 { font-size: 18px; }
+  #app .customer-shell .dl-pair-screen .dl-pair-layout { grid-template-rows: minmax(0, 1fr); }
+}
 #app .customer-shell .dl-stage.dl-pair-screen {
-  grid-template-rows: auto minmax(0, 1fr) auto;
+  grid-template-rows: auto auto minmax(0, 1fr) auto;
 }
 #app .customer-shell .dl-pair-screen .dl-content { overflow: hidden; }
 #app .customer-shell .dl-pair-screen .dl-pair-layout {
@@ -298,7 +304,7 @@ body .dl-preview-banner {
 #app .customer-shell .dl-transfer-copy h2 {
   color: #182342;
   font-size: clamp(23px, 2.6vw, 32px);
-  line-height: 1.2;
+  line-height: 1.3;
   margin: 0;
 }
 #app .customer-shell .dl-guide-lead,
