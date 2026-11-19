@@ -77,6 +77,14 @@
         if (result.error) throw new Error("FILE_TYPE_INVALID");
         const record = result.file; prepared.push(record); owned.add(record);
         record.pages = meta.pages; record.previewUrl = URL.createObjectURL(file);
+        if (file.type.startsWith("image/")) {
+          const image = new Image(); image.src = record.previewUrl; await image.decode();
+        } else {
+          const pdfjs = await import("../assets/vendor/pdfjs/pdf.min.mjs");
+          pdfjs.GlobalWorkerOptions.workerSrc = new URL("./assets/vendor/pdfjs/pdf.worker.min.mjs",document.baseURI).href;
+          const pdf = await pdfjs.getDocument({url:record.previewUrl,enableXfa:true}).promise;
+          try { await (await pdf.getPage(1)).getOperatorList(); } finally { await pdf.destroy(); }
+        }
         const pageError = await enforceUploadPageLimit(record);
         if (pageError) throw new Error("PAGE_LIMIT");
         record.printContentBase64 = await readFileAsBase64(file);
@@ -98,6 +106,11 @@
         noteCustomerActivity();
         if (epoch !== generation) return;
       }
+      // The phone's selection/unlock response already explains the rejected file.
+      // Leave the public screen ready for another scan without displaying that error.
+      if (data.status === "FAILED" && /^(?:PDF_|FILE_|IMAGE_|PAGE_LIMIT$|INTEGRITY_FAILED$|DOCUMENT_UNAVAILABLE$|noDocuments$)/.test(data.error || "")) {
+        resetCustomer(); redraw(); void refreshPrinterStatus(); return;
+      }
       if (["DENIED","FAILED","CANCELLED","EXPIRED"].includes(data.status)) { fail(data.status === "DENIED" ? "denied" : data.error || "ended"); return; }
       if (["DOWNLOADING", "READY"].includes(data.status)) progressStep = 2;
       else if (data.status === "PHONE_CONNECTED") progressStep = 1;
@@ -108,9 +121,20 @@
         phase = "RECEIVING"; redraw();
         await new Promise(resolve => setTimeout(resolve, 300));
         if (epoch !== generation) return;
-        const prepared = await prepare(data.files, epoch);
+        let prepared;
+        try { prepared = await prepare(data.files, epoch); }
+        catch (error) {
+          if (epoch !== generation) return;
+          if (message) throw error;
+          resetCustomer(); redraw(); void refreshPrinterStatus(); return;
+        }
         if (epoch !== generation) { prepared.forEach(eraseRecord); return; }
         records = prepared; phase = "READY";
+        if (session.confirmPreview) {
+          try { await request("status",{method:"POST"}); }
+          catch { if(epoch === generation){resetCustomer(); redraw(); void refreshPrinterStatus();} return; }
+          if (epoch !== generation) return;
+        }
         if (!confirm()) fail("unavailable");
         return;
       }
@@ -156,7 +180,7 @@
       // already created on the server can still be explicitly cancelled.
       const creation = (async () => {
         const response = await fetch(apiUrl("/api/digilocker/sessions"), { method: "POST", signal: AbortSignal.timeout(15000), cache: "no-store",
-          headers: { "Content-Type":"application/json", "x-digilocker-kiosk-key":kioskKey }, body:JSON.stringify({language:state.customerLanguage,kioskId:KIOSK_ID}) });
+          headers: { "Content-Type":"application/json", "x-digilocker-kiosk-key":kioskKey }, body:JSON.stringify({language:state.customerLanguage,kioskId:KIOSK_ID,confirmPreview:true}) });
         const data = await response.json(); if (!response.ok) throw new Error(data.error || "unavailable");
         if (epoch !== generation) { await retireSession(data); return null; }
         return data;
@@ -185,6 +209,12 @@
       await original();
       if(epoch !== generation)return;
       const success=state.printProgress===5 && !state.printError;
+      if (success) {
+        clearTimers(); session=null; handedOff=false; active=false;
+        eraseLocal(); clearCurrentFile();
+        state.step=4; state.thankYouPhase="thankyou"; state.thankYouSecondsLeft=THANK_YOU_HOME_REDIRECT_SECONDS;
+        redraw(); await complete(current,"done"); return;
+      }
       active=true;phase="CLEANUP";redraw();
       await complete(current,success?"done":"failed");
       if(epoch !== generation)return;
@@ -319,6 +349,12 @@
     }
     if(config.preview){const banner=document.createElement("div");banner.className="dl-preview-banner";banner.setAttribute("role","note");banner.textContent=t("mockPrint");document.body.prepend(banner);}
     document.addEventListener("click",event=>{
+      if (handedOff && state.step === 2 && event.target.closest('[data-action="prev-step"]')) {
+        event.preventDefault();
+        event.stopPropagation();
+        void start(state.selectedService);
+        return;
+      }
       const target=event.target.closest("[data-digilocker]");if(!target)return;event.preventDefault();event.stopPropagation();
       const action=target.dataset.digilocker;
       if(action==="start"||action==="service"||action==="refresh")void start(target.dataset.digilockerService);

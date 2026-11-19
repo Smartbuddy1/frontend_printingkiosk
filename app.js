@@ -8616,6 +8616,8 @@ function renderPrintingAnimation(complete = false) {
       <path class="print-motion-meter" d="M105 133h35" stroke="#67e8f9" stroke-width="3" stroke-linecap="round"/>
       <circle class="print-motion-light" cx="315" cy="133" r="5" fill="#14b8a6"/>
       <rect x="112" y="176" width="196" height="17" rx="8" fill="#172a48"/>
+      <path d="M123 225h174l18 35q2 6-6 6H111q-8 0-6-6z" fill="#cfdfec" stroke="#9ab4c9" stroke-width="2"/>
+      <path d="M118 256h185" stroke="#adc6da" stroke-width="3" stroke-linecap="round"/>
       <g class="print-motion-paper">
         <path d="M139 184h142l13 67c1 6-3 10-9 10H135c-6 0-10-4-9-10z" fill="white" stroke="#b7c9df" stroke-width="2"/>
         <rect x="153" y="199" width="25" height="22" rx="4" fill="#dbeafe"/>
@@ -9268,7 +9270,7 @@ function renderThankYouPrinting() {
   const stillPrinting = Number(state.printProgress || 0) < 5;
   const liveStatus = state.printStatusMessage || customerLivePrinterStatusLabel();
   const documentSent = Number(state.printProgress || 0) >= 2;
-  const heading = stillPrinting ? "Printing Your Document" : "Collecting Your Document";
+  const heading = stillPrinting ? "Printing Your Document" : "Collect Your Documents";
   const subtitle = stillPrinting
     ? "Please wait while the kiosk sends your document to the printer."
     : "Please collect your pages from the printer tray.";
